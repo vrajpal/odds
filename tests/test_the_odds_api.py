@@ -1,8 +1,9 @@
 import httpx
 import pytest
 
-from conftest import fixture_transport
+from conftest import fixture_transport, load_fixture
 from mlb_odds.providers import ProviderError, TheOddsAPI
+from mlb_odds.storage import Storage
 
 
 def make_provider(fixture: str, **kwargs) -> TheOddsAPI:
@@ -72,6 +73,35 @@ def test_doubleheader_gets_distinct_ids_ordered_by_start_time():
     )
 
 
+def test_doubleheader_ids_stay_stable_after_game_one_drops_from_feed(tmp_path):
+    """Once game 1 of a doubleheader finishes, The Odds API drops it from /odds.
+
+    The next cycle sees game 2 alone (provisionally numbered 1); storage must
+    still file it under its previously assigned game_id (FR2).
+    """
+    storage = Storage(tmp_path / "dh.sqlite")
+    storage.store(make_provider("doubleheader", strict=True).fetch_game_lines())
+
+    remaining = [e for e in load_fixture("doubleheader") if e["id"] == "dh-game-two-listed-first"]
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=remaining))
+    provider = TheOddsAPI(api_key="test-key", transport=transport, strict=True)
+    results = provider.fetch_game_lines()
+    storage.store(results)
+
+    assert results[0].game.game_id == "2026-07-09-STL-CHC-2"
+    by_native = {g.provider_ids["the_odds_api"]: g for g in storage.games()}
+    assert by_native["dh-game-one-listed-second"].game_id == "2026-07-09-STL-CHC-1"
+    assert by_native["dh-game-two-listed-first"].game_id == "2026-07-09-STL-CHC-2"
+    # game 1's start time was not clobbered by game 2's
+    assert by_native["dh-game-one-listed-second"].start_time.hour == 17
+    # game 1's history got no rows from the second cycle
+    game1_fetches = {r[0] for r in storage.history_rows("2026-07-09-STL-CHC-1")}
+    game2_fetches = {r[0] for r in storage.history_rows("2026-07-09-STL-CHC-2")}
+    assert len(game1_fetches) == 1
+    assert len(game2_fetches) == 2
+    storage.close()
+
+
 def test_unknown_team_skips_game_in_default_mode():
     provider = make_provider("unknown_team")
     results = provider.fetch_game_lines()
@@ -122,6 +152,44 @@ def test_server_error_recovers_on_retry():
     provider = TheOddsAPI(api_key="test-key", transport=httpx.MockTransport(handler))
     assert provider.fetch_game_lines() == []
     assert calls == 2
+
+
+def test_transport_error_wrapped_in_provider_error_after_retry():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ConnectError("connection refused")
+
+    provider = TheOddsAPI(api_key="test-key", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProviderError, match="after retry"):
+        provider.fetch_game_lines()
+    assert calls == 2
+
+
+def test_transport_error_recovers_on_retry():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.ReadError("connection reset")
+        return httpx.Response(200, json=[], headers={"x-requests-remaining": "400"})
+
+    provider = TheOddsAPI(api_key="test-key", transport=httpx.MockTransport(handler))
+    assert provider.fetch_game_lines() == []
+    assert calls == 2
+
+
+def test_invalid_json_body_wrapped_in_provider_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>totally not json</html>")
+
+    provider = TheOddsAPI(api_key="test-key", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProviderError, match="invalid JSON"):
+        provider.fetch_game_lines()
 
 
 def test_auth_error_raises_without_retry():

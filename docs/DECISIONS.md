@@ -50,3 +50,27 @@ round-trip). Decimal is derived on the model (`price_decimal` property), never s
 `game_id = "{date_utc}-{away}-{home}-{game_number}"`. Deterministic across providers
 (no provider's native ID is privileged), human-readable, doubleheader-safe.
 Provider-native IDs kept in a side table for traceability/debugging.
+
+## D-009 — Game identity is reconciled in storage, not per-fetch (2026-07-09)
+The Odds API drops finished games from the /odds feed, so a provider can only
+number doubleheaders from what the current response contains — game 2 alone in
+the feed looks like game 1. `Storage.store` therefore treats provider-assigned
+game_numbers as provisional: a native id seen before keeps its stored game_id,
+and a new game never takes a game_id already claimed by a different native id
+from the same provider (its number is bumped). Consequence: game_number is
+stable-first-assignment, not strictly start-time-ordered, when the halves of a
+doubleheader first appear in different cycles. Stability wins (FR2 / D-008).
+
+## D-010 — Cross-provider convergence requires start-time agreement (2026-07-09)
+D-009's native-id claim check is per-provider by design, so a second provider's
+first sighting of a doubleheader converges onto whatever game_id its provisional
+number computes — which is wrong when its feed has already dropped game 1 and it
+numbers game 2 as 1, misfiling game 2's quotes under game 1's id (and rule 1 then
+freezes the bad mapping). Guard: a new native id may only take an *existing*
+game_id if the stored start_time is within 2 hours of the incoming one; otherwise
+the number is bumped, same as a same-provider claim conflict. 2 hours is below any
+doubleheader gap (game 1 alone runs ~2.5h+) but above realistic provider disagreement
+about one game's first pitch. Accepted tradeoff: a game rescheduled by >2h within
+the same day, first seen by a new provider only after the move while another
+provider stored the old time, splits into two game_ids — rarer and cheaper than
+cross-wiring two physical games' line histories.

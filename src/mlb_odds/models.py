@@ -1,12 +1,23 @@
 """Domain models. Canonical forms: UTC times, canonical team codes, American prices."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 Market = Literal["moneyline", "run_line", "total"]
 Outcome = Literal["home", "away", "over", "under"]
+
+
+def _require_utc(v: datetime) -> datetime:
+    """Reject naive datetimes and normalize aware ones to UTC.
+
+    Storage sorts and date-filters ISO-8601 strings lexically, which is only
+    correct when every stored timestamp carries the same (UTC) offset.
+    """
+    if v.tzinfo is None:
+        raise ValueError("datetime must be timezone-aware")
+    return v.astimezone(UTC)
 
 
 def make_game_id(date_utc: str, away: str, home: str, game_number: int = 1) -> str:
@@ -24,12 +35,7 @@ class Game(BaseModel):
     away_team: str
     provider_ids: dict[str, str] = Field(default_factory=dict)
 
-    @field_validator("start_time")
-    @classmethod
-    def _require_tz(cls, v: datetime) -> datetime:
-        if v.tzinfo is None:
-            raise ValueError("start_time must be timezone-aware (UTC)")
-        return v
+    _normalize_start = field_validator("start_time")(_require_utc)
 
     @property
     def season(self) -> int:
@@ -62,3 +68,5 @@ class GameOdds(BaseModel):
     fetched_at: datetime
     provider: str
     quotes: list[Quote]
+
+    _normalize_fetched = field_validator("fetched_at")(_require_utc)

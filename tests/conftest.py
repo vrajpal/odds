@@ -1,7 +1,11 @@
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+
+from mlb_odds.models import Game, GameOdds, Quote, make_game_id
+from mlb_odds.providers.base import ProviderError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -21,3 +25,70 @@ def fixture_transport(name: str, *, quota_remaining: str = "497") -> httpx.MockT
         )
 
     return httpx.MockTransport(handler)
+
+
+def make_game_odds(
+    *,
+    away: str = "NYM",
+    home: str = "NYY",
+    start_time: datetime | None = None,
+    fetched_at: datetime | None = None,
+    game_number: int = 1,
+    provider: str = "fake",
+    native_id: str | None = None,
+    quotes: list[Quote] | None = None,
+) -> GameOdds:
+    """A canned, fully normalized GameOdds for storage/client/CLI tests."""
+    start = start_time or datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    game_id = make_game_id(start.date().isoformat(), away, home, game_number)
+    game = Game(
+        game_id=game_id,
+        start_time=start,
+        home_team=home,
+        away_team=away,
+        provider_ids={provider: native_id or f"native-{game_id}"},
+    )
+    if quotes is None:
+        quotes = [
+            Quote(book="draftkings", market="moneyline", outcome="away", price=+120),
+            Quote(book="draftkings", market="moneyline", outcome="home", price=-140),
+            Quote(book="draftkings", market="run_line", outcome="away", line=1.5, price=-110),
+            Quote(book="draftkings", market="run_line", outcome="home", line=-1.5, price=-105),
+            Quote(book="draftkings", market="total", outcome="over", line=8.5, price=-108),
+            Quote(book="draftkings", market="total", outcome="under", line=8.5, price=-112),
+        ]
+    return GameOdds(
+        game=game,
+        fetched_at=fetched_at or datetime(2026, 7, 9, 15, 0, tzinfo=UTC),
+        provider=provider,
+        quotes=quotes,
+    )
+
+
+class FakeProvider:
+    """A second provider implemented purely against the OddsProvider protocol.
+
+    Proves the SPEC pluggability criterion: no changes to storage/client/
+    collector/CLI were needed for it to work. Configurable to raise
+    ProviderError to simulate an outage.
+    """
+
+    def __init__(
+        self,
+        results: list[GameOdds] | None = None,
+        *,
+        name: str = "fake",
+        error: ProviderError | None = None,
+        quota_remaining: int | None = 42,
+    ) -> None:
+        self.name = name
+        self._results = results if results is not None else [make_game_odds(provider=name)]
+        self._error = error
+        self.quota_remaining = quota_remaining
+        self.calls = 0
+
+    def fetch_game_lines(self) -> list[GameOdds]:
+        self.calls += 1
+        if self._error is not None:
+            raise self._error
+        return list(self._results)

@@ -123,6 +123,10 @@ CREATE TABLE schema_version (version INTEGER NOT NULL);
 ```
 
 - Writes: `upsert_games()` + `append_odds()` inside one transaction per fetch cycle.
+- Writes reconcile game identity against stored native ids first: a native id
+  seen before keeps its game_id, and a new game never takes a game_id claimed by
+  a different native id from the same provider — provider-assigned doubleheader
+  numbers are provisional (see docs/DECISIONS.md D-009).
 - `schema_version` + a tiny linear migration runner from day one, so schema changes
   never require hand-editing user DBs.
 - Keep the schema portable SQL — a future SQLite → Postgres move should be a
@@ -133,7 +137,7 @@ CREATE TABLE schema_version (version INTEGER NOT NULL);
 `OddsClient(providers, db)` is the one object users touch:
 - `fetch_and_store()` — for each provider: fetch, persist, collect errors; returns
   `list[GameOdds]`. A provider raising doesn't abort the others.
-- `current_odds(date=None)` — latest snapshot per (game, book, market) from storage.
+- `current_odds(on_date=None)` — latest snapshot per (game, book, market) from storage.
 - `history_df(game_id)` / `odds_df(...)` — pandas views over storage queries.
 
 ## Collector (`collector.py`)

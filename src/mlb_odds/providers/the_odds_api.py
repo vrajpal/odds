@@ -65,7 +65,11 @@ class TheOddsAPI:
         for attempt in range(2):
             try:
                 response = self._client.get(API_URL, params=params)
-            except httpx.TimeoutException as exc:
+            except httpx.HTTPError as exc:
+                # Timeouts, DNS failures, refused/reset connections, protocol
+                # errors... anything transport-level gets one retry; the final
+                # failure is wrapped in ProviderError so the collector survives
+                # (SPEC FR1: provider failures must not crash the collector).
                 last_error = exc
                 continue
             if response.status_code >= 500:
@@ -79,11 +83,14 @@ class TheOddsAPI:
             if remaining is not None:
                 self.quota_remaining = int(float(remaining))
                 logger.info("The Odds API credits remaining: %s", self.quota_remaining)
-            payload = response.json()
+            try:
+                payload = response.json()
+            except ValueError as exc:  # json.JSONDecodeError
+                raise ProviderError(f"invalid JSON in response: {exc}") from exc
             if not isinstance(payload, list):
                 raise ProviderError(f"unexpected response shape: {type(payload).__name__}")
             return payload
-        raise ProviderError(f"request failed after retry: {last_error}")
+        raise ProviderError(f"request failed after retry: {last_error}") from last_error
 
     def _parse_event(self, event: dict[str, Any], fetched_at: datetime) -> GameOdds | None:
         try:
@@ -144,7 +151,13 @@ class TheOddsAPI:
     @staticmethod
     def _assign_game_numbers(parsed: list[GameOdds]) -> list[GameOdds]:
         """Number same-matchup same-day games by start time so doubleheaders get
-        distinct game_ids."""
+        distinct game_ids.
+
+        This can only see games present in the current response (finished games
+        drop out of the feed), so the numbering is provisional: storage
+        reconciles it against previously stored native ids on write
+        (Storage._resolve_game_id) to keep identity stable across cycles.
+        """
         groups: dict[str, list[GameOdds]] = defaultdict(list)
         for go in parsed:
             key = make_game_id(
