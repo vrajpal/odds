@@ -1,0 +1,52 @@
+[
+  {
+    "id": "dh-game-two-listed-first",
+    "sport_key": "baseball_mlb",
+    "sport_title": "MLB",
+    "commence_time": "2026-07-09T23:35:00Z",
+    "home_team": "Chicago Cubs",
+    "away_team": "St. Louis Cardinals",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-09T12:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T12:00:00Z",
+            "outcomes": [
+              { "name": "Chicago Cubs", "price": -120 },
+              { "name": "St. Louis Cardinals", "price": 100 }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dh-game-one-listed-second",
+    "sport_key": "baseball_mlb",
+    "sport_title": "MLB",
+    "commence_time": "2026-07-09T17:20:00Z",
+    "home_team": "Chicago Cubs",
+    "away_team": "St. Louis Cardinals",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-09T12:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T12:00:00Z",
+            "outcomes": [
+              { "name": "Chicago Cubs", "price": -135 },
+              { "name": "St. Louis Cardinals", "price": 115 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

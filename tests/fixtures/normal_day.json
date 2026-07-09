@@ -1,0 +1,107 @@
+[
+  {
+    "id": "e912aabbccdd001",
+    "sport_key": "baseball_mlb",
+    "sport_title": "MLB",
+    "commence_time": "2026-07-09T23:05:00Z",
+    "home_team": "New York Yankees",
+    "away_team": "New York Mets",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-09T18:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "New York Yankees", "price": -145 },
+              { "name": "New York Mets", "price": 125 }
+            ]
+          },
+          {
+            "key": "spreads",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "New York Yankees", "price": 120, "point": -1.5 },
+              { "name": "New York Mets", "price": -140, "point": 1.5 }
+            ]
+          },
+          {
+            "key": "totals",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Over", "price": -110, "point": 8.5 },
+              { "name": "Under", "price": -110, "point": 8.5 }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "fanduel",
+        "title": "FanDuel",
+        "last_update": "2026-07-09T18:01:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T18:01:00Z",
+            "outcomes": [
+              { "name": "New York Yankees", "price": -150 },
+              { "name": "New York Mets", "price": 130 }
+            ]
+          },
+          {
+            "key": "totals",
+            "last_update": "2026-07-09T18:01:00Z",
+            "outcomes": [
+              { "name": "Over", "price": -108, "point": 8.5 },
+              { "name": "Under", "price": -112, "point": 8.5 }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "e912aabbccdd002",
+    "sport_key": "baseball_mlb",
+    "sport_title": "MLB",
+    "commence_time": "2026-07-10T02:10:00Z",
+    "home_team": "Los Angeles Dodgers",
+    "away_team": "Athletics",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-09T18:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Los Angeles Dodgers", "price": -210 },
+              { "name": "Athletics", "price": 175 }
+            ]
+          },
+          {
+            "key": "spreads",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Los Angeles Dodgers", "price": -115, "point": -1.5 },
+              { "name": "Athletics", "price": -105, "point": 1.5 }
+            ]
+          },
+          {
+            "key": "totals",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Over", "price": -105, "point": 9.0 },
+              { "name": "Under", "price": -115, "point": 9.0 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

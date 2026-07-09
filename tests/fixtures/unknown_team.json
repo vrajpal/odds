@@ -1,0 +1,52 @@
+[
+  {
+    "id": "weird-team-name",
+    "sport_key": "baseball_mlb",
+    "sport_title": "MLB",
+    "commence_time": "2026-07-09T23:05:00Z",
+    "home_team": "Montreal Expos",
+    "away_team": "Boston Red Sox",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-09T18:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Montreal Expos", "price": -110 },
+              { "name": "Boston Red Sox", "price": -110 }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "normal-game",
+    "sport_key": "baseball_mlb",
+    "sport_title": "MLB",
+    "commence_time": "2026-07-09T23:05:00Z",
+    "home_team": "Seattle Mariners",
+    "away_team": "Houston Astros",
+    "bookmakers": [
+      {
+        "key": "draftkings",
+        "title": "DraftKings",
+        "last_update": "2026-07-09T18:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Seattle Mariners", "price": -125 },
+              { "name": "Houston Astros", "price": 105 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

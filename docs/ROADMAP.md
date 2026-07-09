@@ -4,14 +4,15 @@ Milestones are ordered so every one ends with something runnable. Check items of
 they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 
 ## M1 — Core models + provider (fetch works)
-- [ ] Project scaffolding: pyproject.toml, src layout, uv, ruff, mypy, pytest wiring
-- [ ] `models.py` — Game, Quote, GameOdds
-- [ ] `teams.py` — 30 canonical codes + The Odds API name mapping, with tests
-- [ ] `providers/base.py` — OddsProvider protocol, ProviderError
-- [ ] `providers/the_odds_api.py` + recorded fixtures (normal day, doubleheader,
+- [x] Project scaffolding: pyproject.toml, src layout, uv, ruff, mypy, pytest wiring
+- [x] `models.py` — Game, Quote, GameOdds
+- [x] `teams.py` — 30 canonical codes + The Odds API name mapping, with tests
+- [x] `providers/base.py` — OddsProvider protocol, ProviderError
+- [x] `providers/the_odds_api.py` + recorded fixtures (normal day, doubleheader,
       unknown team, missing market, 500)
-- [ ] Quota header surfaced and logged
+- [x] Quota header surfaced and logged
 - **Demo:** a scratch script prints today's normalized odds from the live API.
+  (`scripts/demo_fetch.py` written; live run pending an API key.)
 
 ## M2 — Storage + client (persistence works)
 - [ ] `storage.py` — schema, WAL, migration runner, upsert/append, queries

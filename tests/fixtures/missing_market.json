@@ -1,0 +1,40 @@
+[
+  {
+    "id": "only-moneyline",
+    "sport_key": "baseball_mlb",
+    "sport_title": "MLB",
+    "commence_time": "2026-07-09T20:05:00Z",
+    "home_team": "Tampa Bay Rays",
+    "away_team": "Toronto Blue Jays",
+    "bookmakers": [
+      {
+        "key": "betmgm",
+        "title": "BetMGM",
+        "last_update": "2026-07-09T18:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Tampa Bay Rays", "price": -105 },
+              { "name": "Toronto Blue Jays", "price": -115 }
+            ]
+          },
+          {
+            "key": "outrights",
+            "last_update": "2026-07-09T18:00:00Z",
+            "outcomes": [
+              { "name": "Tampa Bay Rays", "price": 400 }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "caesars",
+        "title": "Caesars",
+        "last_update": "2026-07-09T18:00:00Z",
+        "markets": []
+      }
+    ]
+  }
+]
