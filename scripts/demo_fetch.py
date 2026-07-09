@@ -24,14 +24,20 @@ for go in sorted(results, key=lambda g: g.game.start_time):
             quotes = [q for q in go.quotes if q.book == book and q.market == market]
             if not quotes:
                 continue
+            # A book can legitimately carry a partial outcome set (SPEC FR1);
+            # skip the market rather than crash the whole board.
             fmt = {q.outcome: q for q in quotes}
             if market == "moneyline":
-                parts.append(f"ml {fmt['away'].price:+d}/{fmt['home'].price:+d}")
+                away, home = fmt.get("away"), fmt.get("home")
+                if away is not None and home is not None:
+                    parts.append(f"ml {away.price:+d}/{home.price:+d}")
             elif market == "run_line":
-                home = fmt["home"]
-                parts.append(f"rl {home.line:+.1f} ({home.price:+d})")
+                home = fmt.get("home")
+                if home is not None and home.line is not None:
+                    parts.append(f"rl {home.line:+.1f} ({home.price:+d})")
             else:
-                over = fmt["over"]
-                parts.append(f"o/u {over.line:.1f} ({over.price:+d})")
+                over = fmt.get("over")
+                if over is not None and over.line is not None:
+                    parts.append(f"o/u {over.line:.1f} ({over.price:+d})")
         print(f"    {book:<16} {'  '.join(parts)}")
     print()

@@ -11,11 +11,15 @@ dependencies = [
     "pandas>=2.2",
 ]
 
+[project.scripts]
+mlb-odds = "mlb_odds.cli:app"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "ruff>=0.8",
     "mypy>=1.13",
+    "pyarrow>=17.0",  # test the CLI's parquet export path; not a runtime dep
 ]
 
 [build-system]

@@ -62,7 +62,7 @@ client = OddsClient(providers=[TheOddsAPI()], db="odds.sqlite")
 snapshot = client.fetch_and_store()      # poll all providers, persist, return models
 games    = client.current_odds()          # latest stored odds as domain objects
 df       = client.history_df(game_id)     # line movement as a DataFrame
-df2      = client.odds_df(date=...)       # flat DataFrame of stored odds
+df2      = client.odds_df(on_date=...)    # flat DataFrame of stored odds
 ```
 
 ### FR5 — CLI (`mlb-odds`)
@@ -83,16 +83,17 @@ polling frequency is a conscious choice.
 
 - [ ] `pip install -e .` then `mlb-odds collect --once` (with a key set) populates a
       fresh SQLite file with today's games and per-book odds rows.
-- [ ] `mlb-odds today` renders a readable table from stored data with no network calls.
-- [ ] `client.history_df(game_id)` returns a DataFrame with one row per
+      (Code path fully tested offline; final check pending a live API key.)
+- [x] `mlb-odds today` renders a readable table from stored data with no network calls.
+- [x] `client.history_df(game_id)` returns a DataFrame with one row per
       (fetched_at, book, market, outcome) suitable for plotting line movement.
-- [ ] Full test suite passes **offline** — provider tests run against recorded JSON
+- [x] Full test suite passes **offline** — provider tests run against recorded JSON
       fixtures in `tests/fixtures/`, storage tests against a temp SQLite file.
-- [ ] A second provider can be added by writing one module implementing the protocol
+- [x] A second provider can be added by writing one module implementing the protocol
       and registering it — demonstrated by a `FakeProvider` used in tests.
-- [ ] Doubleheaders produce two distinct game_ids; team-name normalization covers all
+- [x] Doubleheaders produce two distinct game_ids; team-name normalization covers all
       30 clubs for The Odds API's naming.
-- [ ] Collector survives a provider outage (simulated in tests) and keeps polling.
+- [x] Collector survives a provider outage (simulated in tests) and keeps polling.
 
 ## Constraints & conventions
 
