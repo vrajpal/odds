@@ -35,6 +35,18 @@ Optionally set the database location (defaults to `./odds.sqlite`):
 export MLB_ODDS_DB=~/data/odds.sqlite
 ```
 
+Alternatively, put both in a `.env` file in the directory you run the CLI from
+(keep it out of version control and `chmod 600` it):
+
+```bash
+# .env
+THE_ODDS_API_KEY=your-key-here
+MLB_ODDS_DB=/home/me/data/odds.sqlite
+```
+
+The CLI loads it automatically; real environment variables take precedence. Only
+the CLI reads `.env` — importing `mlb_odds` as a library never does.
+
 ## Quota math — pick your interval consciously
 
 One game-lines poll costs `markets × regions` = **3 credits**; the free tier is
@@ -75,10 +87,11 @@ NYM @ NYY  2026-07-09 07:05 PM EDT  [2026-07-09-NYM-NYY-1]
   fanduel           +118/-138     -1.5 (-102)     8.5 (o-110)
 ```
 
-Cron example (5 polls/day, free-tier friendly):
+Cron example (5 polls/day, free-tier friendly) — cron runs with a bare
+environment, so keep the key in a `.env` next to the project and `cd` there first:
 
 ```cron
-0 10,13,16,19,22 * * *  THE_ODDS_API_KEY=... MLB_ODDS_DB=/home/me/odds.sqlite mlb-odds collect --once
+0 10,13,16,19,22 * * *  cd /home/me/odds && /home/me/.local/bin/uv run mlb-odds collect --once >> collect.log 2>&1
 ```
 
 ## Library

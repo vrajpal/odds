@@ -150,7 +150,8 @@ scheduling.
 ## CLI (`cli.py`)
 
 Typer app; commands per SPEC FR5. Reads `THE_ODDS_API_KEY` and `MLB_ODDS_DB` from the
-environment; all display-time timestamps converted to local tz.
+environment, falling back to a `.env` in the working directory (CLI layer only —
+see docs/DECISIONS.md D-011); all display-time timestamps converted to local tz.
 
 ## Error handling & logging
 

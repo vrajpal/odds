@@ -98,6 +98,34 @@ def test_db_env_var_is_honored(db_path, monkeypatch):
     assert "NYM @ NYY" in result.output
 
 
+def test_dotenv_file_in_cwd_is_loaded(db_path, tmp_path, monkeypatch):
+    """A .env in the working directory supplies MLB_ODDS_DB (D-011, cron use case)."""
+    monkeypatch.delenv("MLB_ODDS_DB", raising=False)
+    cwd = tmp_path / "rundir"
+    cwd.mkdir()
+    (cwd / ".env").write_text(f"MLB_ODDS_DB={db_path}\n")
+    monkeypatch.chdir(cwd)
+
+    result = runner.invoke(app, ["today"])
+
+    assert result.exit_code == 0
+    assert "NYM @ NYY" in result.output
+
+
+def test_real_env_var_beats_dotenv(db_path, tmp_path, monkeypatch):
+    """load_dotenv must not override variables already set in the environment."""
+    cwd = tmp_path / "rundir"
+    cwd.mkdir()
+    (cwd / ".env").write_text(f"MLB_ODDS_DB={cwd / 'wrong.sqlite'}\n")
+    monkeypatch.chdir(cwd)
+    monkeypatch.setenv("MLB_ODDS_DB", str(db_path))
+
+    result = runner.invoke(app, ["today"])
+
+    assert result.exit_code == 0
+    assert "NYM @ NYY" in result.output  # seeded db, not the .env's empty one
+
+
 # ---- history ----
 
 

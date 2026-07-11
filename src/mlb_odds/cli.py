@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from dotenv import load_dotenv
 
 from mlb_odds import collector
 from mlb_odds.client import OddsClient
@@ -23,6 +24,14 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+@app.callback()
+def _load_env() -> None:
+    # CLI layer only — importing mlb_odds as a library never reads .env files
+    # (docs/DECISIONS.md D-011). Real environment variables take precedence.
+    # Explicit path: bare load_dotenv() searches the *module's* tree, not the cwd.
+    load_dotenv(Path(".env"))
+
 
 DbOption = Annotated[
     Path | None,

@@ -40,3 +40,5 @@ uv run mlb-odds collect --once   # needs THE_ODDS_API_KEY
 - `THE_ODDS_API_KEY` — The Odds API key (free tier: 500 credits/mo; one game-lines
   poll = 3 credits, so budget ~5 polls/day on free tier)
 - `MLB_ODDS_DB` — SQLite path (default `./odds.sqlite`)
+- The CLI also loads both from a `.env` in the working directory (real env vars
+  win); the library never reads `.env` (D-011)
