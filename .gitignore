@@ -9,3 +9,4 @@ dist/
 *.sqlite-wal
 *.sqlite-shm
 *.egg-info/
+.env

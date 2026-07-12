@@ -74,3 +74,13 @@ about one game's first pitch. Accepted tradeoff: a game rescheduled by >2h withi
 the same day, first seen by a new provider only after the move while another
 provider stored the old time, splits into two game_ids — rarer and cheaper than
 cross-wiring two physical games' line histories.
+
+## D-011 — .env support at the CLI layer only (2026-07-11)
+The CLI loads a `.env` file from the working directory via `python-dotenv`
+(`load_dotenv()` in the Typer app callback), so cron jobs and local runs can keep
+`THE_ODDS_API_KEY` / `MLB_ODDS_DB` in one gitignored, chmod-600 file instead of a
+shell profile or crontab line. The library never reads `.env`: `import mlb_odds`
+must not have cwd-dependent side effects when embedded in a larger app — library
+users pass `TheOddsAPI(api_key=...)` or set real env vars. Real environment
+variables always win (`load_dotenv` does not override existing vars). New runtime
+dep `python-dotenv`: zero transitive dependencies, clears the minimal-deps bar.
