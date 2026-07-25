@@ -94,6 +94,36 @@ environment, so keep the key in a `.env` next to the project and `cd` there firs
 0 10,13,16,19,22 * * *  cd /home/me/odds && /home/me/.local/bin/uv run mlb-odds collect --once >> collect.log 2>&1
 ```
 
+## Web API & UI
+
+Run the FastAPI server:
+
+```bash
+python run_api.py
+```
+
+API runs on `http://localhost:8000` with endpoints:
+- `GET /api/today` — today's games with latest odds per book (JSON)
+- `GET /api/games/{game_id}/history` — line movement history
+- `GET /api/export?fmt=csv|json` — export all stored odds
+
+To start the React frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend runs on `http://localhost:5173` and proxies API calls. After development, build and serve from the API server:
+
+```bash
+npm run build                    # outputs to frontend/dist/
+python run_api.py               # serves frontend from /
+```
+
+Open `http://localhost:8000` in your browser.
+
 ## Library
 
 ```python

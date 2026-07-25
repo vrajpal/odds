@@ -10,3 +10,11 @@ dist/
 *.sqlite-shm
 *.egg-info/
 .env
+tags
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
