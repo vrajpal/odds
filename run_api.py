@@ -2,7 +2,6 @@
 """Run the FastAPI server for MLB odds."""
 
 import os
-import sys
 from pathlib import Path
 
 import uvicorn

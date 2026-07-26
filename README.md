@@ -107,6 +107,16 @@ API runs on `http://localhost:8000` with endpoints:
 - `GET /api/games/{game_id}/history` — line movement history
 - `GET /api/export?fmt=csv|json` — export all stored odds
 
+The API reads an existing database and never creates, migrates, or writes one —
+run `mlb-odds collect --once` first or it returns 503. Its path comes from
+`MLB_ODDS_DB` only; there is deliberately no per-request `db` override (D-012).
+No endpoint can reach a provider, so HTTP traffic cannot spend API credits.
+
+**Not hardened for untrusted networks.** There is no authentication and no rate
+limiting, `/api/export` serializes the whole table into one response, and
+`run_api.py` uses `--reload` (a development flag). Keep it on `127.0.0.1`, or put
+authentication and a rate limiter in front of it before exposing it.
+
 To start the React frontend:
 
 ```bash

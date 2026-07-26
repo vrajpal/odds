@@ -84,3 +84,53 @@ must not have cwd-dependent side effects when embedded in a larger app — libra
 users pass `TheOddsAPI(api_key=...)` or set real env vars. Real environment
 variables always win (`load_dotenv` does not override existing vars). New runtime
 dep `python-dotenv`: zero transitive dependencies, clears the minimal-deps bar.
+
+## D-012 — The API resolves the database server-side, read-only (2026-07-25)
+The HTTP API's first revision copied `_resolve_db` from the CLI, which accepts a
+`--db` override. In the CLI that flag is trusted local-operator configuration; as
+an HTTP query parameter it became unauthenticated attacker input flowing into
+`sqlite3.connect` on a connection that opens read-write and runs `_migrate()`.
+Confirmed consequences: arbitrary-path SQLite file creation, reading any other
+mlb-odds database the process could reach, and injecting this schema (plus a
+permanent `journal_mode=WAL` flip) into any unrelated SQLite database on the host
+— a browser cookie store, for instance. Two changes, defence in depth:
+
+1. No endpoint takes a `db` parameter. The API path comes from `MLB_ODDS_DB` or
+   the default, resolved server-side. Database location is deployment config.
+2. `Storage(..., read_only=True)` opens via the `mode=ro` URI and skips both the
+   WAL pragma and `_migrate()`, so an API process cannot create or write a
+   database even if a future change reintroduces a caller-supplied path. The path
+   is passed through `Path.resolve().as_uri()` so `?`/`#` cannot smuggle extra URI
+   parameters. A missing database is a 503, not a silently created empty one.
+
+`OddsClient` additionally rejects `read_only=True` with a non-empty `providers`
+list. The API's inability to burn The Odds API credits was previously incidental
+(it happened to pass `providers=[]`); this makes it a checked invariant, since a
+"refresh now" endpoint is an obvious future addition and 167 unauthenticated
+requests would exhaust a month of free-tier quota (3 credits/poll, 500/month).
+
+Consequence: the API cannot apply migrations. A database created by an older
+build is migrated on the next CLI or collector run; until then the API reads it
+at the old schema. Given the collector must run anyway for the data to exist,
+this is not a practical ordering hazard.
+
+## D-013 — Local-day queries use a UTC instant window, not a UTC date (2026-07-25)
+`games(on_date)` / `latest_odds(on_date)` match `substr(start_time, 1, 10)`, i.e.
+a UTC calendar date. The `today` board is a *local*-day view, so filtering by UTC
+date is the wrong question: a 10pm PDT first pitch is 05:00Z the following day and
+vanishes from its own board. The CLI sidestepped this by fetching everything and
+filtering in Python — correct, but it made the query cost grow with the whole
+append-only `odds` table (measured: 1.07s to render ~15 games from a 216k-row
+database, and rising for the life of the database) because the inner
+`MAX(fetched_at)` aggregate groups over every row ever stored.
+
+Both methods therefore take an optional `window=(start, end)` of timezone-aware
+UTC instants, half-open, which the API computes for the viewer's local day. Bounds
+are normalized to UTC before comparison, preserving the invariant that makes
+lexical ISO-8601 comparison equal instant comparison (see `models._require_utc`).
+`on_date` is retained and unchanged for callers that genuinely mean a UTC date.
+
+Migration 2 adds `CREATE INDEX idx_games_start ON games (start_time)` so the range
+scan is an index seek rather than a table scan — without it the window helps the
+empty-day case only. Measured on the same 216k-row database: 1.07s → 0.006s (185x)
+for a day with games, confirmed via `EXPLAIN QUERY PLAN` to use the new index.

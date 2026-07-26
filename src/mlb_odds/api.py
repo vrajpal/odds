@@ -2,7 +2,8 @@
 
 import logging
 import os
-from datetime import datetime, tzinfo
+import sqlite3
+from datetime import datetime, time, timedelta, tzinfo
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -17,9 +18,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="MLB Odds API", description="REST API for MLB betting odds")
 
 
-def _resolve_db(db_path: str | None = None) -> Path:
-    if db_path:
-        return Path(db_path)
+def _resolve_db() -> Path:
+    """The database path is deployment configuration, never request input.
+
+    An earlier revision exposed this as a `db` query parameter on every
+    endpoint. Because Storage opens read-write and migrates, that let any
+    unauthenticated GET create a SQLite file at an arbitrary path, or add this
+    schema to an unrelated SQLite database on the host. Server-side only.
+    """
     env = os.environ.get("MLB_ODDS_DB")
     return Path(env) if env else Path("./odds.sqlite")
 
@@ -30,8 +36,32 @@ def _local_tz() -> tzinfo:
     return tz
 
 
-def _get_client(db_path: str | None = None) -> OddsClient:
-    return OddsClient(providers=[], db=_resolve_db(db_path))
+def _local_day_window(tz: tzinfo) -> tuple[datetime, datetime]:
+    """Half-open UTC [start, end) instants bounding the current local day.
+
+    The board is a local-day view, but start_time is stored UTC, so a UTC
+    calendar-date filter is the wrong question: a 10pm PDT first pitch is the
+    next day in UTC and would drop out of the board entirely.
+    """
+    today = datetime.now(tz).date()
+    start = datetime.combine(today, time.min, tzinfo=tz)
+    return start, start + timedelta(days=1)
+
+
+def _get_client() -> OddsClient:
+    """Read-only, provider-less client.
+
+    `providers=[]` is what keeps HTTP traffic from reaching The Odds API and
+    burning metered credits; OddsClient enforces that read_only and providers
+    are mutually exclusive so this can't regress silently.
+    """
+    try:
+        return OddsClient(providers=[], db=_resolve_db(), read_only=True)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Odds database unavailable. Run `mlb-odds collect --once` to create it.",
+        ) from exc
 
 
 class Game(BaseModel):
@@ -61,17 +91,15 @@ class GameBoard(BaseModel):
 
 
 @app.get("/api/today", response_model=list[GameBoard])
-def get_today(db: str | None = None) -> list[GameBoard]:
+def get_today() -> list[GameBoard]:
     """Get today's games with latest odds per book."""
-    client = _get_client(db)
+    client = _get_client()
     try:
         tz = _local_tz()
-        today_local = datetime.now(tz).date()
-        board = [
-            go
-            for go in client.current_odds()
-            if go.game.start_time.astimezone(tz).date() == today_local
-        ]
+        # Narrow in SQL. Fetching every snapshot ever stored and filtering in
+        # Python made this cost grow with the whole append-only odds table
+        # while still returning ~15 games.
+        board = client.current_odds(window=_local_day_window(tz))
         if not board:
             return []
 
@@ -103,9 +131,9 @@ def get_today(db: str | None = None) -> list[GameBoard]:
 
 
 @app.get("/api/games/{game_id}/history")
-def get_game_history(game_id: str, db: str | None = None) -> dict[str, object]:
+def get_game_history(game_id: str) -> dict[str, object]:
     """Get line movement history for a game."""
-    client = _get_client(db)
+    client = _get_client()
     try:
         df = client.history_df(game_id)
         if df.empty:
@@ -122,12 +150,12 @@ def get_game_history(game_id: str, db: str | None = None) -> dict[str, object]:
 
 
 @app.get("/api/export")
-def export_odds(fmt: str = "csv", db: str | None = None) -> dict[str, object]:
+def export_odds(fmt: str = "csv") -> dict[str, object]:
     """Export all odds to CSV or JSON."""
     if fmt not in ("csv", "json"):
         raise HTTPException(status_code=400, detail="format must be 'csv' or 'json'")
 
-    client = _get_client(db)
+    client = _get_client()
     try:
         df = client.odds_df()
         if df.empty:
