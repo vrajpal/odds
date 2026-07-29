@@ -7,12 +7,24 @@ Keep the SQL portable (see docs/DECISIONS.md D-005).
 import logging
 import sqlite3
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from mlb_odds.models import Game, GameOdds, Quote
 
 logger = logging.getLogger("mlb_odds.storage")
+
+
+def _utc_key(value: datetime) -> str:
+    """Comparison key matching how start_time is stored.
+
+    Stored timestamps are always UTC (models._require_utc), which is what makes
+    lexical string comparison equal instant comparison. Normalizing here keeps
+    that invariant when a caller hands us a datetime in some other zone.
+    """
+    if value.tzinfo is None:
+        raise ValueError("window bounds must be timezone-aware")
+    return value.astimezone(UTC).isoformat()
 
 # Widest plausible start-time disagreement for one physical game across providers
 # or reschedules within the same day. Doubleheader halves are separated by at
@@ -52,11 +64,31 @@ MIGRATIONS: list[str] = [
     CREATE INDEX idx_odds_game    ON odds (game_id, market, fetched_at);
     CREATE INDEX idx_odds_fetched ON odds (fetched_at);
     """,
+    # Serves the window= range scan used by the local-day board (API /api/today).
+    """
+    CREATE INDEX idx_games_start ON games (start_time);
+    """,
 ]
 
 
 class Storage:
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(self, db_path: str | Path, *, read_only: bool = False) -> None:
+        """Open the database. `read_only=True` opens with SQLite's mode=ro URI:
+        the file is never created, never migrated, never written.
+
+        Readers that accept untrusted input (the HTTP API) must use it — a
+        read-write open of an attacker-influenced path creates files and runs
+        _migrate() against whatever it lands on. Only the CLI and collector,
+        whose path comes from local configuration, open read-write.
+        """
+        self.read_only = read_only
+        if read_only:
+            # as_uri() gives an absolute, percent-encoded file: URI, so paths
+            # containing ? or # can't smuggle extra URI parameters.
+            uri = f"{Path(db_path).resolve().as_uri()}?mode=ro"
+            self._conn = sqlite3.connect(uri, uri=True)
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            return
         self._conn = sqlite3.connect(str(db_path))
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
@@ -186,10 +218,25 @@ class Storage:
         stored = datetime.fromisoformat(row[0])
         return abs(stored - start_time) > SAME_GAME_START_TOLERANCE
 
-    def games(self, on_date: date | None = None) -> list[Game]:
+    def games(
+        self,
+        on_date: date | None = None,
+        *,
+        window: tuple[datetime, datetime] | None = None,
+    ) -> list[Game]:
+        """Stored games, optionally narrowed.
+
+        `on_date` matches a UTC calendar date. `window` is a half-open UTC
+        [start, end) instant range — use it when the caller's notion of a day is
+        not UTC's (a local-day board spans two UTC dates), since `on_date` would
+        silently drop games that fall on the other side of midnight UTC.
+        """
         sql = "SELECT game_id, start_time, home_team, away_team FROM games"
         params: tuple[str, ...] = ()
-        if on_date is not None:
+        if window is not None:
+            sql += " WHERE start_time >= ? AND start_time < ?"
+            params = (_utc_key(window[0]), _utc_key(window[1]))
+        elif on_date is not None:
             sql += " WHERE substr(start_time, 1, 10) = ?"
             params = (on_date.isoformat(),)
         sql += " ORDER BY start_time"
@@ -212,20 +259,36 @@ class Storage:
             )
         return games
 
-    def latest_odds(self, on_date: date | None = None) -> list[GameOdds]:
+    def latest_odds(
+        self,
+        on_date: date | None = None,
+        *,
+        window: tuple[datetime, datetime] | None = None,
+    ) -> list[GameOdds]:
         """Latest stored quotes per (game, provider, book, market), as domain objects.
 
         A book/market that drops out of newer fetch cycles keeps its last-known
         quotes (SPEC FR1: partial results are stored as-is, so per-cycle book
         coverage varies). Quotes are grouped into one GameOdds per (game,
         provider) whose fetched_at is the newest snapshot that contributed.
+
+        `on_date` / `window` narrow the games considered, as in games(). Passing
+        one matters at scale: unfiltered, the inner MAX(fetched_at) aggregate
+        groups over the whole append-only odds table, so an unnarrowed call gets
+        monotonically slower for the life of the database.
         """
-        games = {g.game_id: g for g in self.games(on_date)}
+        games = {g.game_id: g for g in self.games(on_date, window=window)}
         if not games:
             return []
         date_filter = ""
         params: tuple[str, ...] = ()
-        if on_date is not None:
+        if window is not None:
+            date_filter = (
+                " JOIN games AS g ON g.game_id = o2.game_id"
+                " WHERE g.start_time >= ? AND g.start_time < ?"
+            )
+            params = (_utc_key(window[0]), _utc_key(window[1]))
+        elif on_date is not None:
             date_filter = (
                 " JOIN games AS g ON g.game_id = o2.game_id"
                 " WHERE substr(g.start_time, 1, 10) = ?"

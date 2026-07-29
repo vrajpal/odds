@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -22,10 +22,18 @@ ODDS_COLUMNS = [
 
 class OddsClient:
     def __init__(
-        self, providers: Sequence[OddsProvider], db: str | Path = "./odds.sqlite"
+        self,
+        providers: Sequence[OddsProvider],
+        db: str | Path = "./odds.sqlite",
+        *,
+        read_only: bool = False,
     ) -> None:
+        """`read_only=True` opens the database without creating or migrating it;
+        fetch_and_store() then raises. See Storage.__init__."""
+        if read_only and providers:
+            raise ValueError("read_only clients cannot poll providers")
         self._providers = list(providers)
-        self._storage = Storage(db)
+        self._storage = Storage(db, read_only=read_only)
         self.last_errors: dict[str, ProviderError] = {}
 
     @property
@@ -57,12 +65,27 @@ class OddsClient:
         )
         return results
 
-    def current_odds(self, on_date: date | None = None) -> list[GameOdds]:
-        """Latest stored quotes per (game, book, market). No network calls."""
-        return self._storage.latest_odds(on_date)
+    def current_odds(
+        self,
+        on_date: date | None = None,
+        *,
+        window: tuple[datetime, datetime] | None = None,
+    ) -> list[GameOdds]:
+        """Latest stored quotes per (game, book, market). No network calls.
 
-    def games(self, on_date: date | None = None) -> list[Game]:
-        return self._storage.games(on_date)
+        `on_date` matches a UTC date; `window` is a half-open UTC [start, end)
+        range for callers whose day boundary isn't UTC's. Narrowing is strongly
+        preferred on a long-lived database — see Storage.latest_odds.
+        """
+        return self._storage.latest_odds(on_date, window=window)
+
+    def games(
+        self,
+        on_date: date | None = None,
+        *,
+        window: tuple[datetime, datetime] | None = None,
+    ) -> list[Game]:
+        return self._storage.games(on_date, window=window)
 
     def history_df(self, game_id: str) -> pd.DataFrame:
         """Line movement for one game: a row per (fetched_at, provider, book, market, outcome)."""

@@ -6,7 +6,7 @@ import pytest
 
 from conftest import make_game_odds
 from mlb_odds.models import Quote
-from mlb_odds.storage import Storage
+from mlb_odds.storage import MIGRATIONS, Storage
 
 
 @pytest.fixture
@@ -40,10 +40,10 @@ def test_reopening_reruns_migrations_idempotently(db_path):
     first.store([make_game_odds()])
     first.close()
 
-    reopened = Storage(db_path)  # must not fail or re-apply migration 1
+    reopened = Storage(db_path)  # must not fail or re-apply applied migrations
     assert len(reopened.games()) == 1
     version = reopened._conn.execute("SELECT version FROM schema_version").fetchone()[0]
-    assert version == 1
+    assert version == len(MIGRATIONS)
     reopened.close()
 
 
