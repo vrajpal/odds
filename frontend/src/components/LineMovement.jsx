@@ -280,6 +280,9 @@ function LineMovement({ rows }) {
         }))
         .filter((p) => p.v != null)
         .sort((a, b) => a.t - b.t)
+        // Two providers reporting the same book at the same instant would
+        // double-draw every mark; keep the last row per timestamp.
+        .filter((p, i, arr) => i === arr.length - 1 || arr[i + 1].t !== p.t)
       return { name: book, color: `var(--series-${bookSlots.get(book)})`, points }
     })
     .filter((s) => s.points.length > 0)

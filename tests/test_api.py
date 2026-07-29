@@ -201,5 +201,39 @@ def test_history_rejects_unknown_game(client):
     assert client.get("/api/games/does-not-exist/history").status_code == 404
 
 
+def test_root_serves_built_frontend_when_dist_exists(seeded_db, tmp_path, monkeypatch):
+    """Routes match in registration order; a JSON "/" route registered before
+    the static mount once shadowed it, so the built UI was unreachable."""
+    import importlib
+
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html><body>mlb-odds ui</body></html>")
+    monkeypatch.setenv("MLB_ODDS_FRONTEND_DIST", str(dist))
+    try:
+        importlib.reload(api)
+        resp = TestClient(api.app, raise_server_exceptions=False).get("/")
+        assert resp.status_code == 200
+        assert "mlb-odds ui" in resp.text
+        assert TestClient(api.app).get("/api/health").json()["status"] == "ok"
+    finally:
+        monkeypatch.delenv("MLB_ODDS_FRONTEND_DIST")
+        importlib.reload(api)
+
+
+def test_root_returns_json_when_no_dist(seeded_db, tmp_path, monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("MLB_ODDS_FRONTEND_DIST", str(tmp_path / "absent"))
+    try:
+        importlib.reload(api)
+        resp = TestClient(api.app, raise_server_exceptions=False).get("/")
+        assert resp.headers["content-type"].startswith("application/json")
+        assert resp.json()["status"] == "ok"
+    finally:
+        monkeypatch.delenv("MLB_ODDS_FRONTEND_DIST")
+        importlib.reload(api)
+
+
 def test_export_rejects_bad_format(client):
     assert client.get("/api/export?fmt=xml").status_code == 400
