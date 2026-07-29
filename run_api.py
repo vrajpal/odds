@@ -14,7 +14,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("API_PORT", "8000"))
 
     print(f"Starting MLB Odds API on http://{host}:{port}")
-    print("Frontend: http://localhost:3000 (after npm install && npm run dev in frontend/)")
+    print("Frontend: http://localhost:5173 (after npm install && npm run dev in frontend/)")
 
     uvicorn.run(
         "mlb_odds.api:app",

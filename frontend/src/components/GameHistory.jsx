@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import LineMovement from './LineMovement'
 import '../styles/GameHistory.css'
 
 function GameHistory({ gameId }) {
@@ -40,6 +41,8 @@ function GameHistory({ gameId }) {
     <div className="game-history">
       <h2>{gameId}</h2>
       <div className="history-meta">{history.count} records</div>
+
+      <LineMovement rows={history.rows} />
 
       <div className="history-table-container">
         <table className="history-table">
