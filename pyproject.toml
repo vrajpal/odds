@@ -23,6 +23,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "pyarrow>=17.0",  # test the CLI's parquet export path; not a runtime dep
+    "httpx2>=2.9",  # starlette>=1.3 TestClient prefers httpx2 over httpx; not a runtime dep
 ]
 
 [build-system]
