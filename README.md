@@ -175,6 +175,23 @@ flat = client.odds_df()               # all stored odds joined with game context
 A provider raising doesn't abort the others: errors land in `client.last_errors`
 and the cycle continues (see `docs/SPEC.md` FR1).
 
+### Providers
+
+Two ship with the library:
+
+- `TheOddsAPI` — multi-book US lines; needs a key, metered (see quota math).
+- `ESPN` — free, no key, unmetered; carries the single partner book ESPN
+  surfaces (DraftKings at recording time), not a consensus (D-016). Unofficial
+  endpoint — treat as best-effort.
+
+```python
+from mlb_odds.providers import ESPN, TheOddsAPI
+client = OddsClient(providers=[TheOddsAPI(), ESPN()], db="odds.sqlite")
+```
+
+Cross-provider game identity converges on one canonical `game_id` (D-008), so
+the same physical game's quotes line up regardless of source.
+
 ### Adding a provider
 
 Implement the `OddsProvider` protocol — a `name` attribute and one method,

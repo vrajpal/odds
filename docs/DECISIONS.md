@@ -159,3 +159,18 @@ records changes rather than polls — the absence of a row at time T means
 unaffected either way, because it already carries last-known quotes forward.
 Default stays append-everything; storage cost was never the motivation for the
 default, auditability of "we polled at T and saw X" was.
+
+## D-016 — ESPN provider: unofficial endpoint, book taken from the response (2026-07-30)
+The M4 item said "ESPN consensus-line provider", but ESPN no longer surfaces a
+consensus: its scoreboard carries one partner sportsbook's lines per event
+(DraftKings at recording time, 2026-07-30). The provider therefore takes the
+book name from `odds[].provider.displayName` (lowercased, spaces stripped)
+instead of hardcoding "consensus" or "espn" — if ESPN changes partners, rows
+appear under the new book's name rather than silently mislabeled. Caveats
+accepted: the endpoint (site.api.espn.com scoreboard) is unofficial and
+undocumented, may change shape without notice, and exposes only the current
+line ("close" in ESPN's jargon means "where the line stands now", not a true
+closing line). It costs nothing and needs no key, which is what makes it a
+useful second provider: it validates cross-provider convergence (D-008) with
+real data at zero quota. The shared doubleheader numbering moved to
+providers/base.assign_game_numbers so both providers use one implementation.

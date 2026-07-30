@@ -1,0 +1,244 @@
+{
+ "events": [
+  {
+   "id": "401816327",
+   "date": "2026-07-30T17:40Z",
+   "shortName": "KC @ MIN",
+   "status": {
+    "type": {
+     "state": "pre"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401816327",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "Minnesota Twins",
+        "abbreviation": "MIN"
+       }
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "Kansas City Royals",
+        "abbreviation": "KC"
+       }
+      }
+     ],
+     "odds": [
+      {
+       "provider": {
+        "id": "100",
+        "displayName": "DraftKings"
+       },
+       "details": "MIN -142",
+       "overUnder": 9.0,
+       "spread": -1.5,
+       "moneyline": {
+        "home": {
+         "close": {
+          "odds": "-142"
+         },
+         "open": {
+          "odds": "-143"
+         }
+        },
+        "away": {
+         "close": {
+          "odds": "+118"
+         },
+         "open": {
+          "odds": "+119"
+         }
+        }
+       },
+       "pointSpread": {
+        "home": {
+         "close": {
+          "line": "-1.5",
+          "odds": "+139"
+         },
+         "open": {
+          "line": "-1.5",
+          "odds": "+144"
+         }
+        },
+        "away": {
+         "close": {
+          "line": "+1.5",
+          "odds": "-169"
+         },
+         "open": {
+          "line": "+1.5",
+          "odds": "-175"
+         }
+        }
+       },
+       "total": {
+        "over": {
+         "close": {
+          "line": "o9",
+          "odds": "-117"
+         },
+         "open": {
+          "line": "o9.5",
+          "odds": "-112"
+         }
+        },
+        "under": {
+         "close": {
+          "line": "u9",
+          "odds": "-103"
+         },
+         "open": {
+          "line": "u9.5",
+          "odds": "-108"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401816328",
+   "date": "2026-07-30T18:10Z",
+   "shortName": "NYY @ CHW",
+   "status": {
+    "type": {
+     "state": "pre"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401816328",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "Chicago White Sox",
+        "abbreviation": "CHW"
+       }
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "New York Yankees",
+        "abbreviation": "NYY"
+       }
+      }
+     ],
+     "odds": [
+      {
+       "provider": {
+        "id": "100",
+        "displayName": null
+       },
+       "details": "CHW -110",
+       "overUnder": 7.5,
+       "spread": 1.5,
+       "moneyline": {
+        "home": {
+         "close": {
+          "odds": "-110"
+         },
+         "open": {
+          "odds": "-114"
+         }
+        },
+        "away": {
+         "close": {
+          "odds": "-110"
+         },
+         "open": {
+          "odds": "-106"
+         }
+        }
+       },
+       "pointSpread": {
+        "home": {
+         "close": {
+          "line": "+1.5",
+          "odds": "-195"
+         },
+         "open": {
+          "line": "+1.5",
+          "odds": "-193"
+         }
+        },
+        "away": {
+         "close": {
+          "line": "-1.5",
+          "odds": "+160"
+         },
+         "open": {
+          "line": "-1.5",
+          "odds": "+158"
+         }
+        }
+       },
+       "total": {
+        "over": {
+         "close": {
+          "line": "o7.5",
+          "odds": "-101"
+         },
+         "open": {
+          "line": "o8",
+          "odds": "-118"
+         }
+        },
+        "under": {
+         "close": {
+          "line": "u7.5",
+          "odds": "-120"
+         },
+         "open": {
+          "line": "u8",
+          "odds": "-102"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401816324",
+   "date": "2026-07-30T16:10Z",
+   "shortName": "TEX @ TB",
+   "status": {
+    "type": {
+     "state": "in"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401816324",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "Tampa Bay Rays",
+        "abbreviation": "TB"
+       }
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "Texas Rangers",
+        "abbreviation": "TEX"
+       }
+      }
+     ],
+     "odds": []
+    }
+   ]
+  }
+ ]
+}

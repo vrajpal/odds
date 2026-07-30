@@ -52,6 +52,8 @@ _THE_ODDS_API = {
 
 _PROVIDER_MAPPINGS: dict[str, dict[str, str]] = {
     "the_odds_api": _THE_ODDS_API,
+    # ESPN's team.displayName uses the same full club names.
+    "espn": _THE_ODDS_API,
 }
 
 

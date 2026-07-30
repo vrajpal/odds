@@ -29,7 +29,9 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - **Demo:** cron-style `mlb-odds collect --once`; `mlb-odds today` renders the board.
 
 ## M4 — Post-v1 (unordered backlog)
-- [ ] ESPN consensus-line provider (free, no key — validates pluggability for real)
+- [x] ESPN consensus-line provider (free, no key — validates pluggability for
+      real) — shipped as `providers.ESPN`; note it now carries a partner book's
+      lines, not a consensus (D-016)
 - [x] `changed_only` write mode (dedup consecutive identical quotes)
 - [ ] Player props market support
 - [x] Closing-line convenience queries (last snapshot before start_time)
