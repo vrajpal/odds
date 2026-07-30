@@ -12,7 +12,7 @@ from conftest import FakeProvider, fixture_transport, make_game_odds
 from mlb_odds import OddsClient, collector
 from mlb_odds.cli import app
 from mlb_odds.models import Quote
-from mlb_odds.providers import TheOddsAPI
+from mlb_odds.providers import ESPN, TheOddsAPI
 from mlb_odds.providers.base import ProviderError
 from mlb_odds.storage import Storage
 
@@ -504,3 +504,58 @@ def test_history_renders_fetched_at_in_local_time(tmp_path, new_york_tz):
     assert result.exit_code == 0
     assert "14:30:00" in result.output
     assert "18:30:00" not in result.output
+
+
+# ---- provider selection ----
+
+
+def test_collect_provider_espn_needs_no_key(tmp_path, monkeypatch):
+    """--provider espn must work with no THE_ODDS_API_KEY anywhere (free source)."""
+    monkeypatch.chdir(tmp_path)  # keep the repo-root .env out of reach (D-011)
+    monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "mlb_odds.cli.ESPN",
+        lambda: ESPN(transport=fixture_transport("espn_scoreboard_normal")),
+    )
+
+    result = runner.invoke(
+        app, ["collect", "--once", "--provider", "espn", "--db", str(tmp_path / "e.sqlite")]
+    )
+
+    assert result.exit_code == 0
+    storage = Storage(tmp_path / "e.sqlite")
+    assert len(storage.games()) == 2
+    storage.close()
+
+
+def test_collect_provider_all_uses_both(tmp_path, monkeypatch):
+    monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "mlb_odds.cli.TheOddsAPI",
+        lambda: TheOddsAPI(api_key="test-key", transport=fixture_transport("normal_day")),
+    )
+    monkeypatch.setattr(
+        "mlb_odds.cli.ESPN",
+        lambda: ESPN(transport=fixture_transport("espn_scoreboard_normal")),
+    )
+
+    result = runner.invoke(
+        app, ["collect", "--once", "--provider", "all", "--db", str(tmp_path / "b.sqlite")]
+    )
+
+    assert result.exit_code == 0
+    storage = Storage(tmp_path / "b.sqlite")
+    providers = {
+        row[0] for row in storage._conn.execute("SELECT DISTINCT provider FROM odds")
+    }
+    storage.close()
+    assert providers == {"the_odds_api", "espn"}
+
+
+def test_collect_default_provider_unchanged(tmp_path, monkeypatch):
+    """No --provider flag: exactly the pre-flag behavior (The Odds API only)."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
+    result = runner.invoke(app, ["collect", "--once", "--db", str(tmp_path / "x.sqlite")])
+    assert result.exit_code == 1
+    assert "THE_ODDS_API_KEY" in result.output

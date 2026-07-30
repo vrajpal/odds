@@ -68,6 +68,7 @@ logs credits remaining every cycle so quota is never a surprise.
 mlb-odds collect --once            # one fetch cycle, then exit (cron-friendly)
 mlb-odds collect --interval 21600  # poll loop until Ctrl-C (clean SIGINT exit)
 mlb-odds collect --once --changed-only  # append only quotes that moved (D-015)
+mlb-odds collect --once --provider espn # free source, no key needed (--provider all for both)
 
 mlb-odds today                     # today's board from stored data — no network
 mlb-odds closing --date 2026-07-09 # closing lines: last snapshot at/before first pitch
