@@ -254,6 +254,10 @@ def test_collect_rejects_nonpositive_interval(tmp_path):
 
 
 def test_collect_without_api_key_fails_cleanly(tmp_path, monkeypatch):
+    # chdir away from the repo root: the CLI loads .env from cwd (D-011), so a
+    # developer's real key would otherwise reach the live API — a 3-credit poll
+    # per test run.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
     result = runner.invoke(
         app, ["collect", "--once", "--db", str(tmp_path / "x.sqlite")]

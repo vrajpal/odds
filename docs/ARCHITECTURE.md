@@ -84,6 +84,15 @@ Rules for every provider implementation:
   `provider.quota_remaining` and log each cycle.
 - httpx with a sane timeout (10s) and one retry on 5xx/timeouts.
 
+### ESPN specifics (`espn.py`)
+- `GET https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard`
+  — unofficial, no key, unmetered (`quota_remaining` stays None).
+- One partner book per event (`odds[].provider.displayName` → book name,
+  lowercased); markets from the `moneyline` / `pointSpread` / `total` nodes,
+  current line = ESPN's "close" phase. See D-016 for caveats.
+- Same retry/error envelope as The Odds API; doubleheader numbering shared via
+  `providers.base.assign_game_numbers`.
+
 ## Storage (`storage.py`)
 
 SQLite via stdlib `sqlite3`, WAL mode on connect. Schema:

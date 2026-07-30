@@ -134,3 +134,18 @@ Migration 2 adds `CREATE INDEX idx_games_start ON games (start_time)` so the ran
 scan is an index seek rather than a table scan — without it the window helps the
 empty-day case only. Measured on the same 216k-row database: 1.07s → 0.006s (185x)
 for a day with games, confirmed via `EXPLAIN QUERY PLAN` to use the new index.
+
+## D-016 — ESPN provider: unofficial endpoint, book taken from the response (2026-07-30)
+The M4 item said "ESPN consensus-line provider", but ESPN no longer surfaces a
+consensus: its scoreboard carries one partner sportsbook's lines per event
+(DraftKings at recording time, 2026-07-30). The provider therefore takes the
+book name from `odds[].provider.displayName` (lowercased, spaces stripped)
+instead of hardcoding "consensus" or "espn" — if ESPN changes partners, rows
+appear under the new book's name rather than silently mislabeled. Caveats
+accepted: the endpoint (site.api.espn.com scoreboard) is unofficial and
+undocumented, may change shape without notice, and exposes only the current
+line ("close" in ESPN's jargon means "where the line stands now", not a true
+closing line). It costs nothing and needs no key, which is what makes it a
+useful second provider: it validates cross-provider convergence (D-008) with
+real data at zero quota. The shared doubleheader numbering moved to
+providers/base.assign_game_numbers so both providers use one implementation.
