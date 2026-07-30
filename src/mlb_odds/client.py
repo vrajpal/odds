@@ -27,13 +27,18 @@ class OddsClient:
         db: str | Path = "./odds.sqlite",
         *,
         read_only: bool = False,
+        changed_only: bool = False,
     ) -> None:
         """`read_only=True` opens the database without creating or migrating it;
-        fetch_and_store() then raises. See Storage.__init__."""
+        fetch_and_store() then raises. See Storage.__init__.
+
+        `changed_only=True` makes fetch_and_store append only quotes whose
+        (line, price) differ from the newest stored row (D-015)."""
         if read_only and providers:
             raise ValueError("read_only clients cannot poll providers")
         self._providers = list(providers)
         self._storage = Storage(db, read_only=read_only)
+        self._changed_only = changed_only
         self.last_errors: dict[str, ProviderError] = {}
 
     @property
@@ -56,7 +61,7 @@ class OddsClient:
                 self.last_errors[provider.name] = exc
                 continue
             results.extend(fetched)
-        rows = self._storage.store(results)
+        rows = self._storage.store(results, changed_only=self._changed_only)
         logger.info(
             "cycle complete: %d games, %d rows written, %d provider error(s)",
             len(results),

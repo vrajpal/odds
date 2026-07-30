@@ -134,3 +134,16 @@ Migration 2 adds `CREATE INDEX idx_games_start ON games (start_time)` so the ran
 scan is an index seek rather than a table scan — without it the window helps the
 empty-day case only. Measured on the same 216k-row database: 1.07s → 0.006s (185x)
 for a day with games, confirmed via `EXPLAIN QUERY PLAN` to use the new index.
+
+## D-015 — changed_only dedups against the newest row only (2026-07-30)
+`--changed-only` skips a quote when its (line, price) equals the newest stored
+row for the same (game, provider, book, market, outcome). The baseline is
+deliberately the newest row, not "any prior value": a reversion (120 → 125 →
+120) must write all three rows or history would show a phantom 125 as current.
+The dedup lives in Storage.store, not the collector, so library users get the
+same semantics. Trade-off documented in the README: with changed_only, history
+records changes rather than polls — the absence of a row at time T means
+"unchanged since the previous row", not "book dropped out". latest_odds is
+unaffected either way, because it already carries last-known quotes forward.
+Default stays append-everything; storage cost was never the motivation for the
+default, auditability of "we polled at T and saw X" was.

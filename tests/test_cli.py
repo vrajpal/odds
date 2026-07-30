@@ -254,6 +254,10 @@ def test_collect_rejects_nonpositive_interval(tmp_path):
 
 
 def test_collect_without_api_key_fails_cleanly(tmp_path, monkeypatch):
+    # chdir away from the repo root: the CLI loads .env from cwd (D-011), so a
+    # developer's real key would otherwise reach the live API — a 3-credit poll
+    # per test run.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
     result = runner.invoke(
         app, ["collect", "--once", "--db", str(tmp_path / "x.sqlite")]
@@ -311,3 +315,26 @@ def test_collector_loop_stop_interrupts_sleep(tmp_path):
 
     assert not thread.is_alive()
     assert provider.calls == 1
+
+
+# ---- changed_only wiring (D-015) ----
+
+
+def test_collect_changed_only_skips_unchanged_cycles(tmp_path, monkeypatch):
+    """Two --changed-only cycles with an identical board: the second appends 0
+    rows. Exercises the full CLI -> client -> storage wiring."""
+    monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "mlb_odds.cli.TheOddsAPI",
+        lambda: TheOddsAPI(api_key="test-key", transport=fixture_transport("normal_day")),
+    )
+    db = tmp_path / "collect.sqlite"
+
+    for _ in range(2):
+        result = runner.invoke(app, ["collect", "--once", "--changed-only", "--db", str(db)])
+        assert result.exit_code == 0
+
+    storage = Storage(db)
+    fetches = storage._conn.execute("SELECT COUNT(DISTINCT fetched_at) FROM odds").fetchone()[0]
+    storage.close()
+    assert fetches == 1  # second cycle contributed nothing

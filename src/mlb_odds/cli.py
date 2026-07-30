@@ -66,6 +66,14 @@ def collect(
         float,
         typer.Option(min=1, help="Seconds between polls. Mind the quota math (see README)."),
     ] = 300.0,
+    changed_only: Annotated[
+        bool,
+        typer.Option(
+            "--changed-only",
+            help="Append only quotes that differ from the newest stored row. "
+            "History then records changes, not polls.",
+        ),
+    ] = False,
     db: DbOption = None,
 ) -> None:
     """Poll providers and append odds snapshots to the database."""
@@ -77,7 +85,7 @@ def collect(
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
-    client = OddsClient(providers=[provider], db=_resolve_db(db))
+    client = OddsClient(providers=[provider], db=_resolve_db(db), changed_only=changed_only)
     try:
         collector.run(client, interval, once=once)
     finally:
