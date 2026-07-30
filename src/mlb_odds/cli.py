@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from mlb_odds import collector
 from mlb_odds.client import OddsClient
-from mlb_odds.models import GameOdds, Market, Quote
+from mlb_odds.models import PROP_MARKETS, GameOdds, Market, Quote
 from mlb_odds.providers import ESPN, OddsProvider, ProviderError, TheOddsAPI
 
 app = typer.Typer(
@@ -122,6 +122,58 @@ def collect(
     client = OddsClient(providers=providers, db=_resolve_db(db), changed_only=changed_only)
     try:
         collector.run(client, interval, once=once, live=live)
+    finally:
+        client.close()
+
+
+@app.command()
+def props(
+    market: Annotated[
+        list[str],
+        typer.Option(
+            "--market",
+            help="Prop market key (repeatable): "
+            "batter_home_runs, batter_hits, batter_total_bases, pitcher_strikeouts.",
+        ),
+    ],
+    changed_only: Annotated[
+        bool,
+        typer.Option("--changed-only", help="Append only prop prices that moved (D-015)."),
+    ] = False,
+    db: DbOption = None,
+) -> None:
+    """Fetch player-prop ladders for today's events, one snapshot per run.
+
+    Metered: each event costs up to [markets] x [regions] credits, so a full
+    slate at two markets can spend ~30 credits. There is deliberately no loop
+    mode — cron this like `collect --once` if you want history.
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    bad = [m for m in market if m not in PROP_MARKETS]
+    if bad:
+        typer.echo(
+            f"error: unsupported prop market(s) {bad}; choose from {list(PROP_MARKETS)}",
+            err=True,
+        )
+        raise typer.Exit(2)
+    try:
+        provider = TheOddsAPI()
+    except ProviderError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    client = OddsClient(providers=[provider], db=_resolve_db(db), changed_only=changed_only)
+    try:
+        results = client.fetch_and_store_props(market)
+        rows = sum(len(go.quotes) for go in results)
+        typer.echo(
+            f"{len(results)} games, {rows} prop rows; "
+            f"credits remaining: {provider.quota_remaining}"
+        )
+    except ProviderError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
     finally:
         client.close()
 

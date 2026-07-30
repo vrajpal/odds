@@ -81,9 +81,10 @@ polling frequency is a conscious choice.
 
 ## Acceptance criteria (v1 is done when all of these pass)
 
-- [ ] `pip install -e .` then `mlb-odds collect --once` (with a key set) populates a
+- [x] `pip install -e .` then `mlb-odds collect --once` (with a key set) populates a
       fresh SQLite file with today's games and per-book odds rows.
-      (Code path fully tested offline; final check pending a live API key.)
+      (Verified live 2026-07-29/30: real collects against The Odds API populated
+      the project database with multi-book boards for the day's slate.)
 - [x] `mlb-odds today` renders a readable table from stored data with no network calls.
 - [x] `client.history_df(game_id)` returns a DataFrame with one row per
       (fetched_at, book, market, outcome) suitable for plotting line movement.

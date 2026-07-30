@@ -190,3 +190,26 @@ daily cron collect that lands new games wakes it naturally. Credit math:
 --live with the metered provider at the default 300s interval costs ~36
 credits per 3h game — pair it with a paid tier, or use ESPN once the
 --provider flag lands (both PRs are independent and compose).
+
+## D-018 — Player props: ladders are rungs, boards stay game-only (2026-07-30)
+The recorded response settled two design questions. First, props arrive as
+*ladders* — one player, several lines (Over 1.5 and Over 2.5 home runs side by
+side) — so a prop quote's identity is (book, market, outcome, player, line)
+and only price is compared for changed_only; game markets keep their
+(book, market, outcome) identity where a line move IS the movement. Second,
+board queries (latest_odds, closing_odds, today/API views) exclude prop rows
+entirely (player IS NULL filter): a "latest per key" board over ladders is a
+different product surface, and pretending rungs are board cells would collapse
+them. Props are consumed through history_df/odds_df/export, which now carry a
+player column (NULL for game markets; schema migration 3).
+
+Markets are a curated Literal (batter_home_runs, batter_hits,
+batter_total_bases, pitcher_strikeouts) rather than a free string: each
+addition multiplies credit cost, and typos would silently store garbage.
+Credit model differs from game lines: the events list is free, but each
+event's odds request costs [markets returned] x [regions] — a full 15-game
+slate at two markets can spend ~30 credits, so `mlb-odds props` is one
+snapshot per invocation (cron it deliberately, no loop mode) and prints
+credits remaining. Fixtures: events list and the betrivers home-run ladder
+are a live recording (2026-07-30, 1 credit); the draftkings strikeouts
+over/under book is an edited addition for coverage, labeled as such.

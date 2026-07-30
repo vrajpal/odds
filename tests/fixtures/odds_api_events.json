@@ -1,0 +1,26 @@
+[
+ {
+  "id": "a711967b87d0815d1a1b45806b632b42",
+  "sport_key": "baseball_mlb",
+  "sport_title": "MLB",
+  "commence_time": "2026-07-30T16:11:00Z",
+  "home_team": "Tampa Bay Rays",
+  "away_team": "Texas Rangers"
+ },
+ {
+  "id": "4ab9265338d5ee8f4e0ecf43a83aa9d7",
+  "sport_key": "baseball_mlb",
+  "sport_title": "MLB",
+  "commence_time": "2026-07-30T17:41:00Z",
+  "home_team": "Minnesota Twins",
+  "away_team": "Kansas City Royals"
+ },
+ {
+  "id": "c4f54051354f3d027c0f1cabfc630e52",
+  "sport_key": "baseball_mlb",
+  "sport_title": "MLB",
+  "commence_time": "2026-07-30T18:11:00Z",
+  "home_team": "Chicago White Sox",
+  "away_team": "New York Yankees"
+ }
+]

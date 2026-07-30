@@ -13,10 +13,12 @@ from mlb_odds.storage import Storage
 
 logger = logging.getLogger("mlb_odds.client")
 
-HISTORY_COLUMNS = ["fetched_at", "provider", "book", "market", "outcome", "line", "price"]
+HISTORY_COLUMNS = [
+    "fetched_at", "provider", "book", "market", "outcome", "line", "price", "player",
+]
 ODDS_COLUMNS = [
     "game_id", "start_time", "away_team", "home_team",
-    "fetched_at", "provider", "book", "market", "outcome", "line", "price",
+    "fetched_at", "provider", "book", "market", "outcome", "line", "price", "player",
 ]
 
 
@@ -64,6 +66,35 @@ class OddsClient:
         rows = self._storage.store(results, changed_only=self._changed_only)
         logger.info(
             "cycle complete: %d games, %d rows written, %d provider error(s)",
+            len(results),
+            rows,
+            len(self.last_errors),
+        )
+        return results
+
+    def fetch_and_store_props(self, markets: Sequence[str]) -> list[GameOdds]:
+        """Poll player-prop markets from every provider that supports them.
+
+        Providers advertise support with a `fetch_player_props(markets)` method
+        (currently TheOddsAPI only); others are skipped silently. Same error
+        isolation as fetch_and_store. Metered: see the README's props credit
+        math before putting this in a loop.
+        """
+        self.last_errors = {}
+        results: list[GameOdds] = []
+        for provider in self._providers:
+            fetch = getattr(provider, "fetch_player_props", None)
+            if fetch is None:
+                logger.info("provider %s has no player-prop support, skipping", provider.name)
+                continue
+            try:
+                results.extend(fetch(markets))
+            except ProviderError as exc:
+                logger.error("provider %s props failed: %s", provider.name, exc)
+                self.last_errors[provider.name] = exc
+        rows = self._storage.store(results, changed_only=self._changed_only)
+        logger.info(
+            "props cycle complete: %d games, %d rows written, %d provider error(s)",
             len(results),
             rows,
             len(self.last_errors),

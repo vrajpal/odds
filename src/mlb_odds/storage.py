@@ -26,6 +26,23 @@ def _utc_key(value: datetime) -> str:
         raise ValueError("window bounds must be timezone-aware")
     return value.astimezone(UTC).isoformat()
 
+def _quote_key(
+    book: str, market: str, outcome: str, player: str | None, line: float | None
+) -> tuple[object, ...]:
+    """changed_only identity: prop ladders key on (player, line) too (D-018)."""
+    if player is None:
+        return (book, market, outcome)
+    return (book, market, outcome, player, line)
+
+
+def _quote_value(player: str | None, line: float | None, price: int) -> tuple[object, ...]:
+    """What counts as "changed": game markets compare (line, price); props
+    carry the line in their key, so only price remains."""
+    if player is None:
+        return (line, price)
+    return (price,)
+
+
 # Widest plausible start-time disagreement for one physical game across providers
 # or reschedules within the same day. Doubleheader halves are separated by at
 # least game 1's duration (~2.5h+), so 2h cleanly splits "same game, times
@@ -67,6 +84,10 @@ MIGRATIONS: list[str] = [
     # Serves the window= range scan used by the local-day board (API /api/today).
     """
     CREATE INDEX idx_games_start ON games (start_time);
+    """,
+    # Player props (D-018): NULL for game markets, player name for prop rows.
+    """
+    ALTER TABLE odds ADD COLUMN player TEXT;
     """,
 ]
 
@@ -119,7 +140,8 @@ class Storage:
         unchanged board appends nothing (D-015). History then records changes,
         not polls: a missing timestamp means "same as before", not "book gone" —
         latest_odds is unaffected since it already carries last-known quotes
-        forward.
+        forward. Prop quotes come as ladders (one player, several lines), so
+        their identity key includes player and line, and only price is compared.
         """
         written = 0
         with self._conn:
@@ -132,7 +154,8 @@ class Storage:
                     quotes = [
                         q
                         for q in quotes
-                        if current.get((q.book, q.market, q.outcome)) != (q.line, q.price)
+                        if current.get(_quote_key(q.book, q.market, q.outcome, q.player, q.line))
+                        != _quote_value(q.player, q.line, q.price)
                     ]
                 self._conn.execute(
                     """
@@ -156,8 +179,8 @@ class Storage:
                 self._conn.executemany(
                     """
                     INSERT INTO odds (game_id, fetched_at, provider, book, market, outcome,
-                                      line, price)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                      line, price, player)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -169,6 +192,7 @@ class Storage:
                             q.outcome,
                             q.line,
                             q.price,
+                            q.player,
                         )
                         for q in quotes
                     ],
@@ -178,22 +202,31 @@ class Storage:
 
     def _latest_quote_values(
         self, game_id: str, provider: str
-    ) -> dict[tuple[str, str, str], tuple[float | None, int]]:
-        """Newest stored (line, price) per (book, market, outcome) for one
-        (game, provider) — the comparison baseline for changed_only writes."""
+    ) -> dict[tuple[object, ...], tuple[object, ...]]:
+        """Newest stored values per quote identity for one (game, provider) —
+        the comparison baseline for changed_only writes.
+
+        Game markets: identity (book, market, outcome), value (line, price) —
+        a line move is a change. Prop markets: identity includes player and
+        line (ladders carry one row per rung), value is price alone.
+        """
         rows = self._conn.execute(
             """
-            SELECT o.book, o.market, o.outcome, o.line, o.price
+            SELECT o.book, o.market, o.outcome, o.line, o.price, o.player
             FROM odds AS o
             JOIN (
-                SELECT book, market, outcome, MAX(fetched_at) AS fetched_at
+                SELECT book, market, outcome, player, line, MAX(fetched_at) AS fetched_at
                 FROM odds
                 WHERE game_id = ? AND provider = ?
-                GROUP BY book, market, outcome
+                GROUP BY book, market, outcome,
+                         COALESCE(player, ''),
+                         CASE WHEN player IS NULL THEN 0 ELSE COALESCE(line, 0) END
             ) AS latest
               ON  latest.book = o.book
               AND latest.market = o.market
               AND latest.outcome = o.outcome
+              AND COALESCE(latest.player, '') = COALESCE(o.player, '')
+              AND (o.player IS NULL OR COALESCE(latest.line, 0) = COALESCE(o.line, 0))
               AND latest.fetched_at = o.fetched_at
             WHERE o.game_id = ? AND o.provider = ?
             ORDER BY o.id
@@ -201,8 +234,8 @@ class Storage:
             (game_id, provider, game_id, provider),
         ).fetchall()
         return {
-            (book, market, outcome): (line, price)
-            for book, market, outcome, line, price in rows
+            _quote_key(book, market, outcome, player, line): _quote_value(player, line, price)
+            for book, market, outcome, line, price, player in rows
         }
 
     def _resolve_game_id(self, game: Game) -> str:
@@ -359,6 +392,9 @@ class Storage:
                 " WHERE substr(g.start_time, 1, 10) = ?"
             )
             params = (on_date.isoformat(),)
+        # Boards are game-line views: prop rows (player set) are ladders with
+        # their own identity semantics and never belong on them (D-018).
+        prop_filter = " AND o2.player IS NULL" if date_filter else " WHERE o2.player IS NULL"
         rows = self._conn.execute(
             f"""
             SELECT o.game_id, o.provider, o.fetched_at,
@@ -367,7 +403,7 @@ class Storage:
             JOIN (
                 SELECT o2.game_id, o2.provider, o2.book, o2.market,
                        MAX(o2.fetched_at) AS fetched_at
-                FROM odds AS o2{date_filter}
+                FROM odds AS o2{date_filter}{prop_filter}
                 GROUP BY o2.game_id, o2.provider, o2.book, o2.market
             ) AS latest
               ON  latest.game_id = o.game_id
@@ -440,7 +476,7 @@ class Storage:
                        MAX(o2.fetched_at) AS fetched_at
                 FROM odds AS o2
                 JOIN games AS g ON g.game_id = o2.game_id
-                WHERE o2.fetched_at <= g.start_time{date_filter}
+                WHERE o2.player IS NULL AND o2.fetched_at <= g.start_time{date_filter}
                 GROUP BY o2.game_id, o2.provider, o2.book, o2.market, o2.outcome
             ) AS closing
               ON  closing.game_id = o.game_id
@@ -476,11 +512,14 @@ class Storage:
             for (game_id, provider), quotes in quotes_by_key.items()
         ]
 
-    def history_rows(self, game_id: str) -> list[tuple[str, str, str, str, str, float | None, int]]:
-        """(fetched_at, provider, book, market, outcome, line, price) ordered by time."""
+    def history_rows(
+        self, game_id: str
+    ) -> list[tuple[str, str, str, str, str, float | None, int, str | None]]:
+        """(fetched_at, provider, book, market, outcome, line, price, player)
+        ordered by time."""
         return self._conn.execute(
             """
-            SELECT fetched_at, provider, book, market, outcome, line, price
+            SELECT fetched_at, provider, book, market, outcome, line, price, player
             FROM odds WHERE game_id = ? ORDER BY fetched_at, book, market, outcome
             """,
             (game_id,),
@@ -488,11 +527,12 @@ class Storage:
 
     def all_rows(
         self, on_date: date | None = None
-    ) -> list[tuple[str, str, str, str, str, str, str, str, str, float | None, int]]:
+    ) -> list[tuple[str, str, str, str, str, str, str, str, str, float | None, int, str | None]]:
         """Odds joined with game context, for flat exports/DataFrames."""
         sql = """
             SELECT o.game_id, g.start_time, g.away_team, g.home_team,
-                   o.fetched_at, o.provider, o.book, o.market, o.outcome, o.line, o.price
+                   o.fetched_at, o.provider, o.book, o.market, o.outcome, o.line, o.price,
+                   o.player
             FROM odds o JOIN games g ON g.game_id = o.game_id
         """
         params: tuple[str, ...] = ()
