@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from conftest import FakeProvider, fixture_transport, make_game_odds
 from mlb_odds import OddsClient, collector
 from mlb_odds.cli import app
+from mlb_odds.models import Quote
 from mlb_odds.providers import TheOddsAPI
 from mlb_odds.providers.base import ProviderError
 from mlb_odds.storage import Storage
@@ -315,6 +316,49 @@ def test_collector_loop_stop_interrupts_sleep(tmp_path):
 
     assert not thread.is_alive()
     assert provider.calls == 1
+
+
+# ---- closing ----
+
+
+def test_closing_renders_pre_start_board_only(tmp_path):
+    db = tmp_path / "closing.sqlite"
+    start = _today_start_utc()
+    storage = Storage(db)
+    storage.store(
+        [
+            make_game_odds(start_time=start, fetched_at=start - timedelta(hours=2)),
+            make_game_odds(
+                start_time=start,
+                fetched_at=start + timedelta(minutes=30),
+                quotes=[Quote(book="draftkings", market="moneyline", outcome="away", price=999)],
+            ),
+        ]
+    )
+    storage.close()
+
+    result = runner.invoke(app, ["closing", "--db", str(db)])
+
+    assert result.exit_code == 0
+    assert "NYM @ NYY" in result.output
+    assert "+120/-140" in result.output  # pre-start snapshot
+    assert "+999" not in result.output  # in-game snapshot is not a closing line
+
+
+def test_closing_date_filter_and_empty_message(tmp_path):
+    db = tmp_path / "closing.sqlite"
+    start = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    storage = Storage(db)
+    storage.store([make_game_odds(start_time=start, fetched_at=start - timedelta(hours=1))])
+    storage.close()
+
+    hit = runner.invoke(app, ["closing", "--date", "2026-07-09", "--db", str(db)])
+    assert hit.exit_code == 0
+    assert "NYM @ NYY" in hit.output
+
+    miss = runner.invoke(app, ["closing", "--date", "2026-07-11", "--db", str(db)])
+    assert miss.exit_code == 0
+    assert "No closing lines stored for 2026-07-11" in miss.output
 
 
 # ---- changed_only wiring (D-015) ----

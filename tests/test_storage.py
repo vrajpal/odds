@@ -1,6 +1,6 @@
 """Storage tests: temp SQLite file per test, round-trips through domain models."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -294,6 +294,103 @@ def test_latest_odds_keeps_last_known_quotes_per_book(storage):
     fd_away = next(q for q in latest.quotes if q.book == "fanduel" and q.outcome == "away")
     assert fd_away.price == 125  # last-known fanduel lines survive
     assert latest.fetched_at == t2.fetched_at
+
+
+# ---- closing lines ----
+
+
+def _ml_quote(price: int) -> list[Quote]:
+    return [Quote(book="dk", market="moneyline", outcome="home", price=price)]
+
+
+def test_closing_odds_takes_last_pre_start_snapshot(storage):
+    start = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    for hours_before, price in ((6, -140), (1, -150)):
+        storage.store(
+            [
+                make_game_odds(
+                    start_time=start,
+                    fetched_at=start - timedelta(hours=hours_before),
+                    quotes=_ml_quote(price),
+                )
+            ]
+        )
+    # a live-odds snapshot after first pitch must not become the "closing" line
+    storage.store(
+        [
+            make_game_odds(
+                start_time=start,
+                fetched_at=start + timedelta(minutes=30),
+                quotes=_ml_quote(-200),
+            )
+        ]
+    )
+
+    (closing,) = storage.closing_odds()
+    assert closing.quotes[0].price == -150
+    assert closing.fetched_at == start - timedelta(hours=1)
+    # sanity: latest_odds sees the in-game price; closing must not
+    (latest,) = storage.latest_odds()
+    assert latest.quotes[0].price == -200
+
+
+def test_closing_odds_excludes_games_with_no_pre_start_snapshot(storage):
+    start = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    storage.store(
+        [
+            make_game_odds(
+                start_time=start,
+                fetched_at=start + timedelta(minutes=5),
+                quotes=_ml_quote(-140),
+            )
+        ]
+    )
+    assert storage.closing_odds() == []
+
+
+def test_closing_odds_snapshot_at_first_pitch_counts(storage):
+    start = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    storage.store(
+        [make_game_odds(start_time=start, fetched_at=start, quotes=_ml_quote(-145))]
+    )
+    (closing,) = storage.closing_odds()
+    assert closing.quotes[0].price == -145
+
+
+def test_closing_odds_book_appearing_only_in_game_is_excluded(storage):
+    start = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    storage.store(
+        [
+            make_game_odds(
+                start_time=start,
+                fetched_at=start - timedelta(hours=1),
+                quotes=[Quote(book="dk", market="moneyline", outcome="home", price=-140)],
+            ),
+            make_game_odds(
+                start_time=start,
+                fetched_at=start + timedelta(minutes=10),
+                quotes=[Quote(book="fd", market="moneyline", outcome="home", price=-150)],
+            ),
+        ]
+    )
+    (closing,) = storage.closing_odds()
+    assert {q.book for q in closing.quotes} == {"dk"}
+
+
+def test_closing_odds_on_date_filter(storage):
+    d1 = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    d2 = datetime(2026, 7, 10, 17, 0, tzinfo=UTC)
+    storage.store(
+        [
+            make_game_odds(start_time=d1, fetched_at=d1 - timedelta(hours=1)),
+            make_game_odds(
+                away="BOS", home="TOR", start_time=d2, fetched_at=d2 - timedelta(hours=1)
+            ),
+        ]
+    )
+    boards = storage.closing_odds(date(2026, 7, 10))
+    assert [go.game.home_team for go in boards] == ["TOR"]
+    assert storage.closing_odds(date(2026, 7, 11)) == []
 
 
 # ---- changed_only write mode (D-015) ----

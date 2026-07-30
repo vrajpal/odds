@@ -167,6 +167,31 @@ def _fmt_total(quotes: list[Quote]) -> str:
 
 
 @app.command()
+def closing(
+    on: Annotated[
+        str | None,
+        typer.Option("--date", help="YYYY-MM-DD (UTC) to limit the board to one slate."),
+    ] = None,
+    db: DbOption = None,
+) -> None:
+    """Show closing lines: the last stored snapshot at or before first pitch.
+
+    Reads stored data only — no network calls, no API credits. A game appears
+    once at least one pre-start snapshot exists; collect close to first pitch
+    for a closing line worth the name.
+    """
+    client = OddsClient(providers=[], db=_resolve_db(db))
+    try:
+        board = client.closing_odds(date.fromisoformat(on) if on else None)
+        if not board:
+            typer.echo("No closing lines stored" + (f" for {on}" if on else "") + ".")
+            return
+        _render_board(board, _local_tz())
+    finally:
+        client.close()
+
+
+@app.command()
 def history(
     game: Annotated[
         str, typer.Argument(help="Canonical game_id (e.g. 2026-07-09-NYM-NYY-1) or AWAY@HOME.")

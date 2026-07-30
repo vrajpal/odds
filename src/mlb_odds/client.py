@@ -92,6 +92,16 @@ class OddsClient:
     ) -> list[Game]:
         return self._storage.games(on_date, window=window)
 
+    def closing_odds(
+        self,
+        on_date: date | None = None,
+        *,
+        window: tuple[datetime, datetime] | None = None,
+    ) -> list[GameOdds]:
+        """Closing lines: newest stored quotes at or before each game's
+        start_time. Games with no pre-start snapshot are absent. No network."""
+        return self._storage.closing_odds(on_date, window=window)
+
     def history_df(self, game_id: str) -> pd.DataFrame:
         """Line movement for one game: a row per (fetched_at, provider, book, market, outcome)."""
         df = pd.DataFrame(self._storage.history_rows(game_id), columns=HISTORY_COLUMNS)
