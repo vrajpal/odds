@@ -162,7 +162,7 @@ def export_odds(fmt: str = "csv") -> dict[str, object]:
             raise HTTPException(status_code=404, detail="No odds stored")
 
         if fmt == "json":
-            return {"data": df.to_dict(orient="records"), "count": len(df)}
+            return {"format": "json", "data": df.to_dict(orient="records"), "count": len(df)}
 
         csv_data = df.to_csv(index=False)
         return {"format": "csv", "data": csv_data, "count": len(df)}
@@ -199,13 +199,29 @@ def _fmt_total(quotes: list[Quote]) -> str:
     return f"{over.line:.1f} (o{over.price:+d})"
 
 
-@app.get("/")
-def root() -> dict[str, str]:
+@app.get("/api/health")
+def health() -> dict[str, str]:
     """API health check."""
     return {"status": "ok", "version": "0.1.0"}
 
 
-# Mount static frontend files if they exist
-frontend_path = Path(__file__).parent.parent.parent / "frontend" / "dist"
-if frontend_path.exists():
-    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
+def _frontend_dist() -> Path:
+    env = os.environ.get("MLB_ODDS_FRONTEND_DIST")
+    if env:
+        return Path(env)
+    return Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+
+# Serve the built frontend at / when it exists. This must be the last route
+# registered: routes match in registration order, so anything added after a
+# mount at "/" would be unreachable — including, in an earlier revision, the
+# other way around: a JSON "/" route registered first shadowed the mount and
+# the built UI could never be served.
+if _frontend_dist().exists():
+    app.mount("/", StaticFiles(directory=_frontend_dist(), html=True), name="static")
+else:
+
+    @app.get("/")
+    def root() -> dict[str, str]:
+        """No built frontend: point at the API instead of 404ing."""
+        return {"status": "ok", "version": "0.1.0", "docs": "/docs"}

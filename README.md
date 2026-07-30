@@ -67,6 +67,7 @@ logs credits remaining every cycle so quota is never a surprise.
 ```bash
 mlb-odds collect --once            # one fetch cycle, then exit (cron-friendly)
 mlb-odds collect --interval 21600  # poll loop until Ctrl-C (clean SIGINT exit)
+mlb-odds collect --once --changed-only  # append only quotes that moved (D-015)
 
 mlb-odds today                     # today's board from stored data — no network
 mlb-odds closing --date 2026-07-09 # closing lines: last snapshot at/before first pitch
@@ -78,6 +79,12 @@ mlb-odds export --format parquet --out odds.parquet   # needs pyarrow
 
 All commands take `--db PATH` (or `MLB_ODDS_DB`). `today` and `history` display
 times in your local timezone; storage is always UTC.
+
+With `--changed-only`, history records *changes*, not *polls*: a missing
+timestamp means "unchanged since the previous row", not "book dropped out".
+`today` and the API board are unaffected — they already carry last-known
+quotes forward. The default remains append-everything, which additionally
+records "we polled at T and the board looked like X".
 
 Example `today` output:
 
