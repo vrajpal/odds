@@ -24,8 +24,8 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] `collector.py` — loop, --once mode, clean SIGINT, cycle summary logging
 - [x] `cli.py` — collect / today / history / export
 - [x] README: install, API key setup, quota math (interval → credits/month), examples
-- [ ] All SPEC acceptance criteria checked off (6/7 — the live `collect --once`
-      criterion is pending an API key; everything around it is tested offline)
+- [x] All SPEC acceptance criteria checked off (7/7 — the live `collect --once`
+      criterion verified 2026-07-29/30 against the real API; v1 complete)
 - **Demo:** cron-style `mlb-odds collect --once`; `mlb-odds today` renders the board.
 
 ## M4 — Post-v1 (unordered backlog)
@@ -33,7 +33,8 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
       real) — shipped as `providers.ESPN`; note it now carries a partner book's
       lines, not a consensus (D-016)
 - [x] `changed_only` write mode (dedup consecutive identical quotes)
-- [ ] Player props market support
+- [x] Player props market support — curated markets via `mlb-odds props` /
+      `client.fetch_and_store_props()`; ladders keyed per (player, line) (D-018)
 - [x] Closing-line convenience queries (last snapshot before start_time)
 - [ ] Live/in-game polling mode
 - [x] Parquet export of full history for DuckDB workflows — already shipped as

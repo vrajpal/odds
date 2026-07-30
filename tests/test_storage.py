@@ -505,7 +505,18 @@ def test_migration_upgrade_applies_only_new_scripts(db_path, monkeypatch):
     with existing data intact."""
     monkeypatch.setattr("mlb_odds.storage.MIGRATIONS", MIGRATIONS[:1])
     old = Storage(db_path)
-    old.store([make_game_odds()])
+    # Raw v1-schema inserts: the old build's store() wrote these columns; the
+    # current store() writes newer ones, so it can't stand in for it here.
+    old._conn.execute(
+        "INSERT INTO games (game_id, start_time, home_team, away_team, season)"
+        " VALUES ('2026-07-09-NYM-NYY-1', '2026-07-09T23:05:00+00:00', 'NYY', 'NYM', 2026)"
+    )
+    old._conn.execute(
+        "INSERT INTO odds (game_id, fetched_at, provider, book, market, outcome, line, price)"
+        " VALUES ('2026-07-09-NYM-NYY-1', '2026-07-09T15:00:00+00:00', 'fake',"
+        " 'draftkings', 'moneyline', 'home', NULL, -140)"
+    )
+    old._conn.commit()
     assert old._conn.execute("SELECT version FROM schema_version").fetchone()[0] == 1
     # migration 2's index must not exist yet at v1
     idx = old._conn.execute(
@@ -526,6 +537,9 @@ def test_migration_upgrade_applies_only_new_scripts(db_path, monkeypatch):
         ).fetchone()
         assert idx is not None
         assert len(upgraded.games()) == 1  # data written at v1 survives
+        # pre-migration rows read back with player NULL and still board correctly
+        (latest,) = upgraded.latest_odds()
+        assert latest.quotes[0].player is None
     finally:
         upgraded.close()
 

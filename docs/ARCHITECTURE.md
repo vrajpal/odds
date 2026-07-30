@@ -28,7 +28,9 @@ domain models.
 ## Domain models (`models.py`)
 
 ```python
-Market  = Literal["moneyline", "run_line", "total"]
+Market  = Literal["moneyline", "run_line", "total",          # game markets
+                  "batter_home_runs", "batter_hits",         # curated props (D-018)
+                  "batter_total_bases", "pitcher_strikeouts"]
 Outcome = Literal["home", "away", "over", "under"]
 
 class Game(BaseModel):
@@ -44,6 +46,7 @@ class Quote(BaseModel):
     outcome: Outcome
     line: float | None      # run_line: ±1.5 etc; total: 8.5 etc; moneyline: None
     price: int              # American odds, e.g. -145, +120
+    player: str | None      # prop markets only (ladder rungs); None for game markets
 
     @property
     def price_decimal(self) -> float: ...   # derived, never stored
@@ -122,7 +125,8 @@ CREATE TABLE odds (
     market      TEXT NOT NULL,        -- moneyline | run_line | total
     outcome     TEXT NOT NULL,        -- home | away | over | under
     line        REAL,                 -- NULL for moneyline
-    price       INTEGER NOT NULL      -- American odds
+    price       INTEGER NOT NULL,     -- American odds
+    player      TEXT                  -- prop rows only (migration 3, D-018)
 );
 
 CREATE INDEX idx_odds_game    ON odds (game_id, market, fetched_at);

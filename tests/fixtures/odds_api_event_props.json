@@ -1,0 +1,90 @@
+{
+ "id": "a711967b87d0815d1a1b45806b632b42",
+ "sport_key": "baseball_mlb",
+ "sport_title": "MLB",
+ "commence_time": "2026-07-30T16:11:00Z",
+ "home_team": "Tampa Bay Rays",
+ "away_team": "Texas Rangers",
+ "bookmakers": [
+  {
+   "key": "betrivers",
+   "markets": [
+    {
+     "key": "batter_home_runs",
+     "outcomes": [
+      {
+       "name": "Over",
+       "description": "Junior Caminero",
+       "price": 6600,
+       "point": 1.5
+      },
+      {
+       "name": "Over",
+       "description": "Junior Caminero",
+       "price": 12000,
+       "point": 2.5
+      },
+      {
+       "name": "Over",
+       "description": "Taylor Walls",
+       "price": 18000,
+       "point": 1.5
+      },
+      {
+       "name": "Over",
+       "description": "Victor Mesa Jr.",
+       "price": 9000,
+       "point": 1.5
+      },
+      {
+       "name": "Over",
+       "description": "Yandy Diaz",
+       "price": 19900,
+       "point": 2.5
+      },
+      {
+       "name": "Over",
+       "description": "Nicky Lopez",
+       "price": 19900,
+       "point": 2.5
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "draftkings",
+   "markets": [
+    {
+     "key": "pitcher_strikeouts",
+     "outcomes": [
+      {
+       "name": "Over",
+       "description": "Jacob deGrom",
+       "price": -125,
+       "point": 6.5
+      },
+      {
+       "name": "Under",
+       "description": "Jacob deGrom",
+       "price": -105,
+       "point": 6.5
+      },
+      {
+       "name": "Over",
+       "description": "Shane Baz",
+       "price": 100,
+       "point": 5.5
+      },
+      {
+       "name": "Under",
+       "description": "Shane Baz",
+       "price": -130,
+       "point": 5.5
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -3,9 +3,17 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-Market = Literal["moneyline", "run_line", "total"]
+GAME_MARKETS = ("moneyline", "run_line", "total")
+# Curated player-prop markets (The Odds API keys, D-018). Extend deliberately:
+# each addition multiplies per-event credit cost.
+PROP_MARKETS = ("batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts")
+
+Market = Literal[
+    "moneyline", "run_line", "total",
+    "batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts",
+]
 Outcome = Literal["home", "away", "over", "under"]
 
 
@@ -48,6 +56,7 @@ class Quote(BaseModel):
     outcome: Outcome
     line: float | None = None
     price: int
+    player: str | None = None  # prop markets only; None for game markets
 
     @field_validator("price")
     @classmethod
@@ -55,6 +64,19 @@ class Quote(BaseModel):
         if -100 < v < 100:
             raise ValueError(f"American odds must be <= -100 or >= 100, got {v}")
         return v
+
+    @model_validator(mode="after")
+    def _player_matches_market(self) -> "Quote":
+        if self.market in PROP_MARKETS:
+            if not self.player:
+                raise ValueError(f"prop market {self.market!r} requires a player")
+            if self.outcome not in ("over", "under"):
+                raise ValueError(f"prop market {self.market!r} outcome must be over/under")
+            if self.line is None:
+                raise ValueError(f"prop market {self.market!r} requires a line")
+        elif self.player is not None:
+            raise ValueError(f"game market {self.market!r} cannot carry a player")
+        return self
 
     @property
     def price_decimal(self) -> float:

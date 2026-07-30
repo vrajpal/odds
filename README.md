@@ -62,12 +62,23 @@ One game-lines poll costs `markets × regions` = **3 credits**; the free tier is
 Formula: `credits/month = (86400 / interval_seconds) × 3 × 30`. The collector
 logs credits remaining every cycle so quota is never a surprise.
 
+**Player props are metered differently**: the events list is free, but each
+event's odds request costs `[markets returned] × [regions]`. A full 15-game
+slate at two markets can spend up to ~30 credits per `mlb-odds props` run —
+that's why there is no loop mode; cron it deliberately. Prop rows never appear
+on the `today`/`closing` boards (they're ladders, not board cells — D-018);
+query them via `history`, `export`, or `odds_df()`, all of which carry a
+`player` column.
+
 ## CLI
 
 ```bash
 mlb-odds collect --once            # one fetch cycle, then exit (cron-friendly)
 mlb-odds collect --interval 21600  # poll loop until Ctrl-C (clean SIGINT exit)
 mlb-odds collect --once --changed-only  # append only quotes that moved (D-015)
+
+mlb-odds props --market pitcher_strikeouts --market batter_home_runs
+                                   # player-prop ladders, one snapshot per run (D-018)
 
 mlb-odds today                     # today's board from stored data — no network
 mlb-odds closing --date 2026-07-09 # closing lines: last snapshot at/before first pitch

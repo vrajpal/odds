@@ -37,7 +37,7 @@ def test_history_df_shape(client):
 
     df = client.history_df(game_id)
     assert list(df.columns) == [
-        "fetched_at", "provider", "book", "market", "outcome", "line", "price",
+        "fetched_at", "provider", "book", "market", "outcome", "line", "price", "player",
     ]
     assert len(df) == len(early.quotes) + len(late.quotes)
     assert pd.api.types.is_datetime64_any_dtype(df["fetched_at"])
@@ -50,7 +50,7 @@ def test_history_df_empty_for_unknown_game(client):
     df = client.history_df("2026-07-09-XXX-YYY-1")
     assert df.empty
     assert list(df.columns) == [
-        "fetched_at", "provider", "book", "market", "outcome", "line", "price",
+        "fetched_at", "provider", "book", "market", "outcome", "line", "price", "player",
     ]
 
 
@@ -60,7 +60,7 @@ def test_odds_df_shape(client):
     df = client.odds_df()
     assert list(df.columns) == [
         "game_id", "start_time", "away_team", "home_team",
-        "fetched_at", "provider", "book", "market", "outcome", "line", "price",
+        "fetched_at", "provider", "book", "market", "outcome", "line", "price", "player",
     ]
     assert len(df) == 6
     assert pd.api.types.is_datetime64_any_dtype(df["fetched_at"])
