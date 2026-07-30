@@ -66,6 +66,14 @@ def collect(
         float,
         typer.Option(min=1, help="Seconds between polls. Mind the quota math (see README)."),
     ] = 300.0,
+    changed_only: Annotated[
+        bool,
+        typer.Option(
+            "--changed-only",
+            help="Append only quotes that differ from the newest stored row. "
+            "History then records changes, not polls.",
+        ),
+    ] = False,
     db: DbOption = None,
 ) -> None:
     """Poll providers and append odds snapshots to the database."""
@@ -77,7 +85,7 @@ def collect(
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
-    client = OddsClient(providers=[provider], db=_resolve_db(db))
+    client = OddsClient(providers=[provider], db=_resolve_db(db), changed_only=changed_only)
     try:
         collector.run(client, interval, once=once)
     finally:
@@ -156,6 +164,31 @@ def _fmt_total(quotes: list[Quote]) -> str:
     if over is None or over.line is None:
         return "-"
     return f"{over.line:.1f} (o{over.price:+d})"
+
+
+@app.command()
+def closing(
+    on: Annotated[
+        str | None,
+        typer.Option("--date", help="YYYY-MM-DD (UTC) to limit the board to one slate."),
+    ] = None,
+    db: DbOption = None,
+) -> None:
+    """Show closing lines: the last stored snapshot at or before first pitch.
+
+    Reads stored data only — no network calls, no API credits. A game appears
+    once at least one pre-start snapshot exists; collect close to first pitch
+    for a closing line worth the name.
+    """
+    client = OddsClient(providers=[], db=_resolve_db(db))
+    try:
+        board = client.closing_odds(date.fromisoformat(on) if on else None)
+        if not board:
+            typer.echo("No closing lines stored" + (f" for {on}" if on else "") + ".")
+            return
+        _render_board(board, _local_tz())
+    finally:
+        client.close()
 
 
 @app.command()

@@ -67,8 +67,10 @@ logs credits remaining every cycle so quota is never a surprise.
 ```bash
 mlb-odds collect --once            # one fetch cycle, then exit (cron-friendly)
 mlb-odds collect --interval 21600  # poll loop until Ctrl-C (clean SIGINT exit)
+mlb-odds collect --once --changed-only  # append only quotes that moved (D-015)
 
 mlb-odds today                     # today's board from stored data — no network
+mlb-odds closing --date 2026-07-09 # closing lines: last snapshot at/before first pitch
 mlb-odds history 2026-07-09-NYM-NYY-1        # line movement for one game
 mlb-odds history NYM@NYY --date 2026-07-09   # same, fuzzy AWAY@HOME form
 mlb-odds export --format csv --out odds.csv
@@ -88,6 +90,12 @@ GROUP BY book, market, outcome;
 
 All commands take `--db PATH` (or `MLB_ODDS_DB`). `today` and `history` display
 times in your local timezone; storage is always UTC.
+
+With `--changed-only`, history records *changes*, not *polls*: a missing
+timestamp means "unchanged since the previous row", not "book dropped out".
+`today` and the API board are unaffected — they already carry last-known
+quotes forward. The default remains append-everything, which additionally
+records "we polled at T and the board looked like X".
 
 Example `today` output:
 
@@ -155,6 +163,7 @@ client = OddsClient(providers=[TheOddsAPI()], db="odds.sqlite")
 
 snapshot = client.fetch_and_store()   # poll all providers, persist, return models
 games    = client.current_odds()      # latest stored snapshot per (game, provider)
+closing  = client.closing_odds()      # last snapshot at/before each game's first pitch
 
 df = client.history_df("2026-07-09-NYM-NYY-1")
 # one row per (fetched_at, book, market, outcome) — ready for plotting line movement

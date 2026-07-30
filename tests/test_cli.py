@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from conftest import FakeProvider, fixture_transport, make_game_odds
 from mlb_odds import OddsClient, collector
 from mlb_odds.cli import app
+from mlb_odds.models import Quote
 from mlb_odds.providers import TheOddsAPI
 from mlb_odds.providers.base import ProviderError
 from mlb_odds.storage import Storage
@@ -254,6 +255,10 @@ def test_collect_rejects_nonpositive_interval(tmp_path):
 
 
 def test_collect_without_api_key_fails_cleanly(tmp_path, monkeypatch):
+    # chdir away from the repo root: the CLI loads .env from cwd (D-011), so a
+    # developer's real key would otherwise reach the live API — a 3-credit poll
+    # per test run.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
     result = runner.invoke(
         app, ["collect", "--once", "--db", str(tmp_path / "x.sqlite")]
@@ -311,3 +316,191 @@ def test_collector_loop_stop_interrupts_sleep(tmp_path):
 
     assert not thread.is_alive()
     assert provider.calls == 1
+
+
+# ---- closing ----
+
+
+def test_closing_renders_pre_start_board_only(tmp_path):
+    db = tmp_path / "closing.sqlite"
+    start = _today_start_utc()
+    storage = Storage(db)
+    storage.store(
+        [
+            make_game_odds(start_time=start, fetched_at=start - timedelta(hours=2)),
+            make_game_odds(
+                start_time=start,
+                fetched_at=start + timedelta(minutes=30),
+                quotes=[Quote(book="draftkings", market="moneyline", outcome="away", price=999)],
+            ),
+        ]
+    )
+    storage.close()
+
+    result = runner.invoke(app, ["closing", "--db", str(db)])
+
+    assert result.exit_code == 0
+    assert "NYM @ NYY" in result.output
+    assert "+120/-140" in result.output  # pre-start snapshot
+    assert "+999" not in result.output  # in-game snapshot is not a closing line
+
+
+def test_closing_date_filter_and_empty_message(tmp_path):
+    db = tmp_path / "closing.sqlite"
+    start = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+    storage = Storage(db)
+    storage.store([make_game_odds(start_time=start, fetched_at=start - timedelta(hours=1))])
+    storage.close()
+
+    hit = runner.invoke(app, ["closing", "--date", "2026-07-09", "--db", str(db)])
+    assert hit.exit_code == 0
+    assert "NYM @ NYY" in hit.output
+
+    miss = runner.invoke(app, ["closing", "--date", "2026-07-11", "--db", str(db)])
+    assert miss.exit_code == 0
+    assert "No closing lines stored for 2026-07-11" in miss.output
+
+
+# ---- changed_only wiring (D-015) ----
+
+
+def test_collect_changed_only_skips_unchanged_cycles(tmp_path, monkeypatch):
+    """Two --changed-only cycles with an identical board: the second appends 0
+    rows. Exercises the full CLI -> client -> storage wiring."""
+    monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "mlb_odds.cli.TheOddsAPI",
+        lambda: TheOddsAPI(api_key="test-key", transport=fixture_transport("normal_day")),
+    )
+    db = tmp_path / "collect.sqlite"
+
+    for _ in range(2):
+        result = runner.invoke(app, ["collect", "--once", "--changed-only", "--db", str(db)])
+        assert result.exit_code == 0
+
+    storage = Storage(db)
+    fetches = storage._conn.execute("SELECT COUNT(DISTINCT fetched_at) FROM odds").fetchone()[0]
+    storage.close()
+    assert fetches == 1  # second cycle contributed nothing
+
+
+# ---- rigor backlog: FR6 quota logging ----
+
+
+def test_collector_cycle_summary_reaches_the_log(tmp_path, caplog):
+    """FR6: the quota number must actually land in the log record, not just be
+    computed — deleting the logger.info call should fail this test."""
+    provider = FakeProvider(quota_remaining=42)
+    client = OddsClient(providers=[provider], db=tmp_path / "c.sqlite")
+
+    with caplog.at_level("INFO", logger="mlb_odds.collector"):
+        collector.run(client, once=True)
+    client.close()
+
+    cycle_lines = [r.getMessage() for r in caplog.records if "cycle:" in r.getMessage()]
+    assert len(cycle_lines) == 1
+    assert "quota remaining: fake=42" in cycle_lines[0]
+    assert "1 games" in cycle_lines[0]
+
+
+# ---- rigor backlog: SIGINT handler swap/restore ----
+
+
+def test_sigint_handler_swapped_during_run_and_restored_after(tmp_path):
+    import signal
+
+    seen: list[object] = []
+
+    class ProbingProvider(FakeProvider):
+        def fetch_game_lines(self):
+            seen.append(signal.getsignal(signal.SIGINT))
+            return super().fetch_game_lines()
+
+    original = signal.getsignal(signal.SIGINT)
+    client = OddsClient(providers=[ProbingProvider()], db=tmp_path / "c.sqlite")
+    collector.run(client, once=True)
+    client.close()
+
+    assert len(seen) == 1
+    assert seen[0] is not original, "collector must install its own SIGINT handler"
+    assert signal.getsignal(signal.SIGINT) is original, "handler must be restored"
+
+
+# ---- rigor backlog: collect loop-mode wiring ----
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_once"),
+    [(["collect", "--once"], True), (["collect", "--interval", "77"], False)],
+)
+def test_collect_wires_once_and_interval_through(tmp_path, monkeypatch, argv, expected_once):
+    """Fails if the CLI hardcodes once=True (or drops --interval) when calling
+    collector.run."""
+    monkeypatch.setattr("mlb_odds.cli.TheOddsAPI", lambda: FakeProvider())
+    calls: list[tuple[float, bool]] = []
+    monkeypatch.setattr(
+        "mlb_odds.cli.collector.run",
+        lambda client, interval, *, once=False, stop=None: calls.append((interval, once)),
+    )
+
+    result = runner.invoke(app, [*argv, "--db", str(tmp_path / "x.sqlite")])
+
+    assert result.exit_code == 0
+    expected_interval = 77.0 if not expected_once else 300.0
+    assert calls == [(expected_interval, expected_once)]
+
+
+# ---- rigor backlog: local-timezone display ----
+
+
+@pytest.fixture
+def new_york_tz(monkeypatch):
+    """Pin the process to America/New_York so rendered local times are stable."""
+    import time as _time
+
+    monkeypatch.setenv("TZ", "America/New_York")
+    _time.tzset()
+    yield
+    monkeypatch.delenv("TZ", raising=False)
+    _time.tzset()
+
+
+def test_today_renders_local_time_for_game_crossing_utc_midnight(tmp_path, new_york_tz):
+    """A 10:05pm ET start is 02:05 UTC the NEXT day. The board must still show
+    it today, rendered in local time — pinning both the local-date filter and
+    the display conversion."""
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("America/New_York")
+    local_start = datetime.now(tz).replace(hour=22, minute=5, second=0, microsecond=0)
+    assert local_start.astimezone(UTC).date() != local_start.date()  # crosses UTC midnight
+
+    db = tmp_path / "tz.sqlite"
+    storage = Storage(db)
+    storage.store([make_game_odds(start_time=local_start.astimezone(UTC))])
+    storage.close()
+
+    result = runner.invoke(app, ["today", "--db", str(db)])
+
+    assert result.exit_code == 0
+    assert "NYM @ NYY" in result.output
+    assert f"{local_start:%Y-%m-%d} 10:05 PM" in result.output
+    assert ("EDT" in result.output) or ("EST" in result.output)
+
+
+def test_history_renders_fetched_at_in_local_time(tmp_path, new_york_tz):
+    """fetched_at is stored UTC; the history table must render it converted
+    to the local zone (D-011: local time exists only at the display layer)."""
+    fetched = datetime(2026, 7, 9, 18, 30, tzinfo=UTC)  # 14:30 EDT
+
+    db = tmp_path / "tz.sqlite"
+    storage = Storage(db)
+    game = make_game_odds(fetched_at=fetched)
+    storage.store([game])
+    storage.close()
+
+    result = runner.invoke(app, ["history", game.game.game_id, "--db", str(db)])
+
+    assert result.exit_code == 0
+    assert "14:30:00" in result.output
+    assert "18:30:00" not in result.output
