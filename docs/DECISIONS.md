@@ -174,3 +174,19 @@ closing line). It costs nothing and needs no key, which is what makes it a
 useful second provider: it validates cross-provider convergence (D-008) with
 real data at zero quota. The shared doubleheader numbering moved to
 providers/base.assign_game_numbers so both providers use one implementation.
+
+## D-017 — Live mode gates on the stored slate, not a live-status API (2026-07-30)
+`collect --live` polls only while some stored game is inside a fixed window
+around its start_time: [first pitch − 15 min, first pitch + 4 h). The
+alternative — asking a scores API whether a game is actually in progress —
+would add a runtime dependency and another unofficial endpoint for marginal
+gain: the fixed window wastes at most a few post-game polls per slate, and 4h
+covers the overwhelming majority of games in the pitch-clock era (an
+extra-innings marathon just loses its tail). Consequences accepted: the slate
+must already be in the database (run a normal collect first — the collector
+logs this), and rain delays poll through the delay. Between windows the loop
+idles on an interruptible wait and re-checks the slate every 30 min, so a
+daily cron collect that lands new games wakes it naturally. Credit math:
+--live with the metered provider at the default 300s interval costs ~36
+credits per 3h game — pair it with a paid tier, or use ESPN once the
+--provider flag lands (both PRs are independent and compose).

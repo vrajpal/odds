@@ -35,7 +35,8 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] `changed_only` write mode (dedup consecutive identical quotes)
 - [ ] Player props market support
 - [x] Closing-line convenience queries (last snapshot before start_time)
-- [ ] Live/in-game polling mode
+- [x] Live/in-game polling mode — `collect --live` polls only inside per-game
+      live windows computed from the stored slate (D-017)
 - [x] Parquet export of full history for DuckDB workflows — already shipped as
       `mlb-odds export --format parquet` (odds_df carries every snapshot row
       joined with game context); verified + README DuckDB example added

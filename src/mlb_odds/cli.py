@@ -90,6 +90,14 @@ def collect(
             "History then records changes, not polls.",
         ),
     ] = False,
+    live: Annotated[
+        bool,
+        typer.Option(
+            "--live",
+            help="Poll only while a stored game is in its live window "
+            "(first pitch -15m to +4h); idle otherwise. Mind the quota math.",
+        ),
+    ] = False,
     provider: Annotated[
         ProviderChoice,
         typer.Option(
@@ -103,6 +111,9 @@ def collect(
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    if once and live:
+        typer.echo("error: --once and --live are mutually exclusive", err=True)
+        raise typer.Exit(2)
     try:
         providers = _build_providers(provider)
     except ProviderError as exc:
@@ -110,7 +121,7 @@ def collect(
         raise typer.Exit(1) from None
     client = OddsClient(providers=providers, db=_resolve_db(db), changed_only=changed_only)
     try:
-        collector.run(client, interval, once=once)
+        collector.run(client, interval, once=once, live=live)
     finally:
         client.close()
 

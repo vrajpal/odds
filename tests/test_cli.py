@@ -440,7 +440,9 @@ def test_collect_wires_once_and_interval_through(tmp_path, monkeypatch, argv, ex
     calls: list[tuple[float, bool]] = []
     monkeypatch.setattr(
         "mlb_odds.cli.collector.run",
-        lambda client, interval, *, once=False, stop=None: calls.append((interval, once)),
+        lambda client, interval, *, once=False, live=False, stop=None: calls.append(
+            (interval, once)
+        ),
     )
 
     result = runner.invoke(app, [*argv, "--db", str(tmp_path / "x.sqlite")])
@@ -506,6 +508,97 @@ def test_history_renders_fetched_at_in_local_time(tmp_path, new_york_tz):
     assert "18:30:00" not in result.output
 
 
+# ---- live mode (D-017) ----
+
+
+def test_seconds_until_live_window_states():
+    from mlb_odds.collector import LIVE_LEAD, LIVE_TAIL, seconds_until_live
+
+    now = datetime(2026, 7, 9, 20, 0, tzinfo=UTC)
+
+    def game_at(start):
+        return make_game_odds(start_time=start).game
+
+    # in window: started an hour ago
+    assert seconds_until_live([game_at(now - timedelta(hours=1))], now) == 0.0
+    # in window: first pitch in 10 minutes (inside the 15m lead)
+    assert seconds_until_live([game_at(now + timedelta(minutes=10))], now) == 0.0
+    # upcoming: opens lead-minutes before start
+    wait = seconds_until_live([game_at(now + timedelta(hours=2))], now)
+    assert wait == (timedelta(hours=2) - LIVE_LEAD).total_seconds()
+    # over: past the tail
+    assert seconds_until_live([game_at(now - LIVE_TAIL)], now) is None
+    # empty slate
+    assert seconds_until_live([], now) is None
+    # nearest upcoming wins
+    soon = game_at(now + timedelta(hours=1))
+    later = game_at(now + timedelta(hours=6))
+    assert seconds_until_live([later, soon], now) == (
+        timedelta(hours=1) - LIVE_LEAD
+    ).total_seconds()
+
+
+def test_live_mode_polls_during_a_live_game(tmp_path):
+    db = tmp_path / "live.sqlite"
+    storage = Storage(db)
+    storage.store([make_game_odds(start_time=datetime.now(UTC) - timedelta(minutes=30))])
+    storage.close()
+
+    provider = FakeProvider()
+    client = OddsClient(providers=[provider], db=db)
+    collector.run(client, once=True, live=True)
+    client.close()
+
+    assert provider.calls == 1
+
+
+def test_live_mode_idles_when_no_game_is_live(tmp_path):
+    """A game 6h out: the loop must wait, not poll (that's the whole point —
+    no wasted credits between windows)."""
+    db = tmp_path / "idle.sqlite"
+    storage = Storage(db)
+    storage.store([make_game_odds(start_time=datetime.now(UTC) + timedelta(hours=6))])
+    storage.close()
+
+    provider = FakeProvider()
+    stop = threading.Event()
+
+    def target():
+        client = OddsClient(providers=[provider], db=db)
+        try:
+            collector.run(client, interval=0.01, live=True, stop=stop)
+        finally:
+            client.close()
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    time.sleep(0.3)  # long enough for several 0.01s intervals if it were polling
+    stop.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert provider.calls == 0
+
+
+def test_collect_rejects_once_with_live(tmp_path, monkeypatch):
+    monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
+    result = runner.invoke(
+        app, ["collect", "--once", "--live", "--db", str(tmp_path / "x.sqlite")]
+    )
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output
+
+
+def test_collect_wires_live_through(tmp_path, monkeypatch):
+    monkeypatch.setattr("mlb_odds.cli.TheOddsAPI", lambda: FakeProvider())
+    calls = []
+    monkeypatch.setattr(
+        "mlb_odds.cli.collector.run",
+        lambda client, interval, *, once=False, live=False, stop=None: calls.append(live),
+    )
+    result = runner.invoke(app, ["collect", "--live", "--db", str(tmp_path / "x.sqlite")])
+    assert result.exit_code == 0
+    assert calls == [True]
 # ---- provider selection ----
 
 
