@@ -32,22 +32,24 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] ESPN consensus-line provider (free, no key — validates pluggability for
       real) — shipped as `providers.ESPN`; note it now carries a partner book's
       lines, not a consensus (D-016)
-- [ ] `changed_only` write mode (dedup consecutive identical quotes)
+- [x] `changed_only` write mode (dedup consecutive identical quotes)
 - [ ] Player props market support
-- [ ] Closing-line convenience queries (last snapshot before start_time)
+- [x] Closing-line convenience queries (last snapshot before start_time)
 - [ ] Live/in-game polling mode
-- [ ] Parquet export of full history for DuckDB workflows
+- [x] Parquet export of full history for DuckDB workflows — already shipped as
+      `mlb-odds export --format parquet` (odds_df carries every snapshot row
+      joined with game context); verified + README DuckDB example added
 
 ### Test-rigor backlog (adversarial-review findings, minor, not blocking v1)
-- [ ] FR6 quota logging: caplog assertion that the collector's cycle summary
+- [x] FR6 quota logging: caplog assertion that the collector's cycle summary
       reaches the log (mutation deleting the log line currently passes)
-- [ ] Local-timezone display: TZ-monkeypatched fixture (e.g. America/New_York +
+- [x] Local-timezone display: TZ-monkeypatched fixture (e.g. America/New_York +
       time.tzset) asserting rendered times in `today`/`history`, with a start time
       crossing the UTC date boundary to pin the local-date filter
-- [ ] SIGINT handler: assert signal.getsignal(SIGINT) is swapped during
+- [x] SIGINT handler: assert signal.getsignal(SIGINT) is swapped during
       collector.run and restored after
-- [ ] CLI collect loop-mode wiring: a test that fails if `once=True` is hardcoded
-- [ ] Migration runner upgrade path: apply migration N+1 to an existing v-N DB
-- [ ] latest_odds: dedup ties when two rows share an identical fetched_at
-- [ ] latest_odds(on_date)/current_odds(on_date) date-filter branch coverage
-- [ ] Cross-provider doubleheader convergence when providers report in reverse order
+- [x] CLI collect loop-mode wiring: a test that fails if `once=True` is hardcoded
+- [x] Migration runner upgrade path: apply migration N+1 to an existing v-N DB
+- [x] latest_odds: dedup ties when two rows share an identical fetched_at
+- [x] latest_odds(on_date)/current_odds(on_date) date-filter branch coverage
+- [x] Cross-provider doubleheader convergence when providers report in reverse order

@@ -135,6 +135,31 @@ scan is an index seek rather than a table scan — without it the window helps t
 empty-day case only. Measured on the same 216k-row database: 1.07s → 0.006s (185x)
 for a day with games, confirmed via `EXPLAIN QUERY PLAN` to use the new index.
 
+## D-014 — Doubleheader convergence must search, not just bump (2026-07-29)
+The test-rigor backlog's "cross-provider doubleheader, reverse order" item
+exposed a real defect, not a coverage gap: `_resolve_game_id` started from the
+provider's own game number and only ever bumped upward. A provider that saw the
+doubleheader in the opposite order numbers the halves 2/1; its early half
+(numbered 2) could never reach canonical id 1 and split off as a phantom game 3.
+Resolution now first tries to converge onto any stored same-slate game whose
+start_time is within SAME_GAME_START_TOLERANCE and whose id isn't claimed by a
+different native id of the same provider; only then does it fall back to the
+bump-until-free allocation for genuinely new games. D-008/D-010 semantics are
+unchanged — this widens the candidate set, not the matching rules.
+
+## D-015 — changed_only dedups against the newest row only (2026-07-30)
+`--changed-only` skips a quote when its (line, price) equals the newest stored
+row for the same (game, provider, book, market, outcome). The baseline is
+deliberately the newest row, not "any prior value": a reversion (120 → 125 →
+120) must write all three rows or history would show a phantom 125 as current.
+The dedup lives in Storage.store, not the collector, so library users get the
+same semantics. Trade-off documented in the README: with changed_only, history
+records changes rather than polls — the absence of a row at time T means
+"unchanged since the previous row", not "book dropped out". latest_odds is
+unaffected either way, because it already carries last-known quotes forward.
+Default stays append-everything; storage cost was never the motivation for the
+default, auditability of "we polled at T and saw X" was.
+
 ## D-016 — ESPN provider: unofficial endpoint, book taken from the response (2026-07-30)
 The M4 item said "ESPN consensus-line provider", but ESPN no longer surfaces a
 consensus: its scoreboard carries one partner sportsbook's lines per event
