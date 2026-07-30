@@ -398,3 +398,129 @@ def test_default_mode_still_appends_every_cycle(storage):
     storage.store([t2])
     count = storage._conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0]
     assert count == len(t1.quotes) * 2
+
+
+# ---- rigor backlog: migration upgrade path ----
+
+
+def test_migration_upgrade_applies_only_new_scripts(db_path, monkeypatch):
+    """A v-N database opened by a newer build gets exactly migrations N+1..M,
+    with existing data intact."""
+    monkeypatch.setattr("mlb_odds.storage.MIGRATIONS", MIGRATIONS[:1])
+    old = Storage(db_path)
+    old.store([make_game_odds()])
+    assert old._conn.execute("SELECT version FROM schema_version").fetchone()[0] == 1
+    # migration 2's index must not exist yet at v1
+    idx = old._conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_games_start'"
+    ).fetchone()
+    assert idx is None
+    old.close()
+
+    monkeypatch.undo()
+    upgraded = Storage(db_path)
+    try:
+        assert (
+            upgraded._conn.execute("SELECT version FROM schema_version").fetchone()[0]
+            == len(MIGRATIONS)
+        )
+        idx = upgraded._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_games_start'"
+        ).fetchone()
+        assert idx is not None
+        assert len(upgraded.games()) == 1  # data written at v1 survives
+    finally:
+        upgraded.close()
+
+
+def test_migration_is_idempotent_on_reopen(db_path):
+    Storage(db_path).close()
+    reopened = Storage(db_path)
+    try:
+        assert (
+            reopened._conn.execute("SELECT version FROM schema_version").fetchone()[0]
+            == len(MIGRATIONS)
+        )
+        assert reopened._conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 1
+    finally:
+        reopened.close()
+
+
+# ---- rigor backlog: latest_odds tie + date-filter branches ----
+
+
+def test_latest_odds_dedups_rows_tying_on_fetched_at(storage):
+    """Two rows with identical (game, provider, book, market, outcome,
+    fetched_at) — a cycle stored twice — must yield one quote, the last written."""
+    t = datetime(2026, 7, 9, 15, 0, tzinfo=UTC)
+    first = make_game_odds(
+        fetched_at=t,
+        quotes=[Quote(book="dk", market="moneyline", outcome="home", price=-140)],
+    )
+    second = make_game_odds(
+        fetched_at=t,
+        quotes=[Quote(book="dk", market="moneyline", outcome="home", price=-150)],
+    )
+    storage.store([first])
+    storage.store([second])
+
+    (latest,) = storage.latest_odds()
+    assert len(latest.quotes) == 1
+    assert latest.quotes[0].price == -150
+
+
+def test_latest_odds_on_date_filters_by_utc_date(storage):
+    july9 = make_game_odds(start_time=datetime(2026, 7, 9, 23, 5, tzinfo=UTC))
+    july10 = make_game_odds(
+        away="BOS", home="TOR", start_time=datetime(2026, 7, 10, 17, 0, tzinfo=UTC)
+    )
+    storage.store([july9, july10])
+
+    for on, expected_home in ((date(2026, 7, 9), "NYY"), (date(2026, 7, 10), "TOR")):
+        boards = storage.latest_odds(on)
+        assert [go.game.home_team for go in boards] == [expected_home]
+    assert storage.latest_odds(date(2026, 7, 11)) == []
+
+
+def test_games_on_date_filters_by_utc_date(storage):
+    storage.store(
+        [
+            make_game_odds(start_time=datetime(2026, 7, 9, 23, 5, tzinfo=UTC)),
+            make_game_odds(
+                away="BOS", home="TOR", start_time=datetime(2026, 7, 10, 17, 0, tzinfo=UTC)
+            ),
+        ]
+    )
+    assert [g.home_team for g in storage.games(date(2026, 7, 10))] == ["TOR"]
+    assert storage.games(date(2026, 7, 11)) == []
+
+
+# ---- rigor backlog: cross-provider doubleheader convergence, reverse order ----
+
+
+def test_doubleheader_converges_when_second_provider_reports_in_reverse_order(storage):
+    """Provider B sees the doubleheader in the opposite order and numbers the
+    halves accordingly; both halves must still converge onto A's canonical ids
+    by native-id mapping plus the start-time tolerance (D-008/D-010)."""
+    early = datetime(2026, 7, 9, 17, 5, tzinfo=UTC)
+    late = datetime(2026, 7, 9, 23, 5, tzinfo=UTC)
+
+    a1 = make_game_odds(start_time=early, game_number=1, provider="provA", native_id="a-early")
+    a2 = make_game_odds(start_time=late, game_number=2, provider="provA", native_id="a-late")
+    storage.store([a1, a2])
+
+    # Provider B numbers by its own (reversed) ordering: the late half first.
+    b_late = make_game_odds(start_time=late, game_number=1, provider="provB", native_id="b-late")
+    b_early = make_game_odds(
+        start_time=early, game_number=2, provider="provB", native_id="b-early"
+    )
+    storage.store([b_late, b_early])
+
+    games = storage.games()
+    assert len(games) == 2, [g.game_id for g in games]
+    by_start = {g.start_time: g for g in games}
+    assert by_start[early].game_id == a1.game.game_id
+    assert by_start[late].game_id == a2.game.game_id
+    # both providers' native ids mapped onto each canonical game
+    assert by_start[early].provider_ids == {"provA": "a-early", "provB": "b-early"}
+    assert by_start[late].provider_ids == {"provA": "a-late", "provB": "b-late"}

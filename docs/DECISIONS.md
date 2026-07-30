@@ -135,6 +135,18 @@ scan is an index seek rather than a table scan — without it the window helps t
 empty-day case only. Measured on the same 216k-row database: 1.07s → 0.006s (185x)
 for a day with games, confirmed via `EXPLAIN QUERY PLAN` to use the new index.
 
+## D-014 — Doubleheader convergence must search, not just bump (2026-07-29)
+The test-rigor backlog's "cross-provider doubleheader, reverse order" item
+exposed a real defect, not a coverage gap: `_resolve_game_id` started from the
+provider's own game number and only ever bumped upward. A provider that saw the
+doubleheader in the opposite order numbers the halves 2/1; its early half
+(numbered 2) could never reach canonical id 1 and split off as a phantom game 3.
+Resolution now first tries to converge onto any stored same-slate game whose
+start_time is within SAME_GAME_START_TOLERANCE and whose id isn't claimed by a
+different native id of the same provider; only then does it fall back to the
+bump-until-free allocation for genuinely new games. D-008/D-010 semantics are
+unchanged — this widens the candidate set, not the matching rules.
+
 ## D-015 — changed_only dedups against the newest row only (2026-07-30)
 `--changed-only` skips a quote when its (line, price) equals the newest stored
 row for the same (game, provider, book, market, outcome). The baseline is
