@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from mlb_odds import collector
 from mlb_odds.client import OddsClient
 from mlb_odds.models import GameOdds, Market, Quote
-from mlb_odds.providers import ProviderError, TheOddsAPI
+from mlb_odds.providers import ESPN, OddsProvider, ProviderError, TheOddsAPI
 
 app = typer.Typer(
     help="Fetch, normalize, and store MLB betting odds.",
@@ -42,6 +42,22 @@ DbOption = Annotated[
 class ExportFormat(StrEnum):
     csv = "csv"
     parquet = "parquet"
+
+
+class ProviderChoice(StrEnum):
+    the_odds_api = "the_odds_api"
+    espn = "espn"
+    all = "all"
+
+
+def _build_providers(choice: ProviderChoice) -> list[OddsProvider]:
+    """Construct the chosen providers. TheOddsAPI() raises ProviderError without
+    a key; ESPN needs none, so `--provider espn` collects on a bare machine."""
+    if choice is ProviderChoice.espn:
+        return [ESPN()]
+    if choice is ProviderChoice.the_odds_api:
+        return [TheOddsAPI()]
+    return [TheOddsAPI(), ESPN()]
 
 
 def _resolve_db(db: Path | None) -> Path:
@@ -82,6 +98,13 @@ def collect(
             "(first pitch -15m to +4h); idle otherwise. Mind the quota math.",
         ),
     ] = False,
+    provider: Annotated[
+        ProviderChoice,
+        typer.Option(
+            "--provider",
+            help="Odds source(s): the_odds_api (metered), espn (free, one book), or all.",
+        ),
+    ] = ProviderChoice.the_odds_api,
     db: DbOption = None,
 ) -> None:
     """Poll providers and append odds snapshots to the database."""
@@ -92,11 +115,11 @@ def collect(
         typer.echo("error: --once and --live are mutually exclusive", err=True)
         raise typer.Exit(2)
     try:
-        provider = TheOddsAPI()
+        providers = _build_providers(provider)
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
-    client = OddsClient(providers=[provider], db=_resolve_db(db), changed_only=changed_only)
+    client = OddsClient(providers=providers, db=_resolve_db(db), changed_only=changed_only)
     try:
         collector.run(client, interval, once=once, live=live)
     finally:
