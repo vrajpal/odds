@@ -296,6 +296,110 @@ def test_latest_odds_keeps_last_known_quotes_per_book(storage):
     assert latest.fetched_at == t2.fetched_at
 
 
+# ---- changed_only write mode (D-015) ----
+
+
+def _ml(book: str, away_price: int, home_price: int) -> list[Quote]:
+    return [
+        Quote(book=book, market="moneyline", outcome="away", price=away_price),
+        Quote(book=book, market="moneyline", outcome="home", price=home_price),
+    ]
+
+
+def test_changed_only_appends_nothing_for_an_identical_cycle(storage):
+    t1 = make_game_odds(fetched_at=datetime(2026, 7, 9, 15, 0, tzinfo=UTC))
+    t2 = make_game_odds(fetched_at=datetime(2026, 7, 9, 16, 0, tzinfo=UTC))
+
+    assert storage.store([t1], changed_only=True) == len(t1.quotes)  # first cycle all new
+    assert storage.store([t2], changed_only=True) == 0
+
+    count = storage._conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0]
+    assert count == len(t1.quotes)
+
+
+def test_changed_only_appends_only_the_quotes_that_moved(storage):
+    t1 = make_game_odds(
+        fetched_at=datetime(2026, 7, 9, 15, 0, tzinfo=UTC),
+        quotes=_ml("dk", +120, -140) + _ml("fd", +125, -145),
+    )
+    t2 = make_game_odds(
+        fetched_at=datetime(2026, 7, 9, 16, 0, tzinfo=UTC),
+        quotes=_ml("dk", +120, -140) + _ml("fd", +130, -150),  # only fd moved
+    )
+    storage.store([t1], changed_only=True)
+    assert storage.store([t2], changed_only=True) == 2
+
+    rows = storage._conn.execute(
+        "SELECT book, outcome, price FROM odds WHERE fetched_at = ?",
+        (t2.fetched_at.isoformat(),),
+    ).fetchall()
+    assert sorted(rows) == [("fd", "away", 130), ("fd", "home", -150)]
+
+
+def test_changed_only_line_move_alone_is_a_change(storage):
+    def total(line: float) -> list[Quote]:
+        return [Quote(book="dk", market="total", outcome="over", line=line, price=-110)]
+
+    storage.store(
+        [make_game_odds(fetched_at=datetime(2026, 7, 9, 15, 0, tzinfo=UTC), quotes=total(8.5))],
+        changed_only=True,
+    )
+    written = storage.store(
+        [make_game_odds(fetched_at=datetime(2026, 7, 9, 16, 0, tzinfo=UTC), quotes=total(9.0))],
+        changed_only=True,
+    )
+    assert written == 1  # same price, moved line
+
+
+def test_changed_only_reversion_to_an_older_value_still_writes(storage):
+    """The baseline is the NEWEST row, not any historical one: 120 -> 125 -> 120
+    must write all three, or history would show a phantom 125 forever."""
+    prices = [+120, +125, +120]
+    for hour, price in enumerate(prices, start=15):
+        storage.store(
+            [
+                make_game_odds(
+                    fetched_at=datetime(2026, 7, 9, hour, 0, tzinfo=UTC),
+                    quotes=[Quote(book="dk", market="moneyline", outcome="away", price=price)],
+                )
+            ],
+            changed_only=True,
+        )
+    count = storage._conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0]
+    assert count == 3
+
+
+def test_changed_only_latest_odds_board_is_unaffected(storage):
+    t1 = make_game_odds(
+        fetched_at=datetime(2026, 7, 9, 15, 0, tzinfo=UTC),
+        quotes=_ml("dk", +120, -140) + _ml("fd", +125, -145),
+    )
+    t2 = make_game_odds(
+        fetched_at=datetime(2026, 7, 9, 16, 0, tzinfo=UTC),
+        quotes=_ml("dk", +120, -140) + _ml("fd", +130, -150),
+    )
+    storage.store([t1], changed_only=True)
+    storage.store([t2], changed_only=True)
+
+    (latest,) = storage.latest_odds()
+    board = {(q.book, q.outcome): q.price for q in latest.quotes}
+    assert board == {
+        ("dk", "away"): 120,
+        ("dk", "home"): -140,
+        ("fd", "away"): 130,
+        ("fd", "home"): -150,
+    }
+
+
+def test_default_mode_still_appends_every_cycle(storage):
+    t1 = make_game_odds(fetched_at=datetime(2026, 7, 9, 15, 0, tzinfo=UTC))
+    t2 = make_game_odds(fetched_at=datetime(2026, 7, 9, 16, 0, tzinfo=UTC))
+    storage.store([t1])
+    storage.store([t2])
+    count = storage._conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0]
+    assert count == len(t1.quotes) * 2
+
+
 # ---- rigor backlog: migration upgrade path ----
 
 

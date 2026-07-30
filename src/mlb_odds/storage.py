@@ -107,18 +107,33 @@ class Storage:
             self._conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
             self._conn.commit()
 
-    def store(self, results: list[GameOdds]) -> int:
-        """Persist one fetch cycle: upsert games, append all quotes. Returns rows written.
+    def store(self, results: list[GameOdds], *, changed_only: bool = False) -> int:
+        """Persist one fetch cycle: upsert games, append quotes. Returns rows written.
 
         Game identity is reconciled against previously stored native ids first
         (see _resolve_game_id), and the models in `results` are updated in place
         to carry the canonical game_id.
+
+        `changed_only=True` skips quotes identical (line, price) to the newest
+        stored row for the same (game, provider, book, market, outcome), so an
+        unchanged board appends nothing (D-015). History then records changes,
+        not polls: a missing timestamp means "same as before", not "book gone" —
+        latest_odds is unaffected since it already carries last-known quotes
+        forward.
         """
         written = 0
         with self._conn:
             for game_odds in results:
                 game = game_odds.game
                 game.game_id = self._resolve_game_id(game)
+                quotes = game_odds.quotes
+                if changed_only:
+                    current = self._latest_quote_values(game.game_id, game_odds.provider)
+                    quotes = [
+                        q
+                        for q in quotes
+                        if current.get((q.book, q.market, q.outcome)) != (q.line, q.price)
+                    ]
                 self._conn.execute(
                     """
                     INSERT INTO games (game_id, start_time, home_team, away_team, season)
@@ -155,11 +170,40 @@ class Storage:
                             q.line,
                             q.price,
                         )
-                        for q in game_odds.quotes
+                        for q in quotes
                     ],
                 )
-                written += len(game_odds.quotes)
+                written += len(quotes)
         return written
+
+    def _latest_quote_values(
+        self, game_id: str, provider: str
+    ) -> dict[tuple[str, str, str], tuple[float | None, int]]:
+        """Newest stored (line, price) per (book, market, outcome) for one
+        (game, provider) — the comparison baseline for changed_only writes."""
+        rows = self._conn.execute(
+            """
+            SELECT o.book, o.market, o.outcome, o.line, o.price
+            FROM odds AS o
+            JOIN (
+                SELECT book, market, outcome, MAX(fetched_at) AS fetched_at
+                FROM odds
+                WHERE game_id = ? AND provider = ?
+                GROUP BY book, market, outcome
+            ) AS latest
+              ON  latest.book = o.book
+              AND latest.market = o.market
+              AND latest.outcome = o.outcome
+              AND latest.fetched_at = o.fetched_at
+            WHERE o.game_id = ? AND o.provider = ?
+            ORDER BY o.id
+            """,
+            (game_id, provider, game_id, provider),
+        ).fetchall()
+        return {
+            (book, market, outcome): (line, price)
+            for book, market, outcome, line, price in rows
+        }
 
     def _resolve_game_id(self, game: Game) -> str:
         """Canonical game_id for this game, stable across fetch cycles (FR2).

@@ -146,3 +146,16 @@ start_time is within SAME_GAME_START_TOLERANCE and whose id isn't claimed by a
 different native id of the same provider; only then does it fall back to the
 bump-until-free allocation for genuinely new games. D-008/D-010 semantics are
 unchanged — this widens the candidate set, not the matching rules.
+
+## D-015 — changed_only dedups against the newest row only (2026-07-30)
+`--changed-only` skips a quote when its (line, price) equals the newest stored
+row for the same (game, provider, book, market, outcome). The baseline is
+deliberately the newest row, not "any prior value": a reversion (120 → 125 →
+120) must write all three rows or history would show a phantom 125 as current.
+The dedup lives in Storage.store, not the collector, so library users get the
+same semantics. Trade-off documented in the README: with changed_only, history
+records changes rather than polls — the absence of a row at time T means
+"unchanged since the previous row", not "book dropped out". latest_odds is
+unaffected either way, because it already carries last-known quotes forward.
+Default stays append-everything; storage cost was never the motivation for the
+default, auditability of "we polled at T and saw X" was.

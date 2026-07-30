@@ -317,6 +317,29 @@ def test_collector_loop_stop_interrupts_sleep(tmp_path):
     assert provider.calls == 1
 
 
+# ---- changed_only wiring (D-015) ----
+
+
+def test_collect_changed_only_skips_unchanged_cycles(tmp_path, monkeypatch):
+    """Two --changed-only cycles with an identical board: the second appends 0
+    rows. Exercises the full CLI -> client -> storage wiring."""
+    monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "mlb_odds.cli.TheOddsAPI",
+        lambda: TheOddsAPI(api_key="test-key", transport=fixture_transport("normal_day")),
+    )
+    db = tmp_path / "collect.sqlite"
+
+    for _ in range(2):
+        result = runner.invoke(app, ["collect", "--once", "--changed-only", "--db", str(db)])
+        assert result.exit_code == 0
+
+    storage = Storage(db)
+    fetches = storage._conn.execute("SELECT COUNT(DISTINCT fetched_at) FROM odds").fetchone()[0]
+    storage.close()
+    assert fetches == 1  # second cycle contributed nothing
+
+
 # ---- rigor backlog: FR6 quota logging ----
 
 

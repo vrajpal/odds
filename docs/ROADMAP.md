@@ -30,7 +30,7 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 
 ## M4 — Post-v1 (unordered backlog)
 - [ ] ESPN consensus-line provider (free, no key — validates pluggability for real)
-- [ ] `changed_only` write mode (dedup consecutive identical quotes)
+- [x] `changed_only` write mode (dedup consecutive identical quotes)
 - [ ] Player props market support
 - [ ] Closing-line convenience queries (last snapshot before start_time)
 - [ ] Live/in-game polling mode
