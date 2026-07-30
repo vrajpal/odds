@@ -34,7 +34,9 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [ ] Player props market support
 - [x] Closing-line convenience queries (last snapshot before start_time)
 - [ ] Live/in-game polling mode
-- [ ] Parquet export of full history for DuckDB workflows
+- [x] Parquet export of full history for DuckDB workflows — already shipped as
+      `mlb-odds export --format parquet` (odds_df carries every snapshot row
+      joined with game context); verified + README DuckDB example added
 
 ### Test-rigor backlog (adversarial-review findings, minor, not blocking v1)
 - [x] FR6 quota logging: caplog assertion that the collector's cycle summary

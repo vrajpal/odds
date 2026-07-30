@@ -77,6 +77,17 @@ mlb-odds export --format csv --out odds.csv
 mlb-odds export --format parquet --out odds.parquet   # needs pyarrow
 ```
 
+Exports carry the **full snapshot history** (every fetch, joined with game
+context), not just the latest board — ready for DuckDB:
+
+```sql
+-- closing-line drift by book, straight off the parquet file
+SELECT book, market, outcome, arg_max(price, fetched_at) AS last_price
+FROM 'odds.parquet'
+WHERE game_id = '2026-07-09-NYM-NYY-1' AND fetched_at <= start_time
+GROUP BY book, market, outcome;
+```
+
 All commands take `--db PATH` (or `MLB_ODDS_DB`). `today` and `history` display
 times in your local timezone; storage is always UTC.
 
