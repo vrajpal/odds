@@ -69,6 +69,7 @@ mlb-odds collect --once            # one fetch cycle, then exit (cron-friendly)
 mlb-odds collect --interval 21600  # poll loop until Ctrl-C (clean SIGINT exit)
 
 mlb-odds today                     # today's board from stored data — no network
+mlb-odds closing --date 2026-07-09 # closing lines: last snapshot at/before first pitch
 mlb-odds history 2026-07-09-NYM-NYY-1        # line movement for one game
 mlb-odds history NYM@NYY --date 2026-07-09   # same, fuzzy AWAY@HOME form
 mlb-odds export --format csv --out odds.csv
@@ -144,6 +145,7 @@ client = OddsClient(providers=[TheOddsAPI()], db="odds.sqlite")
 
 snapshot = client.fetch_and_store()   # poll all providers, persist, return models
 games    = client.current_odds()      # latest stored snapshot per (game, provider)
+closing  = client.closing_odds()      # last snapshot at/before each game's first pitch
 
 df = client.history_df("2026-07-09-NYM-NYY-1")
 # one row per (fetched_at, book, market, outcome) — ready for plotting line movement

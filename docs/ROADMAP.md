@@ -32,7 +32,7 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [ ] ESPN consensus-line provider (free, no key — validates pluggability for real)
 - [ ] `changed_only` write mode (dedup consecutive identical quotes)
 - [ ] Player props market support
-- [ ] Closing-line convenience queries (last snapshot before start_time)
+- [x] Closing-line convenience queries (last snapshot before start_time)
 - [ ] Live/in-game polling mode
 - [ ] Parquet export of full history for DuckDB workflows
 

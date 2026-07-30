@@ -334,6 +334,78 @@ class Storage:
             for (game_id, provider), quotes in quotes_by_key.items()
         ]
 
+    def closing_odds(
+        self,
+        on_date: date | None = None,
+        *,
+        window: tuple[datetime, datetime] | None = None,
+    ) -> list[GameOdds]:
+        """Closing lines: the newest quotes fetched at or before each game's
+        start_time, per (game, provider, book, market, outcome).
+
+        A game with no pre-start snapshot is absent entirely; a book that only
+        appeared after first pitch contributes nothing. `on_date` / `window`
+        narrow the games considered, as in games(). Both fetched_at and
+        start_time are stored as UTC ISO-8601 strings, so the string comparison
+        is an instant comparison.
+        """
+        games = {g.game_id: g for g in self.games(on_date, window=window)}
+        if not games:
+            return []
+        date_filter = ""
+        params: tuple[str, ...] = ()
+        if window is not None:
+            date_filter = " AND g.start_time >= ? AND g.start_time < ?"
+            params = (_utc_key(window[0]), _utc_key(window[1]))
+        elif on_date is not None:
+            date_filter = " AND substr(g.start_time, 1, 10) = ?"
+            params = (on_date.isoformat(),)
+        rows = self._conn.execute(
+            f"""
+            SELECT o.game_id, o.provider, o.fetched_at,
+                   o.book, o.market, o.outcome, o.line, o.price
+            FROM odds AS o
+            JOIN (
+                SELECT o2.game_id, o2.provider, o2.book, o2.market, o2.outcome,
+                       MAX(o2.fetched_at) AS fetched_at
+                FROM odds AS o2
+                JOIN games AS g ON g.game_id = o2.game_id
+                WHERE o2.fetched_at <= g.start_time{date_filter}
+                GROUP BY o2.game_id, o2.provider, o2.book, o2.market, o2.outcome
+            ) AS closing
+              ON  closing.game_id = o.game_id
+              AND closing.provider = o.provider
+              AND closing.book = o.book
+              AND closing.market = o.market
+              AND closing.outcome = o.outcome
+              AND closing.fetched_at = o.fetched_at
+            ORDER BY o.game_id, o.provider, o.id
+            """,
+            params,
+        ).fetchall()
+        # Keyed per outcome so rows tying on MAX(fetched_at) dedup to the
+        # last-written one (rows arrive ordered by o.id).
+        quotes_by_key: dict[tuple[str, str], dict[tuple[str, str, str], Quote]] = defaultdict(
+            dict
+        )
+        newest_by_key: dict[tuple[str, str], str] = {}
+        for game_id, provider, fetched_at, book, market, outcome, line, price in rows:
+            key = (game_id, provider)
+            quotes_by_key[key][(book, market, outcome)] = Quote(
+                book=book, market=market, outcome=outcome, line=line, price=price
+            )
+            if fetched_at > newest_by_key.get(key, ""):
+                newest_by_key[key] = fetched_at
+        return [
+            GameOdds(
+                game=games[game_id],
+                fetched_at=datetime.fromisoformat(newest_by_key[(game_id, provider)]),
+                provider=provider,
+                quotes=list(quotes.values()),
+            )
+            for (game_id, provider), quotes in quotes_by_key.items()
+        ]
+
     def history_rows(self, game_id: str) -> list[tuple[str, str, str, str, str, float | None, int]]:
         """(fetched_at, provider, book, market, outcome, line, price) ordered by time."""
         return self._conn.execute(
