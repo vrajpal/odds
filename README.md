@@ -76,6 +76,8 @@ query them via `history`, `export`, or `odds_df()`, all of which carry a
 mlb-odds collect --once            # one fetch cycle, then exit (cron-friendly)
 mlb-odds collect --interval 21600  # poll loop until Ctrl-C (clean SIGINT exit)
 mlb-odds collect --once --changed-only  # append only quotes that moved (D-015)
+mlb-odds collect --live --interval 300  # poll only while games are live (D-017)
+mlb-odds collect --once --provider espn # free source, no key needed (--provider all for both)
 
 mlb-odds props --market pitcher_strikeouts --market batter_home_runs
                                    # player-prop ladders, one snapshot per run (D-018)

@@ -36,7 +36,8 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] Player props market support — curated markets via `mlb-odds props` /
       `client.fetch_and_store_props()`; ladders keyed per (player, line) (D-018)
 - [x] Closing-line convenience queries (last snapshot before start_time)
-- [ ] Live/in-game polling mode
+- [x] Live/in-game polling mode — `collect --live` polls only inside per-game
+      live windows computed from the stored slate (D-017)
 - [x] Parquet export of full history for DuckDB workflows — already shipped as
       `mlb-odds export --format parquet` (odds_df carries every snapshot row
       joined with game context); verified + README DuckDB example added
