@@ -189,7 +189,28 @@ class Storage:
             ).fetchone()
             if row is not None:
                 return str(row[0])
+        # Converge onto any stored same-slate game whose start time matches,
+        # regardless of the number this provider computed: a provider that saw
+        # the doubleheader in the opposite order numbers the halves 2/1, and
+        # bumping only upward from its own number could never reach the lower
+        # canonical id — the early half would split off as a phantom game 3.
         game_id = game.game_id
+        base, _, _ = game_id.rpartition("-")
+        candidates = self._conn.execute(
+            "SELECT game_id, start_time FROM games WHERE game_id LIKE ?",
+            (f"{base}-%",),
+        ).fetchall()
+        for cand_id, cand_start in sorted(
+            candidates, key=lambda r: int(str(r[0]).rpartition("-")[2])
+        ):
+            close = (
+                abs(datetime.fromisoformat(cand_start) - game.start_time)
+                <= SAME_GAME_START_TOLERANCE
+            )
+            if close and not self._claimed_by_other_native_id(cand_id, game.provider_ids):
+                return str(cand_id)
+        # Genuinely new game: keep the provider's number unless another native
+        # id already claimed it or it collides with a far-apart start time.
         while self._claimed_by_other_native_id(game_id, game.provider_ids) or (
             self._stored_start_time_conflicts(game_id, game.start_time)
         ):
@@ -314,12 +335,17 @@ class Storage:
             """,
             params,
         ).fetchall()
-        quotes_by_key: dict[tuple[str, str], list[Quote]] = defaultdict(list)
+        # Keyed per outcome so two rows tying on MAX(fetched_at) — e.g. a cycle
+        # stored twice with the same timestamp — yield one quote, not two. Rows
+        # arrive ordered by o.id, so the overwrite keeps the last-written row.
+        quotes_by_key: dict[tuple[str, str], dict[tuple[str, str, str], Quote]] = defaultdict(
+            dict
+        )
         newest_by_key: dict[tuple[str, str], str] = {}
         for game_id, provider, fetched_at, book, market, outcome, line, price in rows:
             key = (game_id, provider)
-            quotes_by_key[key].append(
-                Quote(book=book, market=market, outcome=outcome, line=line, price=price)
+            quotes_by_key[key][(book, market, outcome)] = Quote(
+                book=book, market=market, outcome=outcome, line=line, price=price
             )
             # ISO-8601 UTC strings sort lexically by instant.
             if fetched_at > newest_by_key.get(key, ""):
@@ -329,7 +355,7 @@ class Storage:
                 game=games[game_id],
                 fetched_at=datetime.fromisoformat(newest_by_key[(game_id, provider)]),
                 provider=provider,
-                quotes=quotes,
+                quotes=list(quotes.values()),
             )
             for (game_id, provider), quotes in quotes_by_key.items()
         ]
