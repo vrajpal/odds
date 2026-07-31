@@ -119,6 +119,25 @@ NYM @ NYY  2026-07-09 07:05 PM EDT  [2026-07-09-NYM-NYY-1]
   fanduel           +118/-138     -1.5 (-102)     8.5 (o-110)
 ```
 
+## NFL
+
+Everything above works for NFL game lines too — same commands, `--sport nfl`:
+
+```bash
+mlb-odds collect --once --sport nfl                  # -> ./nfl-odds.sqlite ($NFL_ODDS_DB)
+mlb-odds collect --once --sport nfl --provider espn  # free source, no key
+mlb-odds today --sport nfl                           # board shows spread instead of run line
+mlb-odds closing --sport nfl --date 2026-09-10
+mlb-odds export --sport nfl --format parquet --out nfl.parquet
+```
+
+Each sport lives in its **own database** (MLB `KC` and NFL `KC` are different
+franchises that would collide on canonical game ids — D-019). The Odds API
+quota is shared across sports: an NFL poll costs the same 3 credits. In the
+library, pass `sport=` to a provider: `TheOddsAPI(sport="nfl")`,
+`ESPN(sport="nfl")`. Not yet covered for NFL: player props, and the web UI
+(which serves the MLB database).
+
 Cron example (5 polls/day, free-tier friendly) — cron runs with a bare
 environment, so keep the key in a `.env` next to the project and `cd` there first:
 

@@ -1,0 +1,493 @@
+[
+ {
+  "id": "8c94552d022acec4a0458d70c19d3da9",
+  "sport_key": "americanfootball_nfl",
+  "sport_title": "NFL",
+  "commence_time": "2026-09-10T00:15:00Z",
+  "home_team": "Seattle Seahawks",
+  "away_team": "New England Patriots",
+  "bookmakers": [
+   {
+    "key": "draftkings",
+    "title": "DraftKings",
+    "last_update": "2026-07-31T16:22:42Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "New England Patriots",
+        "price": 164
+       },
+       {
+        "name": "Seattle Seahawks",
+        "price": -198
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "New England Patriots",
+        "price": -110,
+        "point": 3.5
+       },
+       {
+        "name": "Seattle Seahawks",
+        "price": -110,
+        "point": -3.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -110,
+        "point": 44.5
+       },
+       {
+        "name": "Under",
+        "price": -110,
+        "point": 44.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betus",
+    "title": "BetUS",
+    "last_update": "2026-07-31T16:22:10Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:22:09Z",
+      "outcomes": [
+       {
+        "name": "New England Patriots",
+        "price": 163
+       },
+       {
+        "name": "Seattle Seahawks",
+        "price": -190
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:22:09Z",
+      "outcomes": [
+       {
+        "name": "New England Patriots",
+        "price": -110,
+        "point": 3.5
+       },
+       {
+        "name": "Seattle Seahawks",
+        "price": -110,
+        "point": -3.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:22:09Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -110,
+        "point": 43.5
+       },
+       {
+        "name": "Under",
+        "price": -110,
+        "point": 43.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "fanduel",
+    "title": "FanDuel",
+    "last_update": "2026-07-31T16:22:29Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "New England Patriots",
+        "price": 184
+       },
+       {
+        "name": "Seattle Seahawks",
+        "price": -220
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "New England Patriots",
+        "price": -114,
+        "point": 4.5
+       },
+       {
+        "name": "Seattle Seahawks",
+        "price": -106,
+        "point": -4.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -115,
+        "point": 44.5
+       },
+       {
+        "name": "Under",
+        "price": -105,
+        "point": 44.5
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "acc580d74344ea3b31bbcdd057fe6a9c",
+  "sport_key": "americanfootball_nfl",
+  "sport_title": "NFL",
+  "commence_time": "2026-09-11T00:35:00Z",
+  "home_team": "Los Angeles Rams",
+  "away_team": "San Francisco 49ers",
+  "bookmakers": [
+   {
+    "key": "draftkings",
+    "title": "DraftKings",
+    "last_update": "2026-07-31T16:22:42Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "Los Angeles Rams",
+        "price": -185
+       },
+       {
+        "name": "San Francisco 49ers",
+        "price": 154
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "Los Angeles Rams",
+        "price": -105,
+        "point": -3.5
+       },
+       {
+        "name": "San Francisco 49ers",
+        "price": -115,
+        "point": 3.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -110,
+        "point": 48.5
+       },
+       {
+        "name": "Under",
+        "price": -110,
+        "point": 48.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betmgm",
+    "title": "BetMGM",
+    "last_update": "2026-07-31T16:20:47Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:20:47Z",
+      "outcomes": [
+       {
+        "name": "Los Angeles Rams",
+        "price": -190
+       },
+       {
+        "name": "San Francisco 49ers",
+        "price": 155
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:20:47Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -110,
+        "point": 48.5
+       },
+       {
+        "name": "Under",
+        "price": -110,
+        "point": 48.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "fanduel",
+    "title": "FanDuel",
+    "last_update": "2026-07-31T16:22:29Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "Los Angeles Rams",
+        "price": -210
+       },
+       {
+        "name": "San Francisco 49ers",
+        "price": 176
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "Los Angeles Rams",
+        "price": -115,
+        "point": -3.5
+       },
+       {
+        "name": "San Francisco 49ers",
+        "price": -105,
+        "point": 3.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -102,
+        "point": 49.5
+       },
+       {
+        "name": "Under",
+        "price": -120,
+        "point": 49.5
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "95c01d1bb797d6df14824b106c5a9130",
+  "sport_key": "americanfootball_nfl",
+  "sport_title": "NFL",
+  "commence_time": "2026-09-13T17:00:00Z",
+  "home_team": "Pittsburgh Steelers",
+  "away_team": "Atlanta Falcons",
+  "bookmakers": [
+   {
+    "key": "draftkings",
+    "title": "DraftKings",
+    "last_update": "2026-07-31T16:22:42Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Falcons",
+        "price": 145
+       },
+       {
+        "name": "Pittsburgh Steelers",
+        "price": -175
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Falcons",
+        "price": 100,
+        "point": 3.0
+       },
+       {
+        "name": "Pittsburgh Steelers",
+        "price": -120,
+        "point": -3.0
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:22:40Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -110,
+        "point": 41.5
+       },
+       {
+        "name": "Under",
+        "price": -110,
+        "point": 41.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betrivers",
+    "title": "BetRivers",
+    "last_update": "2026-07-31T16:22:29Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Falcons",
+        "price": 128
+       },
+       {
+        "name": "Pittsburgh Steelers",
+        "price": -157
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Falcons",
+        "price": -118,
+        "point": 3.0
+       },
+       {
+        "name": "Pittsburgh Steelers",
+        "price": -105,
+        "point": -3.0
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:22:29Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -110,
+        "point": 42.0
+       },
+       {
+        "name": "Under",
+        "price": -113,
+        "point": 42.0
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "betonlineag",
+    "title": "BetOnline.ag",
+    "last_update": "2026-07-31T16:21:57Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-07-31T16:21:57Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Falcons",
+        "price": 140
+       },
+       {
+        "name": "Pittsburgh Steelers",
+        "price": -160
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-07-31T16:21:57Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Falcons",
+        "price": -110,
+        "point": 3.0
+       },
+       {
+        "name": "Pittsburgh Steelers",
+        "price": -110,
+        "point": -3.0
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-07-31T16:21:57Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": -110,
+        "point": 41.5
+       },
+       {
+        "name": "Under",
+        "price": -110,
+        "point": 41.5
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

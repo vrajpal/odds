@@ -11,10 +11,11 @@ GAME_MARKETS = ("moneyline", "run_line", "total")
 PROP_MARKETS = ("batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts")
 
 Market = Literal[
-    "moneyline", "run_line", "total",
+    "moneyline", "run_line", "total", "spread",
     "batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts",
 ]
 Outcome = Literal["home", "away", "over", "under"]
+Sport = Literal["mlb", "nfl"]
 
 
 def _require_utc(v: datetime) -> datetime:

@@ -1,0 +1,108 @@
+{
+ "events": [
+  {
+   "id": "401873271",
+   "date": "2026-08-07T00:00Z",
+   "shortName": "CAR VS ARI",
+   "status": {
+    "type": {
+     "state": "pre"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401873271",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "Arizona Cardinals",
+        "abbreviation": "ARI"
+       }
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "Carolina Panthers",
+        "abbreviation": "CAR"
+       }
+      }
+     ],
+     "odds": [
+      {
+       "provider": {
+        "id": "100",
+        "displayName": "DraftKings"
+       },
+       "details": "CAR -1.5",
+       "overUnder": 36.5,
+       "spread": 1.5,
+       "moneyline": {
+        "home": {
+         "close": {
+          "odds": "+105"
+         },
+         "open": {
+          "odds": "+102"
+         }
+        },
+        "away": {
+         "close": {
+          "odds": "-125"
+         },
+         "open": {
+          "odds": "-122"
+         }
+        }
+       },
+       "pointSpread": {
+        "home": {
+         "close": {
+          "line": "+1.5",
+          "odds": "-112"
+         },
+         "open": {
+          "line": "+1.5",
+          "odds": "-112"
+         }
+        },
+        "away": {
+         "close": {
+          "line": "-1.5",
+          "odds": "-108"
+         },
+         "open": {
+          "line": "-1.5",
+          "odds": "-108"
+         }
+        }
+       },
+       "total": {
+        "over": {
+         "close": {
+          "line": "o36.5",
+          "odds": "-110"
+         },
+         "open": {
+          "line": "o35.5",
+          "odds": "-112"
+         }
+        },
+        "under": {
+         "close": {
+          "line": "u36.5",
+          "odds": "-110"
+         },
+         "open": {
+          "line": "u35.5",
+          "odds": "-108"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

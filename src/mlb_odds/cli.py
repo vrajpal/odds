@@ -35,7 +35,11 @@ def _load_env() -> None:
 
 DbOption = Annotated[
     Path | None,
-    typer.Option("--db", help="SQLite path (default: $MLB_ODDS_DB or ./odds.sqlite)."),
+    typer.Option(
+        "--db",
+        help="SQLite path (default: $MLB_ODDS_DB / $NFL_ODDS_DB per sport, else "
+        "./odds.sqlite for mlb, ./nfl-odds.sqlite for nfl).",
+    ),
 ]
 
 
@@ -50,21 +54,32 @@ class ProviderChoice(StrEnum):
     all = "all"
 
 
-def _build_providers(choice: ProviderChoice) -> list[OddsProvider]:
+class SportChoice(StrEnum):
+    mlb = "mlb"
+    nfl = "nfl"
+
+
+def _build_providers(choice: ProviderChoice, sport: SportChoice) -> list[OddsProvider]:
     """Construct the chosen providers. TheOddsAPI() raises ProviderError without
     a key; ESPN needs none, so `--provider espn` collects on a bare machine."""
     if choice is ProviderChoice.espn:
-        return [ESPN()]
+        return [ESPN(sport=sport.value)]
     if choice is ProviderChoice.the_odds_api:
-        return [TheOddsAPI()]
-    return [TheOddsAPI(), ESPN()]
+        return [TheOddsAPI(sport=sport.value)]
+    return [TheOddsAPI(sport=sport.value), ESPN(sport=sport.value)]
 
 
-def _resolve_db(db: Path | None) -> Path:
+# One database per sport: MLB KC and NFL KC would otherwise collide on the
+# same canonical game_id date-away-home-number scheme (D-019).
+_DB_ENV = {SportChoice.mlb: "MLB_ODDS_DB", SportChoice.nfl: "NFL_ODDS_DB"}
+_DB_DEFAULT = {SportChoice.mlb: "./odds.sqlite", SportChoice.nfl: "./nfl-odds.sqlite"}
+
+
+def _resolve_db(db: Path | None, sport: SportChoice = SportChoice.mlb) -> Path:
     if db is not None:
         return db
-    env = os.environ.get("MLB_ODDS_DB")
-    return Path(env) if env else Path("./odds.sqlite")
+    env = os.environ.get(_DB_ENV[sport])
+    return Path(env) if env else Path(_DB_DEFAULT[sport])
 
 
 def _local_tz() -> tzinfo:
@@ -105,6 +120,10 @@ def collect(
             help="Odds source(s): the_odds_api (metered), espn (free, one book), or all.",
         ),
     ] = ProviderChoice.the_odds_api,
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
     db: DbOption = None,
 ) -> None:
     """Poll providers and append odds snapshots to the database."""
@@ -115,11 +134,13 @@ def collect(
         typer.echo("error: --once and --live are mutually exclusive", err=True)
         raise typer.Exit(2)
     try:
-        providers = _build_providers(provider)
+        providers = _build_providers(provider, sport)
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
-    client = OddsClient(providers=providers, db=_resolve_db(db), changed_only=changed_only)
+    client = OddsClient(
+        providers=providers, db=_resolve_db(db, sport), changed_only=changed_only
+    )
     try:
         collector.run(client, interval, once=once, live=live)
     finally:
@@ -140,6 +161,10 @@ def props(
         bool,
         typer.Option("--changed-only", help="Append only prop prices that moved (D-015)."),
     ] = False,
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
     db: DbOption = None,
 ) -> None:
     """Fetch player-prop ladders for today's events, one snapshot per run.
@@ -151,6 +176,9 @@ def props(
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    if sport is not SportChoice.mlb:
+        typer.echo("error: player props are implemented for MLB only (D-019)", err=True)
+        raise typer.Exit(2)
     bad = [m for m in market if m not in PROP_MARKETS]
     if bad:
         typer.echo(
@@ -163,7 +191,9 @@ def props(
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
-    client = OddsClient(providers=[provider], db=_resolve_db(db), changed_only=changed_only)
+    client = OddsClient(
+        providers=[provider], db=_resolve_db(db, sport), changed_only=changed_only
+    )
     try:
         results = client.fetch_and_store_props(market)
         rows = sum(len(go.quotes) for go in results)
@@ -179,12 +209,18 @@ def props(
 
 
 @app.command()
-def today(db: DbOption = None) -> None:
+def today(
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
+    db: DbOption = None,
+) -> None:
     """Show today's games with the latest moneyline / run line / total per book.
 
     Reads stored data only — no network calls, no API credits.
     """
-    client = OddsClient(providers=[], db=_resolve_db(db))
+    client = OddsClient(providers=[], db=_resolve_db(db, sport))
     try:
         tz = _local_tz()
         today_local = datetime.now(tz).date()
@@ -196,12 +232,16 @@ def today(db: DbOption = None) -> None:
         if not board:
             typer.echo("No stored odds for today. Run `mlb-odds collect --once` first.")
             return
-        _render_board(board, tz)
+        _render_board(board, tz, sport)
     finally:
         client.close()
 
 
-def _render_board(board: list[GameOdds], tz: tzinfo) -> None:
+def _render_board(
+    board: list[GameOdds], tz: tzinfo, sport: "SportChoice | None" = None
+) -> None:
+    spread_market: Market = "spread" if sport is SportChoice.nfl else "run_line"
+    spread_label = "spread" if sport is SportChoice.nfl else "run line"
     by_game: dict[str, list[GameOdds]] = {}
     for go in board:
         by_game.setdefault(go.game.game_id, []).append(go)
@@ -213,14 +253,14 @@ def _render_board(board: list[GameOdds], tz: tzinfo) -> None:
             f"{game.away_team} @ {game.home_team}  "
             f"{start_local:%Y-%m-%d %I:%M %p %Z}  [{game.game_id}]"
         )
-        typer.echo(f"  {'book':<18}{'moneyline':<14}{'run line':<16}{'total':<14}")
+        typer.echo(f"  {'book':<18}{'moneyline':<14}{spread_label:<16}{'total':<14}")
         for go in entries:
             for book in sorted({q.book for q in go.quotes}):
                 quotes = [q for q in go.quotes if q.book == book]
                 typer.echo(
                     f"  {book:<18}"
                     f"{_fmt_moneyline(quotes):<14}"
-                    f"{_fmt_run_line(quotes):<16}"
+                    f"{_fmt_spread(quotes, spread_market):<16}"
                     f"{_fmt_total(quotes):<14}"
                 )
         typer.echo("")
@@ -238,8 +278,8 @@ def _fmt_moneyline(quotes: list[Quote]) -> str:
     return f"{away.price:+d}/{home.price:+d}"
 
 
-def _fmt_run_line(quotes: list[Quote]) -> str:
-    home = _find(quotes, "run_line", "home")
+def _fmt_spread(quotes: list[Quote], market: Market = "run_line") -> str:
+    home = _find(quotes, market, "home")
     if home is None or home.line is None:
         return "-"
     return f"{home.line:+.1f} ({home.price:+d})"
@@ -258,6 +298,10 @@ def closing(
         str | None,
         typer.Option("--date", help="YYYY-MM-DD (UTC) to limit the board to one slate."),
     ] = None,
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
     db: DbOption = None,
 ) -> None:
     """Show closing lines: the last stored snapshot at or before first pitch.
@@ -266,13 +310,13 @@ def closing(
     once at least one pre-start snapshot exists; collect close to first pitch
     for a closing line worth the name.
     """
-    client = OddsClient(providers=[], db=_resolve_db(db))
+    client = OddsClient(providers=[], db=_resolve_db(db, sport))
     try:
         board = client.closing_odds(date.fromisoformat(on) if on else None)
         if not board:
             typer.echo("No closing lines stored" + (f" for {on}" if on else "") + ".")
             return
-        _render_board(board, _local_tz())
+        _render_board(board, _local_tz(), sport)
     finally:
         client.close()
 
@@ -286,10 +330,14 @@ def history(
         str | None,
         typer.Option("--date", help="YYYY-MM-DD (UTC) to disambiguate the AWAY@HOME form."),
     ] = None,
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
     db: DbOption = None,
 ) -> None:
     """Show line movement for one game, one row per (fetched_at, book, market, outcome)."""
-    client = OddsClient(providers=[], db=_resolve_db(db))
+    client = OddsClient(providers=[], db=_resolve_db(db, sport))
     try:
         game_id = _resolve_game_id(client, game, on)
         df = client.history_df(game_id)
@@ -336,10 +384,14 @@ def export(
     fmt: Annotated[
         ExportFormat, typer.Option("--format", help="Output format.")
     ] = ExportFormat.csv,
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
     db: DbOption = None,
 ) -> None:
     """Dump all stored odds (joined with game context) to CSV or Parquet."""
-    client = OddsClient(providers=[], db=_resolve_db(db))
+    client = OddsClient(providers=[], db=_resolve_db(db, sport))
     try:
         df = client.odds_df()
         if fmt is ExportFormat.csv:
