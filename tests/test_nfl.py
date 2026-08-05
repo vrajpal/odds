@@ -184,3 +184,67 @@ def test_sports_do_not_share_a_client_pipeline_regression(tmp_path):
     assert len(mlb_storage.games()) == 1  # untouched by the NFL write
     mlb_storage.close()
     assert games == ["2026-07-09-KC-DEN-1"]
+
+
+# ---- codex review findings (2026-08-05) ----
+
+
+def test_market_literal_is_partitioned_by_game_and_prop_sets():
+    """GAME_MARKETS + PROP_MARKETS must exactly cover the Market literal, so a
+    future market can't be silently unclassified (codex review, finding 1)."""
+    from typing import get_args
+
+    from mlb_odds.models import GAME_MARKETS, PROP_MARKETS, Market
+
+    assert set(GAME_MARKETS) | set(PROP_MARKETS) == set(get_args(Market))
+    assert set(GAME_MARKETS) & set(PROP_MARKETS) == set()
+
+
+def _capturing_transport(fixture: str, seen_urls: list):
+    import httpx
+
+    from conftest import load_fixture
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(request.url))
+        return httpx.Response(
+            200,
+            json=load_fixture(fixture),
+            headers={"x-requests-remaining": "484", "x-requests-used": "16"},
+        )
+
+    return httpx.MockTransport(handler)
+
+
+def test_sport_selects_the_requested_endpoint():
+    """Fixture transports ignore the URL, so a sport-routing regression (nfl
+    provider hitting the mlb endpoint) would otherwise pass (codex, finding 2)."""
+    seen: list = []
+    TheOddsAPI(
+        api_key="k", sport="nfl", transport=_capturing_transport("odds_api_nfl_normal", seen)
+    ).fetch_game_lines()
+    assert "/sports/americanfootball_nfl/odds" in seen[0]
+
+    seen.clear()
+    ESPN(
+        sport="nfl", transport=_capturing_transport("espn_nfl_scoreboard_normal", seen)
+    ).fetch_game_lines()
+    assert "/football/nfl/scoreboard" in seen[0]
+
+    seen.clear()
+    TheOddsAPI(
+        api_key="k", transport=_capturing_transport("normal_day", seen)
+    ).fetch_game_lines()
+    assert "/sports/baseball_mlb/odds" in seen[0]
+
+    seen.clear()
+    ESPN(transport=_capturing_transport("espn_scoreboard_normal", seen)).fetch_game_lines()
+    assert "/baseball/mlb/scoreboard" in seen[0]
+
+
+def test_today_empty_db_hint_names_the_sport(tmp_path):
+    result = runner.invoke(
+        app, ["today", "--sport", "nfl", "--db", str(tmp_path / "empty.sqlite")]
+    )
+    assert result.exit_code == 0
+    assert "collect --once --sport nfl" in result.output

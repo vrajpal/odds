@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-GAME_MARKETS = ("moneyline", "run_line", "total")
+GAME_MARKETS = ("moneyline", "run_line", "total", "spread")
 # Curated player-prop markets (The Odds API keys, D-018). Extend deliberately:
 # each addition multiplies per-event credit cost.
 PROP_MARKETS = ("batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts")

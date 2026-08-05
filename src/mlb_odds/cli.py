@@ -230,7 +230,10 @@ def today(
             if go.game.start_time.astimezone(tz).date() == today_local
         ]
         if not board:
-            typer.echo("No stored odds for today. Run `mlb-odds collect --once` first.")
+            sport_flag = "" if sport is SportChoice.mlb else f" --sport {sport.value}"
+            typer.echo(
+                f"No stored odds for today. Run `mlb-odds collect --once{sport_flag}` first."
+            )
             return
         _render_board(board, tz, sport)
     finally:
