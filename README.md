@@ -185,6 +185,33 @@ python run_api.py               # serves frontend from /
 
 Open `http://localhost:8000` in your browser.
 
+## Circa Million consensus board (contest tool)
+
+A separate FastAPI app for the Circa Million VIII pick'em workflow (see
+`circa-million-2026-rules.md` for the contest and the plan; conventions in
+D-020). It compares Circa's static contest spreads — entered by hand — against
+the market consensus in the NFL odds database and reports the edge, movement
+since entry, key-number crossings, and the week's pick deadline.
+
+```bash
+# collect NFL market lines (repeat Thu-Sat; the board reads this DB)
+mlb-odds collect --once --sport nfl
+
+# run the contest API (reads $NFL_ODDS_DB, owns $CONTEST_DB)
+uvicorn mlb_odds.contest_api:app --port 8001
+```
+
+- `GET /api/contest/board?week=N` — the weekly board: per-book spreads,
+  consensus, contest line, edge (`contest - consensus`; positive = value on
+  home), movement since entry, deadline countdown. `week` defaults to now.
+- `POST /api/contest/lines` — enter/correct one contest line
+  (`{"week": 1, "game_id": "...", "home_spread": -2.5}`); game must exist in
+  that week's window. Swagger UI at `/docs` is the intended entry surface.
+- `GET /api/contest/lines?week=N` — entered lines.
+
+Same trust model as the odds API: no auth, keep it on localhost or behind
+your own front door.
+
 ## Library
 
 ```python

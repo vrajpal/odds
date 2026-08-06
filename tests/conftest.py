@@ -65,6 +65,43 @@ def make_game_odds(
     )
 
 
+NFL_KICKOFF = datetime(2026, 9, 13, 17, 0, tzinfo=UTC)  # Sun of contest week 1, 10:00 PT
+
+
+def make_nfl_spread_odds(
+    book_lines: dict[str, float],
+    fetched_at: datetime,
+    *,
+    away: str = "KC",
+    home: str = "LAC",
+    start_time: datetime | None = None,
+    provider: str = "fake",
+) -> GameOdds:
+    """One NFL fetch snapshot: home/away spread quotes per book at `fetched_at`.
+
+    `book_lines` maps book -> home spread (negative = home favored), the same
+    convention the contest module computes edges in.
+    """
+    start = start_time or NFL_KICKOFF
+    game_id = make_game_id(start.date().isoformat(), away, home)
+    game = Game(
+        game_id=game_id,
+        start_time=start,
+        home_team=home,
+        away_team=away,
+        provider_ids={provider: f"native-{game_id}"},
+    )
+    quotes = []
+    for book, home_spread in book_lines.items():
+        quotes.append(
+            Quote(book=book, market="spread", outcome="home", line=home_spread, price=-110)
+        )
+        quotes.append(
+            Quote(book=book, market="spread", outcome="away", line=-home_spread, price=-110)
+        )
+    return GameOdds(game=game, fetched_at=fetched_at, provider=provider, quotes=quotes)
+
+
 class FakeProvider:
     """A second provider implemented purely against the OddsProvider protocol.
 

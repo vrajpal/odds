@@ -15,6 +15,9 @@ src/mlb_odds/
   client.py            # OddsClient — orchestrates providers + storage
   collector.py         # polling loop (used by CLI `collect`)
   cli.py               # typer app, entrypoint `mlb-odds`
+  api.py               # FastAPI server: MLB odds REST API + static frontend
+  contest.py           # Circa Million tool: contest calendar, line store, edge math
+  contest_api.py       # FastAPI app for the contest board (D-020)
 tests/
   fixtures/            # recorded provider JSON responses
   conftest.py          # FakeProvider, temp-db fixture
@@ -24,6 +27,10 @@ Dependency direction is strictly one-way:
 `cli → collector → client → (providers, storage) → models/teams`.
 Providers never import storage; storage never imports providers. Both speak only in
 domain models.
+
+The contest tool sits beside the client at the consumer layer:
+`contest_api → contest → storage` (odds DB read-only; contest state in its own
+SQLite file — D-020). It never imports providers, client, or collector.
 
 ## Domain models (`models.py`)
 

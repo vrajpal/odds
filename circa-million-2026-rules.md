@@ -240,12 +240,14 @@ Follows the existing dependency direction and reuses the current stack:
 
 ## Milestones
 
-- **C1 — Board**: NFL provider + collector wiring; weekly board showing
-  market spreads, manually entered contest lines, edge deltas, countdown.
+- **C1 — Board** *(done)*: NFL provider + collector wiring (landed upstream as
+  D-019); contest calendar with holiday line-post overrides; board API showing
+  market spreads, manually entered contest lines, edge deltas, movement since
+  entry, countdown (D-020).
 - **C2 — Consensus**: proposals (blind), reveal, voting, captain rotation,
-  card lock, ETSN tracking, Rule-8 deadline warnings.
+  card lock, ETSN tracking, Rule-8 deadline warnings on proposed cards.
 - **C3 — Season**: grading entry, tiebreaker ladder, quarter standings,
-  booby-guard alerts, Thanksgiving/Christmas overrides.
+  booby-guard alerts, frontend board UI.
 
 Target: C1 and C2 working before registration closes (Sep 12, 2026); C3
 before Week 1 grading.
