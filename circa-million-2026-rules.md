@@ -164,3 +164,88 @@ If entries exceed 6,000 ($6M in fees), 50% of the excess is split equally across
 - [PR Newswire: $30M no-rake announcement](https://www.prnewswire.com/news-releases/circa-sports-announces-record-breaking-30-million-no-rake-guarantee-for-circa-million-viii-circa-survivor-and-circa-grandissimo-2026-2027-professional-football-contests-302776618.html)
 - [Covers: Circa raises guarantees to $30M](https://www.covers.com/industry/circa-raises-guaranteed-money-football-contests-30m-may-19-2026)
 - [InGame: Circa Sports NFL contests 2026](https://www.ingame.com/circa-sports-nfl-contests-2026/)
+
+---
+
+# Consensus Web App — Plan
+
+A three-person pick'em consensus tool for our Circa Million VIII entry, built
+on this repo's odds database. It exists to run the weekly propose → vote →
+lock cycle described above, with the odds data providing the market context
+for each decision. Lives on branch `feature/contest-consensus-ui`.
+
+## What it does
+
+The app maps one-to-one onto the contest's weekly cycle:
+
+1. **Thursday ~10 AM PT** — contest lines post. One of us enters Circa's five
+   static contest spreads-of-interest (or the full slate) into the app by hand;
+   contest lines are contest-only numbers and can't be scraped from a normal
+   odds feed. The collector meanwhile polls market NFL spreads into the odds DB.
+2. **Thursday–Friday** — each member independently proposes candidate picks
+   with a one-line rationale. The app hides others' proposals until you've
+   submitted yours (blind first pass, no anchoring).
+3. **Friday–Saturday** — reveal: games all three proposed auto-lock. Remaining
+   slots go to majority vote. Deadlocks are decided by the week's captain
+   (rotation schedule stored in the app).
+4. **Lock** — the app freezes the five-pick card, shows who the captain is,
+   and tracks that the card was actually submitted at Circa (record the
+   12-digit ETSN as confirmation).
+
+## Edge finder (why the odds DB matters)
+
+The core analytical feature: for each game, show Circa's **static contest
+line** next to the **latest market spread** from the odds database, and the
+movement since Thursday's line post. A contest line the market has moved past
+(e.g. contest says -3.5, market now -5.5) is a value flag — that's the main
+quantitative edge available in this contest. Highlight moves across key
+numbers (3, 7). History comes from the append-only odds table via the
+existing `history` query path.
+
+## Deadline engine
+
+- Countdown to the effective deadline, computed per card: Saturday 4:00 PM PT
+  normally, but if any candidate pick kicks off earlier (TNF, December
+  Saturday slates), the whole card's deadline moves to that kickoff — the app
+  warns loudly when a proposal would pull the deadline forward (Rule 8).
+- Holiday-week overrides baked in: Thanksgiving (lines Wed Nov 25, card due
+  before ~9:30 AM PT Thu Nov 26) and Christmas week (lines Wed Dec 23).
+- Booby-prize guard: alert escalation if no card is locked by Saturday
+  10 AM PT — a missed week forfeits booby-prize eligibility permanently.
+
+## Season dashboard
+
+Weekly results entered after grading (wins/pushes/losses per pick), rolling
+into: season points, and the exact 1st-place tiebreaker ladder — total wins,
+winning weeks (>2.5 pts), 5-0 weeks, 4-0-1 weeks, 4-1 weeks — plus quarter
+standings per the Q1–Q4 week ranges.
+
+## Architecture
+
+Follows the existing dependency direction and reuses the current stack:
+
+- **NFL data**: new `NFLOddsProvider` alongside `TheOddsAPI` (The Odds API
+  sport key `americanfootball_nfl`, `spreads` market), plus an NFL team-code
+  mapping in `teams.py`. Needs a DECISIONS.md entry (sport generalization).
+  Quota math: lines only matter Thu–Sat, so ~3 polls/day on those days fits
+  the free tier alongside MLB.
+- **API layer**: extend the existing FastAPI app pattern (`api.py`) — odds DB
+  opened read-only, same as the current hardening rules.
+- **App state** (users, proposals, votes, locked cards, contest lines, ETSN
+  confirmations, captain rotation, graded results): a **separate SQLite file**
+  (`contest.sqlite`), so the odds DB stays a pure append-only market-data
+  store. Same migration-list pattern as `storage.py`.
+- **Frontend**: extend the existing React web UI. Three named users, no real
+  auth beyond a shared secret — this is a three-friend tool, not a product.
+
+## Milestones
+
+- **C1 — Board**: NFL provider + collector wiring; weekly board showing
+  market spreads, manually entered contest lines, edge deltas, countdown.
+- **C2 — Consensus**: proposals (blind), reveal, voting, captain rotation,
+  card lock, ETSN tracking, Rule-8 deadline warnings.
+- **C3 — Season**: grading entry, tiebreaker ladder, quarter standings,
+  booby-guard alerts, Thanksgiving/Christmas overrides.
+
+Target: C1 and C2 working before registration closes (Sep 12, 2026); C3
+before Week 1 grading.
