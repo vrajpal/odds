@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circa Million — Consensus</title>
+<style>
+  :root { --bg:#0f1420; --panel:#171e2e; --line:#2a3550; --text:#dde4f0; --dim:#8b96ad;
+          --accent:#5b9dff; --good:#3fce8b; --bad:#ff6b6b; --warn:#ffb454; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+           padding:14px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0 12px 0 0; }
+  .chip { background:var(--panel); border:1px solid var(--line); border-radius:16px;
+          padding:3px 12px; font-size:13px; color:var(--dim); }
+  .chip b { color:var(--text); }
+  #countdown b { color:var(--accent); font-variant-numeric:tabular-nums; }
+  #alert { display:none; background:#3a1d1d; color:var(--bad); border:1px solid var(--bad);
+           border-radius:6px; padding:6px 12px; font-weight:600; }
+  nav { display:flex; gap:4px; padding:10px 20px 0; }
+  nav button { background:none; border:none; color:var(--dim); font-size:15px;
+               padding:8px 14px; cursor:pointer; border-bottom:2px solid transparent; }
+  nav button.active { color:var(--text); border-color:var(--accent); }
+  main { padding:16px 20px 60px; max-width:1180px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line);
+           white-space:nowrap; }
+  th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase; }
+  tr:hover td { background:#1b2438; }
+  .num { font-variant-numeric:tabular-nums; }
+  .good { color:var(--good); font-weight:600; }
+  .bad { color:var(--bad); }
+  .warn { color:var(--warn); }
+  .dim { color:var(--dim); }
+  .tag { font-size:11px; border-radius:4px; padding:1px 7px; font-weight:700; }
+  .tag.unanimous { background:#153b2c; color:var(--good); }
+  .tag.majority { background:#16304f; color:var(--accent); }
+  .tag.contested { background:#3d2c14; color:var(--warn); }
+  .tag.early { background:#3a1d1d; color:var(--bad); }
+  input, select, textarea { background:#0d1220; color:var(--text); border:1px solid var(--line);
+          border-radius:5px; padding:5px 8px; font:inherit; }
+  input.spread { width:70px; }
+  button.action { background:var(--accent); color:#08101f; border:none; border-radius:6px;
+                  padding:7px 16px; font-weight:700; cursor:pointer; font:inherit; }
+  button.action:disabled { background:var(--line); color:var(--dim); cursor:not-allowed; }
+  button.side { background:#0d1220; color:var(--dim); border:1px solid var(--line);
+                border-radius:5px; padding:4px 10px; cursor:pointer; font:inherit; }
+  button.side.sel { background:var(--accent); color:#08101f; border-color:var(--accent); font-weight:700; }
+  .card-box { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+              padding:16px; margin:12px 0; }
+  .msg { margin:10px 0; min-height:22px; font-size:14px; }
+  h2 { font-size:15px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .stat .v { font-size:22px; font-weight:700; }
+  .stat .k { font-size:12px; color:var(--dim); }
+  @media (max-width:720px){ main{padding:10px} th,td{padding:5px 6px} }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏈 Circa Million</h1>
+  <span class="chip">week <b id="hdr-week">–</b></span>
+  <span class="chip">captain <b id="hdr-captain">–</b></span>
+  <span class="chip" id="countdown">deadline <b>–</b></span>
+  <span class="chip">you are
+    <select id="member"></select>
+  </span>
+  <span id="alert">⚠ No card locked — booby-prize eligibility at risk!</span>
+</header>
+<nav id="tabs">
+  <button data-tab="board" class="active">Board</button>
+  <button data-tab="propose">Propose</button>
+  <button data-tab="consensus">Consensus</button>
+  <button data-tab="card">Card</button>
+  <button data-tab="season">Season</button>
+</nav>
+<main>
+  <div id="tab-board">
+    <div class="msg dim">Circa lines are hand-entered (they post Thu 10 AM PT; Wed on holiday weeks).
+      Edge &gt; 0 → value on home at the contest number. ⏱ = early kickoff: picking it pulls the whole
+      card's deadline to that kickoff (Rule 8).</div>
+    <table id="board-table"><thead><tr>
+      <th>game</th><th>kickoff (PT)</th><th></th><th class="num">market</th>
+      <th class="num">circa line</th><th class="num">edge</th><th>value</th>
+      <th>keys</th><th class="num">drift</th><th></th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+
+  <div id="tab-propose" hidden>
+    <div class="msg dim">Pick up to five, blind — nobody sees anyone else's until their own are in.
+      One submission, no edits.</div>
+    <table id="propose-table"><thead><tr>
+      <th>game</th><th>kickoff</th><th class="num">circa line</th><th class="num">edge</th>
+      <th>your pick</th><th>note</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="msg" id="propose-msg"></div>
+    <button class="action" id="propose-submit">Submit proposals</button>
+    <div class="card-box" id="propose-status"></div>
+  </div>
+
+  <div id="tab-consensus" hidden>
+    <div class="msg" id="consensus-msg"></div>
+    <div id="consensus-body"></div>
+  </div>
+
+  <div id="tab-card" hidden>
+    <div id="card-body"></div>
+  </div>
+
+  <div id="tab-season" hidden>
+    <div id="season-body"></div>
+  </div>
+</main>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const api = async (path, opts) => {
+  const r = await fetch(path, opts ? {headers:{"Content-Type":"application/json"}, ...opts} : undefined);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : r.statusText);
+  return body;
+};
+const state = { week:null, board:null, me:localStorage.getItem("member") || null,
+                proposal:{}, notes:{} };
+
+const fmtSpread = v => v == null ? "–" : (v > 0 ? "+" + v : String(v));
+const gameLabel = g => `${g.away_team} @ ${g.home_team}`;
+const kickoff = iso => new Date(iso).toLocaleString("en-US",
+  {weekday:"short", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"});
+
+async function loadMembers() {
+  const data = await api("/api/contest/members");
+  const sel = $("#member");
+  sel.innerHTML = data.members.map(m => `<option>${m}</option>`).join("");
+  if (!state.me || !data.members.includes(state.me)) state.me = data.members[0];
+  sel.value = state.me;
+  sel.onchange = () => { state.me = sel.value; localStorage.setItem("member", state.me); refresh(); };
+  state.captains = data.captains;
+}
+
+async function loadBoard() {
+  const q = state.week ? `?week=${state.week}` : "";
+  try { state.board = await api("/api/contest/board" + q); }
+  catch (e) { // outside the season without ?week
+    state.week = 1; state.board = await api("/api/contest/board?week=1");
+  }
+  state.week = state.board.week;
+  $("#hdr-week").textContent = state.board.week;
+  $("#hdr-captain").textContent = state.board.captain;
+  $("#alert").style.display = state.board.booby_guard_alert ? "inline-block" : "none";
+  tickCountdown();
+  renderBoard(); renderPropose();
+}
+
+function tickCountdown() {
+  if (!state.board) return;
+  const secs = Math.floor((new Date(state.board.deadline) - Date.now()) / 1000);
+  const el = $("#countdown b");
+  if (secs <= 0) { el.textContent = "LOCKED"; el.style.color = "var(--bad)"; return; }
+  const d = Math.floor(secs/86400), h = Math.floor(secs%86400/3600), m = Math.floor(secs%3600/60);
+  el.textContent = (d ? d+"d " : "") + h + "h " + m + "m";
+}
+setInterval(tickCountdown, 30_000);
+
+function renderBoard() {
+  const tb = $("#board-table tbody");
+  tb.innerHTML = state.board.games.map(g => {
+    const edgeCls = g.edge > 0 ? "good" : g.edge < 0 ? "bad" : "dim";
+    return `<tr>
+      <td>${gameLabel(g)}</td>
+      <td class="dim">${kickoff(g.start_time)}</td>
+      <td>${g.early_kickoff ? '<span class="tag early">⏱ early</span>' : ""}</td>
+      <td class="num">${fmtSpread(g.consensus)}</td>
+      <td class="num"><input class="spread" data-game="${g.game_id}"
+          value="${g.contest_line ?? ""}" placeholder="—"></td>
+      <td class="num ${edgeCls}">${g.edge == null ? "–" : fmtSpread(g.edge)}</td>
+      <td>${g.value_side ?? ""}</td>
+      <td class="warn">${g.key_numbers.join(", ")}</td>
+      <td class="num">${g.movement_since_entry == null ? "–" : fmtSpread(g.movement_since_entry)}</td>
+      <td><button class="side" data-save="${g.game_id}">save</button></td>
+    </tr>`;
+  }).join("");
+  tb.querySelectorAll("[data-save]").forEach(btn => btn.onclick = async () => {
+    const gid = btn.dataset.save;
+    const val = tb.querySelector(`input[data-game="${gid}"]`).value;
+    try {
+      await api("/api/contest/lines", {method:"POST",
+        body: JSON.stringify({week: state.week, game_id: gid, home_spread: parseFloat(val)})});
+      await loadBoard();
+    } catch (e) { alert("line rejected: " + e.message); }
+  });
+}
+
+function renderPropose() {
+  const tb = $("#propose-table tbody");
+  tb.innerHTML = state.board.games.map(g => `<tr>
+    <td>${gameLabel(g)} ${g.early_kickoff ? '<span class="tag early">⏱</span>' : ""}</td>
+    <td class="dim">${kickoff(g.start_time)}</td>
+    <td class="num">${fmtSpread(g.contest_line)}</td>
+    <td class="num ${g.edge > 0 ? "good" : g.edge < 0 ? "bad" : "dim"}">${g.edge == null ? "–" : fmtSpread(g.edge)}</td>
+    <td>
+      <button class="side" data-pick="${g.game_id}" data-side="away">${g.away_team}</button>
+      <button class="side" data-pick="${g.game_id}" data-side="home">${g.home_team}</button>
+    </td>
+    <td><input data-note="${g.game_id}" placeholder="why" size="18"></td>
+  </tr>`).join("");
+  tb.querySelectorAll("[data-pick]").forEach(btn => btn.onclick = () => {
+    const gid = btn.dataset.pick, side = btn.dataset.side;
+    if (state.proposal[gid] === side) delete state.proposal[gid];
+    else if (state.proposal[gid] || Object.keys(state.proposal).length < 5) state.proposal[gid] = side;
+    else return alert("five picks max");
+    tb.querySelectorAll(`[data-pick="${gid}"]`).forEach(b =>
+      b.classList.toggle("sel", state.proposal[gid] === b.dataset.side));
+    $("#propose-msg").textContent = Object.keys(state.proposal).length + "/5 selected";
+  });
+  refreshProposeStatus();
+}
+
+async function refreshProposeStatus() {
+  try {
+    const p = await api(`/api/contest/proposals?week=${state.week}&member=${state.me}`);
+    const mine = p.proposals.filter(x => x.member === state.me);
+    const submitted = p.submitted.includes(state.me);
+    $("#propose-submit").disabled = submitted;
+    $("#propose-status").innerHTML =
+      `<b>submitted:</b> ${p.submitted.join(", ") || "nobody yet"} ·
+       <b>waiting on:</b> ${p.waiting_on.join(", ") || "—"}` +
+      (submitted ? `<br><b>your picks:</b> ` + mine.map(x =>
+        `${x.game_id} <b>${x.side}</b>${x.note ? " ("+x.note+")" : ""}`).join(" · ") : "");
+  } catch (e) { $("#propose-status").textContent = e.message; }
+}
+
+$("#propose-submit").onclick = async () => {
+  const picks = Object.entries(state.proposal).map(([game_id, side]) => ({
+    game_id, side, note: document.querySelector(`[data-note="${game_id}"]`)?.value || ""}));
+  if (!picks.length) return alert("select at least one pick");
+  if (!confirm(`Submit ${picks.length} pick(s) as ${state.me}? This is one-shot and final.`)) return;
+  try {
+    await api("/api/contest/proposals", {method:"POST",
+      body: JSON.stringify({week: state.week, member: state.me, picks})});
+    state.proposal = {}; refreshProposeStatus(); showTab("consensus"); loadConsensus();
+  } catch (e) { alert(e.message); }
+};
+
+async function loadConsensus() {
+  const box = $("#consensus-body"), msg = $("#consensus-msg");
+  box.innerHTML = ""; msg.textContent = "";
+  let c;
+  try { c = await api(`/api/contest/consensus?week=${state.week}&member=${state.me}`); }
+  catch (e) { msg.innerHTML = `<span class="warn">${e.message}</span>`; return; }
+  const pulled = c.deadline_pulled_forward_by;
+  msg.innerHTML =
+    `captain: <b>${c.captain}</b> · effective deadline: <b>${new Date(c.effective_deadline).toLocaleString()}</b>` +
+    (pulled ? ` <span class="tag early">pulled forward by ${pulled} (Rule 8)</span>` : "") +
+    (c.card_locked ? ' · <span class="tag unanimous">CARD LOCKED</span>' : "");
+  box.innerHTML = `<table><thead><tr><th>#</th><th>game</th><th>side</th><th>backers</th>
+    <th>status</th><th>vote</th></tr></thead><tbody>` +
+    c.candidates.map((cand, i) => `<tr>
+      <td class="dim">${i < 5 ? "▶ " + (i+1) : ""}</td>
+      <td>${cand.game_id}</td><td><b>${cand.side}</b></td>
+      <td class="dim">${cand.backers.join(", ")}</td>
+      <td><span class="tag ${cand.status}">${cand.status}</span></td>
+      <td>${c.card_locked ? "" :
+        `<button class="side" data-vote="${cand.game_id}" data-vside="home">home</button>
+         <button class="side" data-vote="${cand.game_id}" data-vside="away">away</button>`}</td>
+    </tr>`).join("") + "</tbody></table>" +
+    (c.card_locked ? "" : `<div class="card-box">
+       <b>Working card</b> (top 5 — captain locks):<br>` +
+       c.working_card.map(w => `${w.game_id} <b>${w.side}</b>`).join(" · ") +
+       `<br><br><button class="action" id="lock-card">Lock this card as ${state.me}</button></div>`);
+  box.querySelectorAll("[data-vote]").forEach(btn => btn.onclick = async () => {
+    try {
+      await api("/api/contest/votes", {method:"POST", body: JSON.stringify(
+        {week: state.week, member: state.me, game_id: btn.dataset.vote, side: btn.dataset.vside})});
+      loadConsensus();
+    } catch (e) { alert(e.message); }
+  });
+  const lockBtn = $("#lock-card");
+  if (lockBtn) lockBtn.onclick = async () => {
+    if (c.working_card.length !== 5) return alert("need exactly 5 candidates in the working card");
+    if (!confirm("Lock these five? This mirrors Circa's one-submission rule — no changes after.")) return;
+    try {
+      await api("/api/contest/card", {method:"POST", body: JSON.stringify({week: state.week,
+        member: state.me, picks: c.working_card.map(w => ({game_id: w.game_id, side: w.side}))})});
+      showTab("card"); loadCard(); loadBoard();
+    } catch (e) { alert(e.message); }
+  };
+}
+
+async function loadCard() {
+  const box = $("#card-body");
+  let card;
+  try { card = await api(`/api/contest/card?week=${state.week}`); }
+  catch (e) { box.innerHTML = `<div class="msg dim">No card locked for week ${state.week} yet — build one on the Consensus tab.</div>`; return; }
+  box.innerHTML = `<div class="card-box">
+    <b>Week ${card.week} card</b> · locked by ${card.locked_by} at ${new Date(card.locked_at).toLocaleString()}<br>
+    effective deadline: ${new Date(card.effective_deadline).toLocaleString()}<br><br>
+    <table><thead><tr><th>game</th><th>side</th><th>result</th><th>grade</th></tr></thead><tbody>` +
+    card.picks.map(p => `<tr><td>${p.game_id}</td><td><b>${p.side}</b></td>
+      <td class="${p.result === "win" ? "good" : p.result === "loss" ? "bad" : "dim"}">${p.result ?? "–"}</td>
+      <td><select data-grade="${p.game_id}">
+        <option value="">–</option><option>win</option><option>loss</option><option>push</option>
+      </select></td></tr>`).join("") +
+    `</tbody></table><br>
+    <button class="action" id="save-grades">Save grades</button> ·
+    ETSN: <input id="etsn" value="${card.etsn ?? ""}" placeholder="12-digit ticket serial" size="16">
+    <button class="side" id="save-etsn">save</button>
+    ${card.etsn ? '<span class="tag unanimous">✓ submitted at Circa</span>' : '<span class="tag contested">no ETSN — submit at Circa & record it</span>'}
+  </div>`;
+  $("#save-grades").onclick = async () => {
+    const results = {};
+    box.querySelectorAll("[data-grade]").forEach(s => { if (s.value) results[s.dataset.grade] = s.value; });
+    if (!Object.keys(results).length) return;
+    try {
+      await api("/api/contest/results", {method:"POST",
+        body: JSON.stringify({week: state.week, results})});
+      loadCard();
+    } catch (e) { alert(e.message); }
+  };
+  $("#save-etsn").onclick = async () => {
+    try {
+      await api("/api/contest/card", {method:"PATCH",
+        body: JSON.stringify({week: state.week, etsn: $("#etsn").value})});
+      loadCard();
+    } catch (e) { alert(e.message); }
+  };
+}
+
+async function loadSeason() {
+  const s = await api("/api/contest/season");
+  const t = s.tiebreakers;
+  $("#season-body").innerHTML = `
+    <div class="grid">
+      <div class="stat"><div class="v">${s.total_points}</div><div class="k">season points</div></div>
+      <div class="stat"><div class="v">${t.total_wins}</div><div class="k">total wins (TB1)</div></div>
+      <div class="stat"><div class="v">${t.winning_weeks}</div><div class="k">winning weeks &gt;2.5 (TB2)</div></div>
+      <div class="stat"><div class="v">${t.weeks_5_0}</div><div class="k">5-0 weeks (TB3)</div></div>
+      <div class="stat"><div class="v">${t.weeks_4_0_1} / ${t.weeks_4_1}</div><div class="k">4-0-1 / 4-1 weeks (TB4/5)</div></div>
+      <div class="stat"><div class="v" class="${s.booby_eligible ? "good" : "bad"}">${s.booby_eligible ? "✓" : "✗"}</div>
+        <div class="k">booby eligible</div></div>
+    </div>
+    <h2>Quarters ($150k MVP each)</h2>
+    <div class="grid">${Object.entries(s.quarters).map(([q, pts]) =>
+      `<div class="stat"><div class="v">${pts}</div><div class="k">Q${q} points</div></div>`).join("")}</div>
+    <h2>Weeks</h2>
+    <table><thead><tr><th>week</th><th>record</th><th class="num">points</th><th>graded</th></tr></thead>
+    <tbody>${s.weeks.map(w => `<tr><td>${w.week}</td>
+      <td>${w.wins}-${w.losses}${w.pushes ? "-" + w.pushes : ""}</td>
+      <td class="num">${w.points}</td>
+      <td class="dim">${w.graded}/${w.picks}</td></tr>`).join("")}</tbody></table>`;
+}
+
+function showTab(name) {
+  document.querySelectorAll("#tabs button").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === name));
+  ["board","propose","consensus","card","season"].forEach(t =>
+    $("#tab-" + t).hidden = t !== name);
+}
+$("#tabs").onclick = e => {
+  const tab = e.target.dataset?.tab;
+  if (!tab) return;
+  showTab(tab);
+  if (tab === "consensus") loadConsensus();
+  if (tab === "card") loadCard();
+  if (tab === "season") loadSeason();
+};
+
+async function refresh() { await loadBoard(); refreshProposeStatus(); }
+(async () => { await loadMembers(); await refresh(); })();
+</script>
+</body>
+</html>

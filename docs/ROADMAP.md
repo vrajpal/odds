@@ -68,7 +68,7 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
       holiday line posts), ContestStore for manual Circa lines (own DB, D-020),
       edge/consensus/movement math over the NFL odds DB, contest_api board +
       line entry endpoints with countdown
-- [ ] C2 — Consensus: blind proposals, reveal, voting, captain rotation, card
-      lock, ETSN tracking, Rule-8 early-deadline warnings on proposed cards
-- [ ] C3 — Season: grading entry, 1st-place tiebreaker ladder, quarter
-      standings, booby-guard alerts, frontend board UI
+- [x] C2 — Consensus: blind one-shot proposals, reveal, stance voting,
+      captain rotation, card lock with Rule-8 enforcement, ETSN tracking (D-021)
+- [x] C3 — Season: grading entry, 1st-place tiebreaker ladder, quarter
+      standings, booby-guard alerts, static contest UI at / (D-021)

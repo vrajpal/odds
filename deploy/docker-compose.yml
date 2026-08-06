@@ -42,6 +42,9 @@ services:
   contest-api:
     build: ..
     command: uvicorn mlb_odds.contest_api:app --host 127.0.0.1 --port 8001
+    environment:
+      # Ordered: position defines the weekly captain rotation.
+      CONTEST_MEMBERS: ${CONTEST_MEMBERS:-player1,player2,player3}
     network_mode: service:tailscale
     depends_on:
       tailscale:

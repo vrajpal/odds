@@ -21,6 +21,8 @@ services:
   contest-api:
     build: .
     command: uvicorn mlb_odds.contest_api:app --host 0.0.0.0 --port 8001
+    environment:
+      CONTEST_MEMBERS: ${CONTEST_MEMBERS:-player1,player2,player3}
     volumes:
       - ./data:/data
     ports:
