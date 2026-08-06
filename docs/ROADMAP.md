@@ -60,8 +60,10 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] NFL game lines: sport-parameterized providers (The Odds API + ESPN),
       32-team registry, `spread` market, per-sport databases, `--sport` on every
       CLI command (D-019)
-- [ ] NFL player props (needs its own market curation + fixture recording)
-- [ ] Web API/UI sport switcher (server currently serves the MLB database only)
+- [x] NFL player props: four curated O/U ladders, sport-gated markets,
+      edited fixture pending in-season re-recording (D-022)
+- [x] Web API/UI sport switcher: `?sport=` on every data endpoint, per-sport
+      databases, MLB/NFL toggle in the React UI (D-022)
 
 ## C — Circa Million consensus tool (see circa-million-2026-rules.md)
 - [x] C1 — Board: contest calendar (Rule 19 weeks, Sat 4 PM PT deadline,

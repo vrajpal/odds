@@ -1,33 +1,43 @@
-"""FastAPI server for MLB odds — REST API and static frontend."""
+"""FastAPI server for MLB/NFL odds — REST API and static frontend.
+
+Every data endpoint takes `?sport=mlb|nfl` (default mlb) and reads that
+sport's own database (D-019: one file per sport)."""
 
 import logging
 import os
 import sqlite3
 from datetime import datetime, time, timedelta, tzinfo
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from mlb_odds.client import OddsClient
-from mlb_odds.models import Quote
+from mlb_odds.models import Quote, Sport
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="MLB Odds API", description="REST API for MLB betting odds")
+app = FastAPI(title="Odds API", description="REST API for MLB/NFL betting odds")
+
+_DB_ENV = {"mlb": "MLB_ODDS_DB", "nfl": "NFL_ODDS_DB"}
+_DB_DEFAULT = {"mlb": "./odds.sqlite", "nfl": "./nfl-odds.sqlite"}
+# The board's middle column is one semantic market with sport-local names.
+_SPREAD_MARKET = {"mlb": "run_line", "nfl": "spread"}
 
 
-def _resolve_db() -> Path:
+def _resolve_db(sport: Sport) -> Path:
     """The database path is deployment configuration, never request input.
 
     An earlier revision exposed this as a `db` query parameter on every
     endpoint. Because Storage opens read-write and migrates, that let any
     unauthenticated GET create a SQLite file at an arbitrary path, or add this
-    schema to an unrelated SQLite database on the host. Server-side only.
+    schema to an unrelated SQLite database on the host. Server-side only —
+    the request only picks which sport's configured database to read (D-019).
     """
-    env = os.environ.get("MLB_ODDS_DB")
-    return Path(env) if env else Path("./odds.sqlite")
+    env = os.environ.get(_DB_ENV[sport])
+    return Path(env) if env else Path(_DB_DEFAULT[sport])
 
 
 def _local_tz() -> tzinfo:
@@ -48,19 +58,20 @@ def _local_day_window(tz: tzinfo) -> tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
-def _get_client() -> OddsClient:
-    """Read-only, provider-less client.
+def _get_client(sport: Sport) -> OddsClient:
+    """Read-only, provider-less client for one sport's database.
 
     `providers=[]` is what keeps HTTP traffic from reaching The Odds API and
     burning metered credits; OddsClient enforces that read_only and providers
     are mutually exclusive so this can't regress silently.
     """
     try:
-        return OddsClient(providers=[], db=_resolve_db(), read_only=True)
+        return OddsClient(providers=[], db=_resolve_db(sport), read_only=True)
     except sqlite3.OperationalError as exc:
+        flag = "" if sport == "mlb" else f" --sport {sport}"
         raise HTTPException(
             status_code=503,
-            detail="Odds database unavailable. Run `mlb-odds collect --once` to create it.",
+            detail=f"Odds database unavailable. Run `mlb-odds collect --once{flag}` to create it.",
         ) from exc
 
 
@@ -91,9 +102,9 @@ class GameBoard(BaseModel):
 
 
 @app.get("/api/today", response_model=list[GameBoard])
-def get_today() -> list[GameBoard]:
-    """Get today's games with latest odds per book."""
-    client = _get_client()
+def get_today(sport: Literal["mlb", "nfl"] = "mlb") -> list[GameBoard]:
+    """Get today's games with latest odds per book, from the sport's database."""
+    client = _get_client(sport)
     try:
         tz = _local_tz()
         # Narrow in SQL. Fetching every snapshot ever stored and filtering in
@@ -119,9 +130,10 @@ def get_today() -> list[GameBoard]:
 
             for book in {q.book for q in go.quotes}:
                 quotes = [q for q in go.quotes if q.book == book]
+                spread_market = _SPREAD_MARKET[sport]
                 result[game_id].books[book] = {
                     "moneyline": _fmt_moneyline(quotes),
-                    "run_line": _fmt_run_line(quotes),
+                    spread_market: _fmt_spread(quotes, spread_market),
                     "total": _fmt_total(quotes),
                 }
 
@@ -131,9 +143,9 @@ def get_today() -> list[GameBoard]:
 
 
 @app.get("/api/games/{game_id}/history")
-def get_game_history(game_id: str) -> dict[str, object]:
-    """Get line movement history for a game."""
-    client = _get_client()
+def get_game_history(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> dict[str, object]:
+    """Get line movement history for a game from the sport's database."""
+    client = _get_client(sport)
     try:
         df = client.history_df(game_id)
         if df.empty:
@@ -150,12 +162,12 @@ def get_game_history(game_id: str) -> dict[str, object]:
 
 
 @app.get("/api/export")
-def export_odds(fmt: str = "csv") -> dict[str, object]:
-    """Export all odds to CSV or JSON."""
+def export_odds(fmt: str = "csv", sport: Literal["mlb", "nfl"] = "mlb") -> dict[str, object]:
+    """Export all stored odds for one sport to CSV or JSON."""
     if fmt not in ("csv", "json"):
         raise HTTPException(status_code=400, detail="format must be 'csv' or 'json'")
 
-    client = _get_client()
+    client = _get_client(sport)
     try:
         df = client.odds_df()
         if df.empty:
@@ -185,8 +197,8 @@ def _fmt_moneyline(quotes: list[Quote]) -> str:
     return f"{away.price:+d}/{home.price:+d}"
 
 
-def _fmt_run_line(quotes: list[Quote]) -> str:
-    home = _find(quotes, "run_line", "home")
+def _fmt_spread(quotes: list[Quote], market: str) -> str:
+    home = _find(quotes, market, "home")
     if home is None or home.line is None:
         return "-"
     return f"{home.line:+.1f} ({home.price:+d})"

@@ -16,6 +16,7 @@ import httpx
 from mlb_odds import teams
 from mlb_odds.models import (
     PROP_MARKETS,
+    PROP_MARKETS_BY_SPORT,
     Game,
     GameOdds,
     Market,
@@ -83,12 +84,12 @@ class TheOddsAPI:
         games on a slate, one two-market sweep can cost up to ~30 credits —
         the CLI prints the worst case before spending.
         """
-        if self._sport != "mlb":
-            raise ProviderError("player props are implemented for MLB only (D-019)")
-        unknown = [m for m in markets if m not in PROP_MARKETS]
+        supported = PROP_MARKETS_BY_SPORT[self._sport]
+        unknown = [m for m in markets if m not in supported]
         if unknown:
             raise ProviderError(
-                f"unsupported prop market(s) {unknown}; supported: {list(PROP_MARKETS)}"
+                f"unsupported {self._sport} prop market(s) {unknown};"
+                f" supported: {list(supported)}"
             )
         events = self._request_json(self._events_url, {"apiKey": self._api_key})
         fetched_at = datetime.now(UTC)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import '../styles/TodayBoard.css'
 
-function TodayBoard({ onSelectGame }) {
+function TodayBoard({ sport, onSelectGame }) {
   const [games, setGames] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -10,7 +10,7 @@ function TodayBoard({ onSelectGame }) {
     const fetchToday = async () => {
       try {
         setLoading(true)
-        const response = await fetch('/api/today')
+        const response = await fetch(`/api/today?sport=${sport}`)
         if (!response.ok) throw new Error('Failed to fetch today\'s odds')
         const data = await response.json()
         setGames(data)
@@ -26,11 +26,11 @@ function TodayBoard({ onSelectGame }) {
     fetchToday()
     const interval = setInterval(fetchToday, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [sport])
 
   if (loading) return <div className="loading">Loading today's odds...</div>
   if (error) return <div className="error">Error: {error}</div>
-  if (games.length === 0) return <div className="empty">No games today. Run `mlb-odds collect --once` first.</div>
+  if (games.length === 0) return <div className="empty">No games today. Run `mlb-odds collect --once{sport === 'nfl' ? ' --sport nfl' : ''}` first.</div>
 
   return (
     <div className="today-board">
@@ -58,7 +58,7 @@ function TodayBoard({ onSelectGame }) {
               <tr>
                 <th>Book</th>
                 <th>Moneyline</th>
-                <th>Run Line</th>
+                <th>{sport === 'nfl' ? 'Spread' : 'Run Line'}</th>
                 <th>Total</th>
               </tr>
             </thead>
@@ -67,7 +67,7 @@ function TodayBoard({ onSelectGame }) {
                 <tr key={book}>
                   <td className="book-name">{book}</td>
                   <td>{odds.moneyline}</td>
-                  <td>{odds.run_line}</td>
+                  <td>{sport === 'nfl' ? odds.spread : odds.run_line}</td>
                   <td>{odds.total}</td>
                 </tr>
               ))}

@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from mlb_odds import collector
 from mlb_odds.client import OddsClient
-from mlb_odds.models import PROP_MARKETS, GameOdds, Market, Quote
+from mlb_odds.models import PROP_MARKETS_BY_SPORT, GameOdds, Market, Quote
 from mlb_odds.providers import ESPN, OddsProvider, ProviderError, TheOddsAPI
 
 app = typer.Typer(
@@ -153,8 +153,9 @@ def props(
         list[str],
         typer.Option(
             "--market",
-            help="Prop market key (repeatable): "
-            "batter_home_runs, batter_hits, batter_total_bases, pitcher_strikeouts.",
+            help="Prop market key (repeatable). MLB: batter_home_runs, batter_hits, "
+            "batter_total_bases, pitcher_strikeouts. NFL: player_pass_yds, "
+            "player_pass_tds, player_rush_yds, player_receptions.",
         ),
     ],
     changed_only: Annotated[
@@ -176,18 +177,17 @@ def props(
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    if sport is not SportChoice.mlb:
-        typer.echo("error: player props are implemented for MLB only (D-019)", err=True)
-        raise typer.Exit(2)
-    bad = [m for m in market if m not in PROP_MARKETS]
+    supported = PROP_MARKETS_BY_SPORT[sport.value]
+    bad = [m for m in market if m not in supported]
     if bad:
         typer.echo(
-            f"error: unsupported prop market(s) {bad}; choose from {list(PROP_MARKETS)}",
+            f"error: unsupported {sport.value} prop market(s) {bad};"
+            f" choose from {list(supported)}",
             err=True,
         )
         raise typer.Exit(2)
     try:
-        provider = TheOddsAPI()
+        provider = TheOddsAPI(sport=sport.value)
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None

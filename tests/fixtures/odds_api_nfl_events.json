@@ -1,0 +1,18 @@
+[
+  {
+    "id": "8f2c1e6d90a4b37e5512cd08a9271f44",
+    "sport_key": "americanfootball_nfl",
+    "sport_title": "NFL",
+    "commence_time": "2026-09-10T00:15:00Z",
+    "home_team": "Seattle Seahawks",
+    "away_team": "New England Patriots"
+  },
+  {
+    "id": "b45c9d0e11f2837a6643ab19c0384e55",
+    "sport_key": "americanfootball_nfl",
+    "sport_title": "NFL",
+    "commence_time": "2026-09-13T17:00:00Z",
+    "home_team": "Pittsburgh Steelers",
+    "away_team": "Atlanta Falcons"
+  }
+]

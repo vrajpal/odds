@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import LineMovement from './LineMovement'
 import '../styles/GameHistory.css'
 
-function GameHistory({ gameId }) {
+function GameHistory({ sport, gameId }) {
   const [history, setHistory] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -13,7 +13,7 @@ function GameHistory({ gameId }) {
     const fetchHistory = async () => {
       try {
         setLoading(true)
-        const response = await fetch(`/api/games/${gameId}/history`)
+        const response = await fetch(`/api/games/${gameId}/history?sport=${sport}`)
         if (!response.ok) throw new Error('Failed to fetch game history')
         const data = await response.json()
         setHistory(data)
@@ -27,7 +27,7 @@ function GameHistory({ gameId }) {
     }
 
     fetchHistory()
-  }, [gameId])
+  }, [gameId, sport])
 
   if (!gameId) {
     return <div className="empty">Select a game to view line movement history</div>

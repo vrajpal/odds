@@ -135,8 +135,10 @@ Each sport lives in its **own database** (MLB `KC` and NFL `KC` are different
 franchises that would collide on canonical game ids — D-019). The Odds API
 quota is shared across sports: an NFL poll costs the same 3 credits. In the
 library, pass `sport=` to a provider: `TheOddsAPI(sport="nfl")`,
-`ESPN(sport="nfl")`. Not yet covered for NFL: player props, and the web UI
-(which serves the MLB database).
+`ESPN(sport="nfl")`. NFL props: `mlb-odds props --sport nfl --market
+player_pass_yds` (curated: player_pass_yds, player_pass_tds, player_rush_yds,
+player_receptions). The web UI has an MLB/NFL toggle; every API endpoint takes
+`?sport=` (D-022).
 
 Cron example (5 polls/day, free-tier friendly) — cron runs with a bare
 environment, so keep the key in a `.env` next to the project and `cd` there first:

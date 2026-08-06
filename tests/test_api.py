@@ -237,3 +237,55 @@ def test_root_returns_json_when_no_dist(seeded_db, tmp_path, monkeypatch):
 
 def test_export_rejects_bad_format(client):
     assert client.get("/api/export?fmt=xml").status_code == 400
+
+
+class TestSportSwitcher:
+    """?sport= reads that sport's own database (D-019) and renders its
+    spread-market name."""
+
+    @pytest.fixture
+    def nfl_db(self, tmp_path, monkeypatch):
+        from conftest import make_nfl_spread_odds
+
+        db = tmp_path / "nfl-odds.sqlite"
+        storage = Storage(db)
+        storage.store(
+            [
+                make_nfl_spread_odds(
+                    {"circa": -3.5},
+                    datetime.now(UTC),
+                    start_time=datetime.now(UTC) + timedelta(hours=3),
+                )
+            ]
+        )
+        storage.close()
+        monkeypatch.setenv("NFL_ODDS_DB", str(db))
+        return db
+
+    def test_nfl_board_uses_spread_key(self, client, nfl_db):
+        body = client.get("/api/today", params={"sport": "nfl"}).json()
+        (game,) = body
+        assert game["game"]["away_team"] == "KC"
+        (odds,) = game["books"].values()
+        assert set(odds) == {"moneyline", "spread", "total"}
+        assert odds["spread"] == "-3.5 (-110)"
+
+    def test_mlb_board_still_uses_run_line_key(self, client):
+        body = client.get("/api/today").json()
+        if body:  # seeded MLB game may not be "today" — key shape is the point
+            assert "run_line" in next(iter(body[0]["books"].values()))
+
+    def test_sports_read_separate_databases(self, client, nfl_db):
+        nfl = client.get("/api/today", params={"sport": "nfl"}).json()
+        mlb_ids = {g["game"]["game_id"] for g in client.get("/api/today").json()}
+        assert {g["game"]["game_id"] for g in nfl}.isdisjoint(mlb_ids)
+
+    def test_invalid_sport_is_422(self, client):
+        assert client.get("/api/today", params={"sport": "nhl"}).status_code == 422
+
+    def test_missing_nfl_db_503_names_the_flag(self, tmp_path, monkeypatch, seeded_db):
+        monkeypatch.setenv("NFL_ODDS_DB", str(tmp_path / "absent" / "nfl.sqlite"))
+        c = TestClient(api.app, raise_server_exceptions=False)
+        resp = c.get("/api/today", params={"sport": "nfl"})
+        assert resp.status_code == 503
+        assert "--sport nfl" in resp.json()["detail"]

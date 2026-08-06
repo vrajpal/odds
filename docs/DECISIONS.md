@@ -312,3 +312,24 @@ auth beyond that: the tailnet is the security boundary (D-020).
 API routes — same shadowing lesson as api.py). No build step, no framework:
 one HTML file with fetch calls is serviceable for three users and keeps the
 image build free of a second frontend toolchain.
+
+## D-022 — M5 completion: NFL props curation, web sport switcher (2026-08-06)
+**NFL prop markets** are curated to four over/under ladders (player_pass_yds,
+player_pass_tds, player_rush_yds, player_receptions) — the same shape as the
+MLB ladders (name=Over/Under, description=player, point=line), so one parser
+serves both sports; non-O/U outcomes (e.g. Anytime TD) are logged skips.
+Markets are gated per sport at both the provider and the CLI: requesting an
+MLB key against NFL fails before any credit is spent.
+
+**Fixture is edited, not recorded** — and that is documented in the fixture
+itself: NFL player props simply are not posted months before game day (the
+live probe on 2026-08-06 returned zero bookmakers for the opener). The event
+metadata is a real recording from the free events endpoint; the ladders are
+hand-authored in the exact shape of the recorded MLB props response. Re-record
+a live fixture once the season is close enough for books to hang props.
+
+**Web sport switcher**: every data endpoint takes `?sport=mlb|nfl` (default
+mlb). The request picks *which* server-configured database is read — never a
+path (D-012 unchanged); each sport keeps its own file per D-019. The board's
+middle column keeps its sport-local name in the payload (`run_line` vs
+`spread`) and the React UI switches label and key with the toggle.

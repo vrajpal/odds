@@ -6,13 +6,22 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 GAME_MARKETS = ("moneyline", "run_line", "total", "spread")
-# Curated player-prop markets (The Odds API keys, D-018). Extend deliberately:
-# each addition multiplies per-event credit cost.
-PROP_MARKETS = ("batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts")
+# Curated player-prop markets (The Odds API keys, D-018/D-022), per sport.
+# Extend deliberately: each addition multiplies per-event credit cost. All
+# curated markets are over/under ladders (name=Over/Under, description=player,
+# point=line) so one parser serves both sports.
+MLB_PROP_MARKETS = ("batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts")
+NFL_PROP_MARKETS = ("player_pass_yds", "player_pass_tds", "player_rush_yds", "player_receptions")
+PROP_MARKETS_BY_SPORT: dict[str, tuple[str, ...]] = {
+    "mlb": MLB_PROP_MARKETS,
+    "nfl": NFL_PROP_MARKETS,
+}
+PROP_MARKETS = MLB_PROP_MARKETS + NFL_PROP_MARKETS
 
 Market = Literal[
     "moneyline", "run_line", "total", "spread",
     "batter_home_runs", "batter_hits", "batter_total_bases", "pitcher_strikeouts",
+    "player_pass_yds", "player_pass_tds", "player_rush_yds", "player_receptions",
 ]
 Outcome = Literal["home", "away", "over", "under"]
 Sport = Literal["mlb", "nfl"]
