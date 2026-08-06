@@ -157,6 +157,7 @@ API runs on `http://localhost:8000` with endpoints:
 - `GET /api/today` — today's games with latest odds per book (JSON)
 - `GET /api/games/{game_id}/history` — line movement history
 - `GET /api/export?fmt=csv|json` — export all stored odds
+- `GET /api/health` — health check (`/` serves the built frontend, not JSON)
 
 The API reads an existing database and never creates, migrates, or writes one —
 run `mlb-odds collect --once` first or it returns 503. Its path comes from
@@ -183,7 +184,9 @@ npm run build                    # outputs to frontend/dist/
 python run_api.py               # serves frontend from /
 ```
 
-Open `http://localhost:8000` in your browser.
+Open `http://localhost:8000` in your browser. The API serves `frontend/dist/`
+at `/` when it exists (set `MLB_ODDS_FRONTEND_DIST` to serve a build from
+elsewhere); without a build, `/` returns JSON pointing at `/docs`.
 
 ## Library
 
