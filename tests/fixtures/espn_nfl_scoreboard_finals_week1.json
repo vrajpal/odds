@@ -1,0 +1,41 @@
+{
+  "_comment": "EDITED FIXTURE (D-022 precedent): a 2026 NFL week-1 Sunday as it would appear after the games — real 2026 finals cannot exist yet. Shape mirrors the real recorded espn_mlb_scoreboard_final.json (live 2026-08-06): competitors carry score strings, status.type.completed marks finals. SF@SEA is deliberately in progress.",
+  "events": [
+    {
+      "id": "401700001",
+      "date": "2026-09-13T17:00Z",
+      "status": { "type": { "completed": true, "name": "STATUS_FINAL" } },
+      "competitions": [ { "competitors": [
+        { "homeAway": "home", "team": { "displayName": "Los Angeles Chargers" }, "score": "27" },
+        { "homeAway": "away", "team": { "displayName": "Kansas City Chiefs" }, "score": "20" }
+      ] } ]
+    },
+    {
+      "id": "401700002",
+      "date": "2026-09-13T17:00Z",
+      "status": { "type": { "completed": true, "name": "STATUS_FINAL" } },
+      "competitions": [ { "competitors": [
+        { "homeAway": "home", "team": { "displayName": "Miami Dolphins" }, "score": "20" },
+        { "homeAway": "away", "team": { "displayName": "Buffalo Bills" }, "score": "23" }
+      ] } ]
+    },
+    {
+      "id": "401700003",
+      "date": "2026-09-13T17:00Z",
+      "status": { "type": { "completed": true, "name": "STATUS_FINAL" } },
+      "competitions": [ { "competitors": [
+        { "homeAway": "home", "team": { "displayName": "New York Giants" }, "score": "10" },
+        { "homeAway": "away", "team": { "displayName": "Dallas Cowboys" }, "score": "30" }
+      ] } ]
+    },
+    {
+      "id": "401700004",
+      "date": "2026-09-13T20:25Z",
+      "status": { "type": { "completed": false, "name": "STATUS_IN_PROGRESS" } },
+      "competitions": [ { "competitors": [
+        { "homeAway": "home", "team": { "displayName": "Seattle Seahawks" }, "score": "14" },
+        { "homeAway": "away", "team": { "displayName": "San Francisco 49ers" }, "score": "10" }
+      ] } ]
+    }
+  ]
+}

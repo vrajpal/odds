@@ -30,7 +30,9 @@ domain models.
 
 The contest tool sits beside the client at the consumer layer:
 `contest_api → contest → storage` (odds DB read-only; contest state in its own
-SQLite file — D-020). It never imports providers, client, or collector.
+SQLite file — D-020), plus `contest_api → providers.espn` for auto-grading
+finals (D-023) — the API layer constructing a provider mirrors the CLI. The
+contest domain module never imports providers, client, or collector.
 
 ## Domain models (`models.py`)
 

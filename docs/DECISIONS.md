@@ -333,3 +333,25 @@ mlb). The request picks *which* server-configured database is read — never a
 path (D-012 unchanged); each sport keeps its own file per D-019. The board's
 middle column keeps its sport-local name in the payload (`run_line` vs
 `spread`) and the React UI switches label and key with the toggle.
+
+## D-023 — Auto-grading from ESPN finals (2026-08-06)
+Grading a card is pure arithmetic against the static Circa number, so the
+split is: `contest.grade_pick()` is pure math (home covers when margin +
+home spread > 0; exactly on the number is a push), `ESPN.fetch_final_scores()`
+is a provider method (free, unmetered, `?dates=YYYYMMDD` — ESPN groups
+scoreboard days in US/Eastern), and contest_api orchestrates: it fetches each
+pick-date's slate, matches by canonical team codes, grades picks that have
+both a contest line and a completed game, and reports everything else as a
+skip with a reason (no line entered / not final / no score found). Re-running
+regrades — corrected scores overwrite, in-progress games keep waiting.
+
+This adds the one dependency contest_api didn't have: it now constructs the
+ESPN provider (`contest_api → contest → storage` plus `contest_api →
+providers.espn`), mirroring how the CLI constructs providers; the contest
+domain module stays provider-free. ARCHITECTURE.md updated.
+
+Forfeits are the known gap: the NFL awards a W/L with no final score, and
+rules 19a grades the NFL-deemed winner as covering — that case stays manual.
+Fixtures: the completed-slate parse test runs against a real recorded MLB
+final slate (2026-08-05, trimmed); the NFL week-1 finals fixture is edited
+(labeled in-file) because 2026 finals cannot exist yet.

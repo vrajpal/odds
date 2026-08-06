@@ -12,12 +12,15 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from mlb_odds import contest
+from mlb_odds.providers.base import ProviderError
+from mlb_odds.providers.espn import ESPN
 from mlb_odds.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -661,6 +664,101 @@ def get_season() -> SeasonOut:
         ),
         quarters=quarters,
         booby_eligible=booby,
+    )
+
+
+def _finals_source() -> ESPN:
+    """Constructor seam (monkeypatched in tests): the ESPN scoreboard is the
+    free finals source. Built per request — this app holds no live handles."""
+    return ESPN(sport="nfl")
+
+
+class AutoGradeSkip(BaseModel):
+    game_id: str
+    reason: str
+
+
+class AutoGradeOut(BaseModel):
+    week: int
+    graded: dict[str, str]  # game_id -> win/loss/push written this call
+    skipped: list[AutoGradeSkip]
+    card: CardOut
+
+
+@app.post("/api/contest/results/auto", response_model=AutoGradeOut)
+def auto_grade(week: int) -> AutoGradeOut:
+    """Grade the week's card from ESPN final scores against the stored Circa
+    contest lines. Free (ESPN is unmetered); safe to re-run — regrading a
+    corrected score overwrites, and non-final games are skipped with reasons.
+    """
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        card = store.card(week)
+        if card is None:
+            raise HTTPException(status_code=404, detail=f"no locked card for week {week}")
+        lines = store.lines(week)
+
+        odds = _open_odds()
+        try:
+            games = {
+                g.game_id: g for g in odds.games(window=contest.week_window(week))
+            }
+        finally:
+            odds.close()
+
+        eastern = ZoneInfo("America/New_York")  # ESPN groups scoreboard days in ET
+        pick_games = [games[p.game_id] for p in card.picks if p.game_id in games]
+        days = {g.start_time.astimezone(eastern).date() for g in pick_games}
+        source = _finals_source()
+        finals = {}
+        try:
+            for day in sorted(days):
+                for final in source.fetch_final_scores(day):
+                    finals[(final.away_team, final.home_team)] = final
+        except ProviderError as exc:
+            raise HTTPException(status_code=502, detail=f"finals source failed: {exc}") from exc
+
+        graded: dict[str, str] = {}
+        skipped: list[AutoGradeSkip] = []
+        for pick in card.picks:
+            game = games.get(pick.game_id)
+            if game is None:
+                skipped.append(
+                    AutoGradeSkip(game_id=pick.game_id, reason="not in odds database")
+                )
+                continue
+            line = lines.get(pick.game_id)
+            if line is None:
+                skipped.append(
+                    AutoGradeSkip(game_id=pick.game_id, reason="no contest line entered")
+                )
+                continue
+            found = finals.get((game.away_team, game.home_team))
+            if found is None:
+                skipped.append(
+                    AutoGradeSkip(game_id=pick.game_id, reason="no final score found")
+                )
+                continue
+            final = found
+            if not final.completed:
+                skipped.append(AutoGradeSkip(game_id=pick.game_id, reason="game not final"))
+                continue
+            graded[pick.game_id] = contest.grade_pick(
+                pick.side, line.home_spread, final.home_score, final.away_score
+            )
+
+        if graded:
+            store.record_results(week, graded)
+            logger.info("week %d auto-graded %d pick(s): %s", week, len(graded), graded)
+        card = store.card(week)
+    finally:
+        store.close()
+    assert card is not None
+    return AutoGradeOut(
+        week=week,
+        graded=graded,
+        skipped=skipped,
+        card=_card_out(card, _card_deadline(card)),
     )
 
 

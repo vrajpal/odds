@@ -225,8 +225,10 @@ API surface (Swagger at `/docs`):
   Rule-8 effective deadline.
 - `POST/PATCH/GET /api/contest/card` — lock the week's five (Rule 8 enforced
   at lock time), record the Circa ETSN.
-- `POST /api/contest/results`, `GET /api/contest/season` — grading and the
-  season dashboard (tiebreaker ladder, quarters, booby eligibility).
+- `POST /api/contest/results`, `POST /api/contest/results/auto`,
+  `GET /api/contest/season` — grading (manual, or auto-graded from ESPN final
+  scores against the stored Circa lines, D-023) and the season dashboard
+  (tiebreaker ladder, quarters, booby eligibility).
 
 Same trust model as the odds API: no auth beyond the member list, keep it on
 localhost/tailnet or behind your own front door.
