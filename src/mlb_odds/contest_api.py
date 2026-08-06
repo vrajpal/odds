@@ -11,8 +11,10 @@ import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from mlb_odds import contest
@@ -34,6 +36,38 @@ def _resolve_nfl_db() -> Path:
 def _resolve_contest_db() -> Path:
     env = os.environ.get("CONTEST_DB")
     return Path(env) if env else Path("./contest.sqlite")
+
+
+def _members() -> list[str]:
+    """The three-person group, ordered — order defines captain rotation."""
+    raw = os.environ.get("CONTEST_MEMBERS", "player1,player2,player3")
+    members = [m.strip() for m in raw.split(",") if m.strip()]
+    if not members:
+        raise HTTPException(status_code=500, detail="CONTEST_MEMBERS is empty")
+    return members
+
+
+def _now() -> datetime:
+    """Injection seam for tests; everything time-dependent goes through it."""
+    return datetime.now(UTC)
+
+
+def _require_member(member: str) -> str:
+    if member not in _members():
+        raise HTTPException(
+            status_code=403, detail=f"unknown member {member!r}; set CONTEST_MEMBERS"
+        )
+    return member
+
+
+def _require_submitted(store: contest.ContestStore, week: int, member: str) -> None:
+    """The blind rule: nobody sees others' proposals before their own are in."""
+    if not store.has_submitted(week, member):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{member} has not submitted week-{week} proposals yet — "
+            "propose first, then the reveal unlocks.",
+        )
 
 
 def _open_odds() -> Storage:
@@ -78,6 +112,7 @@ class BoardGameOut(BaseModel):
     away_team: str
     home_team: str
     start_time: str  # Pacific ISO — the contest's timezone
+    early_kickoff: bool  # kicks before Sat 4 PM: picking it pulls the card deadline in (Rule 8)
     books: dict[str, float]
     consensus: float | None
     contest_line: float | None
@@ -96,6 +131,9 @@ class BoardOut(BaseModel):
     deadline: str
     seconds_to_deadline: int
     locked: bool  # past the week's Saturday 4 PM PT deadline
+    captain: str
+    card_locked: bool
+    booby_guard_alert: bool  # Sat 10 AM PT passed with no locked card
     games: list[BoardGameOut]
 
 
@@ -110,7 +148,7 @@ def get_board(week: int | None = None) -> BoardOut:
     `week` defaults to the contest week containing now; outside the season a
     week must be passed explicitly.
     """
-    now = datetime.now(UTC)
+    now = _now()
     if week is None:
         week = contest.week_of(now)
         if week is None:
@@ -125,6 +163,7 @@ def get_board(week: int | None = None) -> BoardOut:
     store = contest.ContestStore(_resolve_contest_db())
     try:
         rows = contest.build_board(odds, store.lines(week), week)
+        card = store.card(week)
     finally:
         store.close()
         odds.close()
@@ -139,12 +178,18 @@ def get_board(week: int | None = None) -> BoardOut:
         deadline=_pt(deadline),
         seconds_to_deadline=int((deadline - now).total_seconds()),
         locked=now >= deadline,
+        captain=contest.captain_for(week, _members()),
+        card_locked=card is not None,
+        booby_guard_alert=contest.booby_guard_alert(
+            week, card_locked=card is not None, now=now
+        ),
         games=[
             BoardGameOut(
                 game_id=row.game_id,
                 away_team=row.away_team,
                 home_team=row.home_team,
                 start_time=_pt(row.start_time),
+                early_kickoff=row.start_time < deadline,
                 books=row.books,
                 consensus=row.consensus,
                 contest_line=row.contest_line,
@@ -183,7 +228,7 @@ def set_contest_line(body: ContestLineIn) -> ContestLineOut:
             ),
         )
 
-    entered_at = datetime.now(UTC)
+    entered_at = _now()
     store = contest.ContestStore(_resolve_contest_db())
     try:
         store.set_line(body.week, body.game_id, body.home_spread, entered_at=entered_at)
@@ -221,6 +266,411 @@ def get_contest_lines(week: int) -> list[ContestLineOut]:
     ]
 
 
+Side = Literal["home", "away"]
+
+
+class MembersOut(BaseModel):
+    members: list[str]
+    captains: dict[int, str]  # week -> captain
+
+
+@app.get("/api/contest/members", response_model=MembersOut)
+def get_members() -> MembersOut:
+    members = _members()
+    return MembersOut(
+        members=members,
+        captains={
+            w: contest.captain_for(w, members) for w in range(1, contest.NUM_WEEKS + 1)
+        },
+    )
+
+
+class ProposalPickIn(BaseModel):
+    game_id: str
+    side: Side
+    note: str = ""
+
+
+class ProposalsIn(BaseModel):
+    week: int = Field(ge=1, le=contest.NUM_WEEKS)
+    member: str
+    picks: list[ProposalPickIn] = Field(min_length=1, max_length=5)
+
+
+class ProposalOut(BaseModel):
+    member: str
+    game_id: str
+    side: str
+    note: str
+
+
+class ProposalsOut(BaseModel):
+    week: int
+    submitted: list[str]  # members whose blind sets are in
+    waiting_on: list[str]
+    proposals: list[ProposalOut]  # own always; everyone's once you've submitted
+
+
+@app.post("/api/contest/proposals", response_model=ProposalsOut, status_code=201)
+def submit_proposals(body: ProposalsIn) -> ProposalsOut:
+    """A member's blind proposal set: 1-5 picks, one shot, immutable.
+
+    Immutability is what makes the blind phase honest — you cannot peek at
+    the reveal and then edit.
+    """
+    _require_member(body.member)
+    odds = _open_odds()
+    try:
+        known = {g.game_id for g in odds.games(window=contest.week_window(body.week))}
+    finally:
+        odds.close()
+    unknown = [p.game_id for p in body.picks if p.game_id not in known]
+    if unknown:
+        raise HTTPException(
+            status_code=404, detail=f"not stored NFL games in week {body.week}: {unknown}"
+        )
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        try:
+            store.submit_proposals(
+                body.week,
+                body.member,
+                [(p.game_id, p.side, p.note) for p in body.picks],
+                submitted_at=_now(),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _proposals_view(store, body.week, body.member)
+    finally:
+        store.close()
+
+
+@app.get("/api/contest/proposals", response_model=ProposalsOut)
+def get_proposals(week: int, member: str) -> ProposalsOut:
+    """Own proposals always; the whole group's only after yours are submitted."""
+    _require_member(member)
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        return _proposals_view(store, week, member)
+    finally:
+        store.close()
+
+
+def _proposals_view(store: contest.ContestStore, week: int, member: str) -> ProposalsOut:
+    submitted = store.submitted_members(week)
+    mine_only = member not in submitted
+    rows = store.proposals(week, member=member if mine_only else None)
+    return ProposalsOut(
+        week=week,
+        submitted=submitted,
+        waiting_on=[m for m in _members() if m not in submitted],
+        proposals=[
+            ProposalOut(member=p.member, game_id=p.game_id, side=p.side, note=p.note)
+            for p in rows
+        ],
+    )
+
+
+class VoteIn(BaseModel):
+    week: int = Field(ge=1, le=contest.NUM_WEEKS)
+    member: str
+    game_id: str
+    side: Side
+
+
+class CandidateOut(BaseModel):
+    game_id: str
+    side: str
+    backers: list[str]
+    status: str  # unanimous | majority | contested
+
+
+class ConsensusOut(BaseModel):
+    week: int
+    captain: str
+    candidates: list[CandidateOut]
+    working_card: list[CandidateOut]  # top 5 by backing — what would lock now
+    effective_deadline: str  # Rule 8: pulled to earliest kickoff on the working card
+    deadline_pulled_forward_by: str | None  # game_id responsible, if any
+    card_locked: bool
+
+
+@app.post("/api/contest/votes", response_model=ConsensusOut)
+def cast_vote(body: VoteIn) -> ConsensusOut:
+    """Vote (or change your stance) on one game. Requires your proposals in —
+    voting is part of the reveal phase."""
+    _require_member(body.member)
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        _require_submitted(store, body.week, body.member)
+        if store.card(body.week) is not None:
+            raise HTTPException(
+                status_code=409, detail=f"week {body.week} card is locked; voting is over"
+            )
+        store.cast_vote(body.week, body.member, body.game_id, body.side, cast_at=_now())
+        return _consensus_view(store, body.week)
+    finally:
+        store.close()
+
+
+@app.get("/api/contest/consensus", response_model=ConsensusOut)
+def get_consensus(week: int, member: str) -> ConsensusOut:
+    """The reveal: everyone's stances tallied. Blind rule applies."""
+    _require_member(member)
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        _require_submitted(store, week, member)
+        return _consensus_view(store, week)
+    finally:
+        store.close()
+
+
+def _consensus_view(store: contest.ContestStore, week: int) -> ConsensusOut:
+    candidates = contest.tally_candidates(
+        store.proposals(week), store.votes(week), _members()
+    )
+    working = candidates[:5]
+    kickoffs = _kickoffs(week, [c.game_id for c in working])
+    deadline = contest.effective_deadline(week, kickoffs.values())
+    pulled_by = None
+    if deadline < contest.pick_deadline(week):
+        pulled_by = min(kickoffs, key=lambda g: kickoffs[g])
+    return ConsensusOut(
+        week=week,
+        captain=contest.captain_for(week, _members()),
+        candidates=[
+            CandidateOut(
+                game_id=c.game_id, side=c.side, backers=list(c.backers), status=c.status
+            )
+            for c in candidates
+        ],
+        working_card=[
+            CandidateOut(
+                game_id=c.game_id, side=c.side, backers=list(c.backers), status=c.status
+            )
+            for c in working
+        ],
+        effective_deadline=_pt(deadline),
+        deadline_pulled_forward_by=pulled_by,
+        card_locked=store.card(week) is not None,
+    )
+
+
+def _kickoffs(week: int, game_ids: list[str]) -> dict[str, datetime]:
+    odds = _open_odds()
+    try:
+        return {
+            g.game_id: g.start_time
+            for g in odds.games(window=contest.week_window(week))
+            if g.game_id in game_ids
+        }
+    finally:
+        odds.close()
+
+
+class CardPickIn(BaseModel):
+    game_id: str
+    side: Side
+
+
+class CardIn(BaseModel):
+    week: int = Field(ge=1, le=contest.NUM_WEEKS)
+    member: str
+    picks: list[CardPickIn] = Field(min_length=5, max_length=5)
+
+
+class CardPickOut(BaseModel):
+    game_id: str
+    side: str
+    result: str | None
+
+
+class CardOut(BaseModel):
+    week: int
+    picks: list[CardPickOut]
+    locked_by: str
+    locked_at: str
+    etsn: str | None
+    effective_deadline: str
+
+
+@app.post("/api/contest/card", response_model=CardOut, status_code=201)
+def lock_card(body: CardIn) -> CardOut:
+    """Lock the week's official five. Enforces Rule 8: if any pick kicks off
+    before Saturday 4 PM PT, the whole card is due before that kickoff."""
+    _require_member(body.member)
+    picks = [(p.game_id, p.side) for p in body.picks]
+    kickoffs = _kickoffs(body.week, [g for g, _ in picks])
+    missing = [g for g, _ in picks if g not in kickoffs]
+    if missing:
+        raise HTTPException(
+            status_code=404, detail=f"not stored NFL games in week {body.week}: {missing}"
+        )
+    deadline = contest.effective_deadline(body.week, kickoffs.values())
+    now = _now()
+    if now >= deadline:
+        raise HTTPException(
+            status_code=409,
+            detail=f"past this card's effective deadline ({_pt(deadline)}) — "
+            "Rule 8 pulls the deadline to the earliest selected kickoff.",
+        )
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        try:
+            store.lock_card(body.week, picks, locked_by=body.member, locked_at=now)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        card = store.card(body.week)
+    finally:
+        store.close()
+    assert card is not None
+    logger.info("week %d card locked by %s: %s", body.week, body.member, picks)
+    return _card_out(card, deadline)
+
+
+class EtsnIn(BaseModel):
+    week: int = Field(ge=1, le=contest.NUM_WEEKS)
+    etsn: str = Field(min_length=1, max_length=40)
+
+
+@app.patch("/api/contest/card", response_model=CardOut)
+def record_etsn(body: EtsnIn) -> CardOut:
+    """Attach Circa's confirmation (the 12-digit ETSN) to the locked card —
+    proof the card actually made it into the contest."""
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        try:
+            store.set_etsn(body.week, body.etsn)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        card = store.card(body.week)
+    finally:
+        store.close()
+    assert card is not None
+    return _card_out(card, _card_deadline(card))
+
+
+@app.get("/api/contest/card", response_model=CardOut)
+def get_card(week: int) -> CardOut:
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        card = store.card(week)
+    finally:
+        store.close()
+    if card is None:
+        raise HTTPException(status_code=404, detail=f"no locked card for week {week}")
+    return _card_out(card, _card_deadline(card))
+
+
+def _card_deadline(card: contest.Card) -> datetime:
+    kickoffs = _kickoffs(card.week, [p.game_id for p in card.picks])
+    return contest.effective_deadline(card.week, kickoffs.values())
+
+
+def _card_out(card: contest.Card, deadline: datetime) -> CardOut:
+    return CardOut(
+        week=card.week,
+        picks=[
+            CardPickOut(game_id=p.game_id, side=p.side, result=p.result)
+            for p in card.picks
+        ],
+        locked_by=card.locked_by,
+        locked_at=_pt(card.locked_at),
+        etsn=card.etsn,
+        effective_deadline=_pt(deadline),
+    )
+
+
+class ResultsIn(BaseModel):
+    week: int = Field(ge=1, le=contest.NUM_WEEKS)
+    results: dict[str, Literal["win", "loss", "push"]]
+
+
+@app.post("/api/contest/results", response_model=CardOut)
+def record_results(body: ResultsIn) -> CardOut:
+    """Grade card picks after games finish (re-entry corrects)."""
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        try:
+            store.record_results(body.week, dict(body.results))
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        card = store.card(body.week)
+    finally:
+        store.close()
+    assert card is not None
+    return _card_out(card, _card_deadline(card))
+
+
+class WeekScoreOut(BaseModel):
+    week: int
+    wins: int
+    losses: int
+    pushes: int
+    points: float
+    graded: int
+    picks: int
+
+
+class LadderOut(BaseModel):
+    total_wins: int
+    winning_weeks: int
+    weeks_5_0: int
+    weeks_4_0_1: int
+    weeks_4_1: int
+
+
+class SeasonOut(BaseModel):
+    total_points: float
+    weeks: list[WeekScoreOut]
+    tiebreakers: LadderOut
+    quarters: dict[int, float]
+    booby_eligible: bool
+
+
+@app.get("/api/contest/season", response_model=SeasonOut)
+def get_season() -> SeasonOut:
+    """Season standing: points, the 1st-place tiebreaker ladder, quarter
+    totals, and booby-prize eligibility."""
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        cards = store.all_cards()
+    finally:
+        store.close()
+    scores, ladder, quarters, booby = contest.season_summary(cards, now=_now())
+    return SeasonOut(
+        total_points=sum(s.points for s in scores),
+        weeks=[
+            WeekScoreOut(
+                week=s.week,
+                wins=s.wins,
+                losses=s.losses,
+                pushes=s.pushes,
+                points=s.points,
+                graded=s.graded,
+                picks=s.picks,
+            )
+            for s in scores
+        ],
+        tiebreakers=LadderOut(
+            total_wins=ladder.total_wins,
+            winning_weeks=ladder.winning_weeks,
+            weeks_5_0=ladder.weeks_5_0,
+            weeks_4_0_1=ladder.weeks_4_0_1,
+            weeks_4_1=ladder.weeks_4_1,
+        ),
+        quarters=quarters,
+        booby_eligible=booby,
+    )
+
+
 @app.get("/api/contest/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Static contest UI at / — registered last so it cannot shadow API routes
+# (same registration-order lesson as api.py's frontend mount).
+_STATIC_DIR = Path(__file__).parent / "contest_static"
+if _STATIC_DIR.exists():
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="ui")

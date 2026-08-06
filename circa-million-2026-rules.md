@@ -244,10 +244,11 @@ Follows the existing dependency direction and reuses the current stack:
   D-019); contest calendar with holiday line-post overrides; board API showing
   market spreads, manually entered contest lines, edge deltas, movement since
   entry, countdown (D-020).
-- **C2 — Consensus**: proposals (blind), reveal, voting, captain rotation,
-  card lock, ETSN tracking, Rule-8 deadline warnings on proposed cards.
-- **C3 — Season**: grading entry, tiebreaker ladder, quarter standings,
-  booby-guard alerts, frontend board UI.
+- **C2 — Consensus** *(done)*: blind one-shot proposals, reveal, stance
+  voting (vote overrides own proposal), captain rotation, card lock with
+  Rule-8 enforcement, ETSN tracking (D-021).
+- **C3 — Season** *(done)*: grading entry, 1st-place tiebreaker ladder,
+  quarter standings, booby-guard alerts, static contest UI served at the
+  contest node's root (D-021).
 
-Target: C1 and C2 working before registration closes (Sep 12, 2026); C3
-before Week 1 grading.
+All three milestones landed before registration closes (Sep 12, 2026).

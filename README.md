@@ -204,16 +204,30 @@ mlb-odds collect --once --sport nfl
 uvicorn mlb_odds.contest_api:app --port 8001
 ```
 
-- `GET /api/contest/board?week=N` — the weekly board: per-book spreads,
-  consensus, contest line, edge (`contest - consensus`; positive = value on
-  home), movement since entry, deadline countdown. `week` defaults to now.
-- `POST /api/contest/lines` — enter/correct one contest line
-  (`{"week": 1, "game_id": "...", "home_spread": -2.5}`); game must exist in
-  that week's window. Swagger UI at `/docs` is the intended entry surface.
-- `GET /api/contest/lines?week=N` — entered lines.
+The contest UI lives at `/` (single static page, no build step): board with
+edge/movement/countdown, blind proposal entry, the reveal with voting and the
+working card, card lock + ETSN, and the season dashboard. Set
+`CONTEST_MEMBERS=name1,name2,name3` (ordered — position defines the weekly
+captain rotation).
 
-Same trust model as the odds API: no auth, keep it on localhost or behind
-your own front door.
+API surface (Swagger at `/docs`):
+
+- `GET /api/contest/board?week=N` — per-book spreads, consensus, contest
+  line, edge (`contest - consensus`; positive = value on home), movement
+  since entry, key numbers, early-kickoff flags, captain, booby-guard alert.
+- `POST/GET /api/contest/lines` — manual Circa line entry (validated).
+- `POST/GET /api/contest/proposals` — blind one-shot proposal sets (1-5
+  picks); others' picks are hidden until your own are submitted (D-021).
+- `POST /api/contest/votes`, `GET /api/contest/consensus` — the reveal:
+  stances tallied into unanimous/majority/contested candidates, working card,
+  Rule-8 effective deadline.
+- `POST/PATCH/GET /api/contest/card` — lock the week's five (Rule 8 enforced
+  at lock time), record the Circa ETSN.
+- `POST /api/contest/results`, `GET /api/contest/season` — grading and the
+  season dashboard (tiebreaker ladder, quarters, booby eligibility).
+
+Same trust model as the odds API: no auth beyond the member list, keep it on
+localhost/tailnet or behind your own front door.
 
 ## Docker + Tailscale
 

@@ -274,3 +274,41 @@ Thursday/holiday-Wednesday line posts) is hardcoded to the 2026 season — the
 contest is a single season, and a config surface for dates nobody will change
 is speculative. Rule 8 card-level early deadlines are C2 scope with the card
 model itself.
+
+## D-021 — Consensus workflow: blind one-shot proposals, stance model, env-config members (2026-08-06)
+C2/C3 of the contest tool. The load-bearing choices:
+
+**Blind proposals are one-shot and immutable.** The blind phase exists to
+prevent anchoring; it only works if a member cannot peek at the reveal and
+then edit. Submission is 1-5 picks in a single POST; the reveal (and voting)
+unlocks per-member only after that member's own set is in (HTTP 409 before).
+
+**One stance per (member, game): a vote overrides that member's proposal.**
+Proposals and votes are not separate tallies — a member who proposed home and
+later votes away has changed their mind, not split themselves. Candidates
+group stances by (game, side); unanimous auto-tops the list, majority is
+strictly > half, everything else is contested and falls to the week's captain
+(rotation = configured member order, week 1 -> first).
+
+**Card locking mirrors Circa's own rules.** Exactly 5 distinct games, one
+card per week, no edits after lock (voting closes too). Rule 8 is enforced at
+lock time against the *chosen* picks: the effective deadline is the earlier of
+Saturday 4 PM PT and the earliest selected kickoff — a card that includes an
+already-kicked-off early game is refused. ETSN is recorded post-submission as
+proof the card physically made it into the contest.
+
+**Grading is manual entry** (win/loss/push per pick, re-entry corrects): the
+odds DB stores prices, not final scores, and 5 results/week for 18 weeks is
+not worth a scores provider. The season view derives everything from graded
+cards: points, the 14c tiebreaker ladder in rule order, quarter totals, and
+booby eligibility (5 picks in every completed week, checked against the week
+windows).
+
+**Members come from CONTEST_MEMBERS env, not the database** — three friends
+are deployment config, and the ordering doubles as the captain rotation. No
+auth beyond that: the tailnet is the security boundary (D-020).
+
+**UI is a single static file** served by contest_api at `/` (registered after
+API routes — same shadowing lesson as api.py). No build step, no framework:
+one HTML file with fetch calls is serviceable for three users and keeps the
+image build free of a second frontend toolchain.
