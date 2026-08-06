@@ -7,7 +7,8 @@ Recorded fixture: tests/fixtures/espn_scoreboard_normal.json (2026-07-30).
 """
 
 import logging
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -25,6 +26,18 @@ SCOREBOARD_URLS: dict[str, str] = {
 SCOREBOARD_URL = SCOREBOARD_URLS["mlb"]
 # ESPN's pointSpread node is the run line in baseball, the spread in football.
 _SPREAD_MARKET: dict[str, Market] = {"mlb": "run_line", "nfl": "spread"}
+
+
+@dataclass(frozen=True)
+class FinalScore:
+    """One event's score from the scoreboard, teams in canonical codes."""
+
+    away_team: str
+    home_team: str
+    away_score: int
+    home_score: int
+    completed: bool
+    start_time: datetime
 
 
 class ESPN:
@@ -62,11 +75,11 @@ class ESPN:
                 parsed.append(game_odds)
         return assign_game_numbers(parsed)
 
-    def _request(self) -> list[dict[str, Any]]:
+    def _request(self, params: dict[str, str] | None = None) -> list[dict[str, Any]]:
         last_error: Exception | None = None
         for attempt in range(2):
             try:
-                response = self._client.get(self._scoreboard_url)
+                response = self._client.get(self._scoreboard_url, params=params)
             except httpx.HTTPError as exc:
                 last_error = exc
                 continue
@@ -86,6 +99,48 @@ class ESPN:
                 raise ProviderError("unexpected response shape: no events list")
             return events
         raise ProviderError(f"request failed after retry: {last_error}") from last_error
+
+    def fetch_final_scores(self, on: date) -> list[FinalScore]:
+        """Scores for one scoreboard day (ESPN groups days in US/Eastern).
+
+        Free and unmetered, like the rest of this provider. Games that are not
+        completed are returned with completed=False so callers can distinguish
+        "not final yet" from "not found". Unknown teams are skipped (or raised
+        under strict), same policy as fetch_game_lines.
+        """
+        finals: list[FinalScore] = []
+        for event in self._request({"dates": on.strftime("%Y%m%d")}):
+            try:
+                competition = event["competitions"][0]
+                by_side = {c["homeAway"]: c for c in competition["competitors"]}
+                raw_home = by_side["home"]["team"]["displayName"]
+                raw_away = by_side["away"]["team"]["displayName"]
+                home_score = int(by_side["home"].get("score") or 0)
+                away_score = int(by_side["away"].get("score") or 0)
+                completed = bool(event["status"]["type"]["completed"])
+                start_time = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
+            except (KeyError, IndexError, ValueError) as exc:
+                logger.warning("skipping malformed scoreboard event %s: %s", event.get("id"), exc)
+                continue
+            try:
+                home = teams.normalize(self._sport, self.name, raw_home)
+                away = teams.normalize(self._sport, self.name, raw_away)
+            except teams.TeamLookupError as exc:
+                if self._strict:
+                    raise
+                logger.warning("skipping event %s: %s", event.get("id"), exc)
+                continue
+            finals.append(
+                FinalScore(
+                    away_team=away,
+                    home_team=home,
+                    away_score=away_score,
+                    home_score=home_score,
+                    completed=completed,
+                    start_time=start_time,
+                )
+            )
+        return finals
 
     def _parse_event(self, event: dict[str, Any], fetched_at: datetime) -> GameOdds | None:
         try:

@@ -750,3 +750,20 @@ def booby_guard_alert(week: int, *, card_locked: bool, now: datetime) -> bool:
     deadline = pick_deadline(week)
     guard = datetime.combine(deadline.date(), time(10, 0), tzinfo=PACIFIC)
     return now >= guard
+
+
+def grade_pick(side: str, home_spread: float, home_score: int, away_score: int) -> str:
+    """Grade one ATS pick against the Circa contest line (rules 6/19).
+
+    The contest number is static, so grading is pure arithmetic: home covers
+    when (home margin + home spread) > 0, lands exactly on the number -> push
+    (half point), and the away side is the mirror. Forfeits are the one case
+    this can't see (NFL-awarded W/L without a score); grade those by hand.
+    """
+    if side not in ("home", "away"):
+        raise ValueError(f"side must be home/away, got {side!r}")
+    margin = (home_score - away_score) + home_spread
+    if margin == 0:
+        return "push"
+    home_covered = margin > 0
+    return "win" if (side == "home") == home_covered else "loss"

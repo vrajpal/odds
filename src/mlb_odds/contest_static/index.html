@@ -305,7 +305,8 @@ async function loadCard() {
         <option value="">–</option><option>win</option><option>loss</option><option>push</option>
       </select></td></tr>`).join("") +
     `</tbody></table><br>
-    <button class="action" id="save-grades">Save grades</button> ·
+    <button class="action" id="save-grades">Save grades</button>
+    <button class="action" id="auto-grade">Auto-grade from finals</button> ·
     ETSN: <input id="etsn" value="${card.etsn ?? ""}" placeholder="12-digit ticket serial" size="16">
     <button class="side" id="save-etsn">save</button>
     ${card.etsn ? '<span class="tag unanimous">✓ submitted at Circa</span>' : '<span class="tag contested">no ETSN — submit at Circa & record it</span>'}
@@ -317,6 +318,15 @@ async function loadCard() {
     try {
       await api("/api/contest/results", {method:"POST",
         body: JSON.stringify({week: state.week, results})});
+      loadCard();
+    } catch (e) { alert(e.message); }
+  };
+  $("#auto-grade").onclick = async () => {
+    try {
+      const out = await api(`/api/contest/results/auto?week=${state.week}`, {method:"POST"});
+      const done = Object.entries(out.graded).map(([g, r]) => `${g}: ${r}`).join("\n");
+      const skipped = out.skipped.map(s => `${s.game_id}: ${s.reason}`).join("\n");
+      alert(`graded:\n${done || "(none)"}` + (skipped ? `\n\nskipped:\n${skipped}` : ""));
       loadCard();
     } catch (e) { alert(e.message); }
   };
