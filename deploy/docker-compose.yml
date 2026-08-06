@@ -13,12 +13,16 @@
 # One-shot NFL collection (cron Thu-Sat ~3x/day; 3 credits/run):
 #   docker compose run --rm nfl-collect
 
+name: odds # explicit project name; the directory-derived default ("deploy") is collision-prone
+
 services:
   tailscale:
     image: tailscale/tailscale:latest
     hostname: odds # tailnet node name → odds.<tailnet>.ts.net
     environment:
-      TS_AUTHKEY: ${TS_AUTHKEY:?create one in the Tailscale admin console (Settings > Keys)}
+      # Unset is fine: the sidecar then prints an interactive login URL to its
+      # logs (`docker compose logs tailscale`) — approve once, state persists.
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /config/serve.json
       TS_USERSPACE: "false"
