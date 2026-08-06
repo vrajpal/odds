@@ -238,3 +238,39 @@ sport-neutral is pure churn until an actual third sport forces the question.
 Fixtures recorded live 2026-07-31: one 3-credit NFL game-lines poll (484
 remaining) and a free ESPN fetch that caught the Hall of Fame preseason game
 with full odds.
+
+## D-020 — Circa Million consensus tool: separate app-state DB, home-spread edge convention (2026-08-06)
+The contest tool (contest.py + contest_api.py, C1 of the plan in
+circa-million-2026-rules.md) is a consumer of the odds database, not part of
+the collection pipeline: `contest_api → contest → storage`, odds DB opened
+read-only with the same rationale as api.py. Contest state (manually entered
+Circa lines; later: proposals, votes, cards) lives in its own SQLite file
+($CONTEST_DB, default ./contest.sqlite) rather than a table in the odds DB.
+The two files have different write authorities — the odds DB is an append-only
+record written by the collector, contest lines are human-entered and
+correctable (upsert) — and different backup/retention needs. Same linear
+migration-list discipline as storage.py.
+
+Contest lines are manual input by design: Circa's contest spreads are static,
+contest-only numbers that exist on no commercial feed. The API rejects lines
+for game_ids not already stored inside the target contest week's window, so a
+typo cannot create a phantom row that never joins to the board.
+
+Edge math conventions (locked here so every future surface agrees):
+- every spread is the HOME line (negative = home favored), as rendered
+  everywhere else in the package;
+- consensus = median of the newest home spread per book (median so one stale
+  book cannot drag the reference); a book absent from newer snapshots keeps
+  its last-known number — under --changed-only absence means "unchanged",
+  which is what makes as-of movement math correct rather than a fallback;
+- edge = contest_line - consensus; positive → value on home, negative → away;
+- movement_since_entry = consensus now - consensus as of the line's
+  entered_at (re-entering a line re-anchors it);
+- key numbers ±3/±7 flag only strict crossings, landing exactly on one is not
+  a cross.
+
+The contest calendar (Rule 19 Wednesday-2AM-PT weeks, Saturday 4 PM deadline,
+Thursday/holiday-Wednesday line posts) is hardcoded to the 2026 season — the
+contest is a single season, and a config surface for dates nobody will change
+is speculative. Rule 8 card-level early deadlines are C2 scope with the card
+model itself.

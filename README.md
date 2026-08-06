@@ -188,6 +188,59 @@ Open `http://localhost:8000` in your browser. The API serves `frontend/dist/`
 at `/` when it exists (set `MLB_ODDS_FRONTEND_DIST` to serve a build from
 elsewhere); without a build, `/` returns JSON pointing at `/docs`.
 
+## Circa Million consensus board (contest tool)
+
+A separate FastAPI app for the Circa Million VIII pick'em workflow (see
+`circa-million-2026-rules.md` for the contest and the plan; conventions in
+D-020). It compares Circa's static contest spreads — entered by hand — against
+the market consensus in the NFL odds database and reports the edge, movement
+since entry, key-number crossings, and the week's pick deadline.
+
+```bash
+# collect NFL market lines (repeat Thu-Sat; the board reads this DB)
+mlb-odds collect --once --sport nfl
+
+# run the contest API (reads $NFL_ODDS_DB, owns $CONTEST_DB)
+uvicorn mlb_odds.contest_api:app --port 8001
+```
+
+- `GET /api/contest/board?week=N` — the weekly board: per-book spreads,
+  consensus, contest line, edge (`contest - consensus`; positive = value on
+  home), movement since entry, deadline countdown. `week` defaults to now.
+- `POST /api/contest/lines` — enter/correct one contest line
+  (`{"week": 1, "game_id": "...", "home_spread": -2.5}`); game must exist in
+  that week's window. Swagger UI at `/docs` is the intended entry surface.
+- `GET /api/contest/lines?week=N` — entered lines.
+
+Same trust model as the odds API: no auth, keep it on localhost or behind
+your own front door.
+
+## Docker + Tailscale
+
+`docker-compose.yml` runs both APIs in containers, published **only** on the
+host's Tailscale IP (plus loopback for the contest API) — reachable from your
+tailnet via MagicDNS, invisible to every other network. Databases live in
+`./data/` on the host, mounted at `/data`.
+
+```bash
+echo "TAILSCALE_IP=$(tailscale ip -4)" >> .env   # once
+docker compose up -d --build
+```
+
+Then from any tailnet device:
+- `http://workspace:8000` — MLB odds API + built web UI
+- `http://workspace:8001/docs` — contest API (enter Circa lines here)
+
+(Short `workspace` resolves on tailnet clients via the MagicDNS search domain;
+the full `workspace.<tailnet>.ts.net` form works everywhere.)
+
+NFL collection is a one-shot service kept out of `up` (metered credits, D-019
+quota math). Run it manually or from cron, ~3x/day Thu–Sat during the season:
+
+```bash
+docker compose run --rm nfl-collect      # 3 credits per run
+```
+
 ## Library
 
 ```python
