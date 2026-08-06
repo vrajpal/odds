@@ -94,7 +94,7 @@ def test_fetch_player_props_parses_ladders_and_normalizes():
 
 def test_fetch_player_props_rejects_unknown_market():
     provider = TheOddsAPI(api_key="test-key", transport=props_transport())
-    with pytest.raises(ProviderError, match="unsupported prop market"):
+    with pytest.raises(ProviderError, match="unsupported mlb prop market"):
         provider.fetch_player_props(["batter_stolen_bases"])
 
 
@@ -174,7 +174,9 @@ def test_props_command_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
     monkeypatch.setattr(
         "mlb_odds.cli.TheOddsAPI",
-        lambda: TheOddsAPI(api_key="test-key", transport=props_transport()),
+        lambda sport="mlb": TheOddsAPI(
+            api_key="test-key", sport=sport, transport=props_transport()
+        ),
     )
     db = tmp_path / "props.sqlite"
 
@@ -204,4 +206,4 @@ def test_props_command_rejects_unknown_market(tmp_path, monkeypatch):
         app, ["props", "--market", "batter_walks", "--db", str(tmp_path / "x.sqlite")]
     )
     assert result.exit_code == 2
-    assert "unsupported prop market" in result.output
+    assert "unsupported mlb prop market" in result.output

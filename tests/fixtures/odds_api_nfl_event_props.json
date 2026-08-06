@@ -1,0 +1,66 @@
+{
+  "_comment": "EDITED FIXTURE (D-018/D-022 precedent): NFL player props are not posted this far from game day, so this is hand-authored in the exact shape of a real The Odds API event-odds response (mirrors odds_api_event_props.json). Event metadata is real, recorded from the free events endpoint 2026-08-06.",
+  "id": "8f2c1e6d90a4b37e5512cd08a9271f44",
+  "sport_key": "americanfootball_nfl",
+  "sport_title": "NFL",
+  "commence_time": "2026-09-10T00:15:00Z",
+  "home_team": "Seattle Seahawks",
+  "away_team": "New England Patriots",
+  "bookmakers": [
+    {
+      "key": "draftkings",
+      "markets": [
+        {
+          "key": "player_pass_yds",
+          "outcomes": [
+            { "name": "Over", "description": "Drake Maye", "price": -112, "point": 245.5 },
+            { "name": "Under", "description": "Drake Maye", "price": -108, "point": 245.5 },
+            { "name": "Over", "description": "Sam Darnold", "price": -110, "point": 228.5 },
+            { "name": "Under", "description": "Sam Darnold", "price": -110, "point": 228.5 }
+          ]
+        },
+        {
+          "key": "player_pass_tds",
+          "outcomes": [
+            { "name": "Over", "description": "Drake Maye", "price": 105, "point": 1.5 },
+            { "name": "Under", "description": "Drake Maye", "price": -135, "point": 1.5 }
+          ]
+        },
+        {
+          "key": "player_rush_yds",
+          "outcomes": [
+            { "name": "Over", "description": "Kenneth Walker III", "price": -115, "point": 62.5 },
+            { "name": "Under", "description": "Kenneth Walker III", "price": -105, "point": 62.5 }
+          ]
+        },
+        {
+          "key": "player_receptions",
+          "outcomes": [
+            { "name": "Over", "description": "Jaxon Smith-Njigba", "price": -120, "point": 5.5 },
+            { "name": "Under", "description": "Jaxon Smith-Njigba", "price": 100, "point": 5.5 },
+            { "name": "Anytime TD", "description": "Jaxon Smith-Njigba", "price": 140 }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "fanduel",
+      "markets": [
+        {
+          "key": "player_pass_yds",
+          "outcomes": [
+            { "name": "Over", "description": "Drake Maye", "price": -114, "point": 244.5 },
+            { "name": "Under", "description": "Drake Maye", "price": -106, "point": 244.5 }
+          ]
+        },
+        {
+          "key": "h2h",
+          "outcomes": [
+            { "name": "Seattle Seahawks", "price": -180 },
+            { "name": "New England Patriots", "price": 150 }
+          ]
+        }
+      ]
+    }
+  ]
+}

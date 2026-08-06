@@ -48,9 +48,11 @@ def test_odds_api_default_sport_is_still_mlb():
     assert "spread" not in markets
 
 
-def test_nfl_props_rejected():
+def test_nfl_props_reject_mlb_markets():
+    # D-022: NFL props are supported, but markets stay sport-gated — an MLB
+    # key against the NFL provider fails before any credit is spent.
     provider = TheOddsAPI(api_key="test-key", sport="nfl")
-    with pytest.raises(ProviderError, match="MLB only"):
+    with pytest.raises(ProviderError, match="unsupported nfl prop market"):
         provider.fetch_player_props(["pitcher_strikeouts"])
 
 
@@ -153,7 +155,7 @@ def test_today_renders_spread_column_for_nfl(tmp_path, monkeypatch):
     assert "44.5 (o-110)" in result.output
 
 
-def test_props_command_rejects_nfl(tmp_path, monkeypatch):
+def test_props_command_gates_markets_per_sport(tmp_path, monkeypatch):
     monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
     result = runner.invoke(
         app,
@@ -161,7 +163,8 @@ def test_props_command_rejects_nfl(tmp_path, monkeypatch):
          "--db", str(tmp_path / "x.sqlite")],
     )
     assert result.exit_code == 2
-    assert "MLB only" in result.output
+    assert "unsupported nfl prop market" in result.output
+    assert "player_pass_yds" in result.output  # points at the NFL menu
 
 
 def test_sports_do_not_share_a_client_pipeline_regression(tmp_path):
