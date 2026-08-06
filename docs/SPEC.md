@@ -17,6 +17,7 @@ Baseball games, with a pluggable provider layer so data sources can be added or 
 
 - Player props, futures, live/in-game odds (roadmap, not v1).
 - Sports other than MLB (but nothing in the schema should hard-block adding them).
+  (Post-v1: NFL game lines landed via sport-parameterized providers — D-019.)
 - Bet placement, bankroll tracking, or modeling — this library stops at clean data.
 - A web UI or API server.
 - Multi-machine or multi-writer deployment (SQLite single-writer is an accepted

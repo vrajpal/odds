@@ -6,7 +6,7 @@
 src/mlb_odds/
   __init__.py          # public surface: OddsClient + models re-exported
   models.py            # pydantic v2 domain models (Game, Quote, GameOdds)
-  teams.py             # canonical team codes + per-provider name mappings
+  teams.py             # canonical team codes per sport + per-provider name mappings
   providers/
     __init__.py
     base.py            # OddsProvider protocol + ProviderError
@@ -28,10 +28,12 @@ domain models.
 ## Domain models (`models.py`)
 
 ```python
-Market  = Literal["moneyline", "run_line", "total",          # game markets
+Market  = Literal["moneyline", "run_line", "total",          # game markets (mlb)
+                  "spread",                                  # nfl spread (D-019)
                   "batter_home_runs", "batter_hits",         # curated props (D-018)
                   "batter_total_bases", "pitcher_strikeouts"]
 Outcome = Literal["home", "away", "over", "under"]
+Sport   = Literal["mlb", "nfl"]   # providers are sport-parameterized; one DB per sport
 
 class Game(BaseModel):
     game_id: str            # canonical: "2026-07-09-NYM-NYY-1" (date-away-home-gamenum)

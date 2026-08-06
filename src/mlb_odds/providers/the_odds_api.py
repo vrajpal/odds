@@ -14,15 +14,26 @@ from typing import Any
 import httpx
 
 from mlb_odds import teams
-from mlb_odds.models import PROP_MARKETS, Game, GameOdds, Market, Outcome, Quote, make_game_id
+from mlb_odds.models import (
+    PROP_MARKETS,
+    Game,
+    GameOdds,
+    Market,
+    Outcome,
+    Quote,
+    Sport,
+    make_game_id,
+)
 from mlb_odds.providers.base import ProviderError, assign_game_numbers
 
 logger = logging.getLogger("mlb_odds.providers.the_odds_api")
 
+SPORT_KEYS: dict[str, str] = {"mlb": "baseball_mlb", "nfl": "americanfootball_nfl"}
 BASE_URL = "https://api.the-odds-api.com/v4/sports/baseball_mlb"
 API_URL = f"{BASE_URL}/odds"
 EVENTS_URL = f"{BASE_URL}/events"
-_MARKET_MAP: dict[str, Market] = {"h2h": "moneyline", "spreads": "run_line", "totals": "total"}
+# The Odds API's "spreads" is the run line in baseball and the spread in football.
+_SPREADS_MARKET: dict[str, Market] = {"mlb": "run_line", "nfl": "spread"}
 
 
 class TheOddsAPI:
@@ -32,6 +43,7 @@ class TheOddsAPI:
         self,
         api_key: str | None = None,
         *,
+        sport: Sport = "mlb",
         strict: bool = False,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
@@ -42,6 +54,13 @@ class TheOddsAPI:
         if not key:
             raise ProviderError("The Odds API key missing: pass api_key or set THE_ODDS_API_KEY")
         self._api_key = key
+        self._sport: Sport = sport
+        base = f"https://api.the-odds-api.com/v4/sports/{SPORT_KEYS[sport]}"
+        self._api_url = f"{base}/odds"
+        self._events_url = f"{base}/events"
+        self._market_map: dict[str, Market] = {
+            "h2h": "moneyline", "spreads": _SPREADS_MARKET[sport], "totals": "total"
+        }
         self._strict = strict
         self._client = httpx.Client(transport=transport, timeout=10.0)
         self.quota_remaining: int | None = None
@@ -64,17 +83,19 @@ class TheOddsAPI:
         games on a slate, one two-market sweep can cost up to ~30 credits —
         the CLI prints the worst case before spending.
         """
+        if self._sport != "mlb":
+            raise ProviderError("player props are implemented for MLB only (D-019)")
         unknown = [m for m in markets if m not in PROP_MARKETS]
         if unknown:
             raise ProviderError(
                 f"unsupported prop market(s) {unknown}; supported: {list(PROP_MARKETS)}"
             )
-        events = self._request_json(EVENTS_URL, {"apiKey": self._api_key})
+        events = self._request_json(self._events_url, {"apiKey": self._api_key})
         fetched_at = datetime.now(UTC)
         parsed: list[GameOdds] = []
         for event in events:
             body = self._request_json(
-                f"{EVENTS_URL}/{event['id']}/odds",
+                f"{self._events_url}/{event['id']}/odds",
                 {
                     "apiKey": self._api_key,
                     "regions": "us",
@@ -90,8 +111,8 @@ class TheOddsAPI:
 
     def _parse_prop_event(self, event: dict[str, Any], fetched_at: datetime) -> GameOdds | None:
         try:
-            home = teams.normalize(self.name, event["home_team"])
-            away = teams.normalize(self.name, event["away_team"])
+            home = teams.normalize(self._sport, self.name, event["home_team"])
+            away = teams.normalize(self._sport, self.name, event["away_team"])
         except teams.TeamLookupError as exc:
             if self._strict:
                 raise
@@ -141,7 +162,7 @@ class TheOddsAPI:
             "markets": "h2h,spreads,totals",
             "oddsFormat": "american",
         }
-        result: list[dict[str, Any]] = self._request_json(API_URL, params)
+        result: list[dict[str, Any]] = self._request_json(self._api_url, params)
         return result
 
     def _request_json(
@@ -181,8 +202,8 @@ class TheOddsAPI:
 
     def _parse_event(self, event: dict[str, Any], fetched_at: datetime) -> GameOdds | None:
         try:
-            home = teams.normalize(self.name, event["home_team"])
-            away = teams.normalize(self.name, event["away_team"])
+            home = teams.normalize(self._sport, self.name, event["home_team"])
+            away = teams.normalize(self._sport, self.name, event["away_team"])
         except teams.TeamLookupError as exc:
             if self._strict:
                 raise
@@ -194,7 +215,7 @@ class TheOddsAPI:
         quotes: list[Quote] = []
         for bookmaker in event.get("bookmakers", []):
             for market in bookmaker.get("markets", []):
-                market_key = _MARKET_MAP.get(market["key"])
+                market_key = self._market_map.get(market["key"])
                 if market_key is None:
                     continue
                 for raw in market["outcomes"]:

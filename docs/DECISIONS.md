@@ -213,3 +213,28 @@ snapshot per invocation (cron it deliberately, no loop mode) and prints
 credits remaining. Fixtures: events list and the betrivers home-run ladder
 are a live recording (2026-07-30, 1 credit); the draftkings strikeouts
 over/under book is an edited addition for coverage, labeled as such.
+
+## D-019 — Multi-sport via sport-parameterized providers, one database per sport (2026-07-31)
+NFL support generalizes in place rather than forking the package. Shape of the
+change: providers take `sport="mlb"|"nfl"` (sport key, endpoint, and market
+mapping are per-instance), `teams.normalize(sport, provider, name)` namespaces
+the 30 MLB + 32 NFL canonical codes per sport, and The Odds API's "spreads" /
+ESPN's "pointSpread" map to `run_line` for baseball and `spread` for football —
+one semantic market, sport-appropriate names.
+
+The load-bearing decision is **one database per sport** (`--sport nfl` defaults
+to ./nfl-odds.sqlite / $NFL_ODDS_DB): canonical game_ids are
+date-away-home-number, and MLB KC / NFL KC are different franchises that could
+genuinely collide on the same date under one roof. A `sport` column was
+rejected — it would touch every query, index, and uniqueness rule for a
+dimension that never joins across itself (no MLB@NFL games), whereas separate
+files isolate it for free and keep per-sport quota/backup/retention independent.
+
+Deliberately deferred: NFL player props (curated MLB markets don't transfer;
+needs its own market curation and fixture recording), and the web API/UI stays
+pointed at the MLB database ($MLB_ODDS_DB) until it grows a sport switcher.
+The package keeps its historical `mlb_odds` name — a rename to something
+sport-neutral is pure churn until an actual third sport forces the question.
+Fixtures recorded live 2026-07-31: one 3-credit NFL game-lines poll (484
+remaining) and a free ESPN fetch that caught the Hall of Fame preseason game
+with full odds.

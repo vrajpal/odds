@@ -55,3 +55,10 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] latest_odds: dedup ties when two rows share an identical fetched_at
 - [x] latest_odds(on_date)/current_odds(on_date) date-filter branch coverage
 - [x] Cross-provider doubleheader convergence when providers report in reverse order
+
+## M5 — Multi-sport
+- [x] NFL game lines: sport-parameterized providers (The Odds API + ESPN),
+      32-team registry, `spread` market, per-sport databases, `--sport` on every
+      CLI command (D-019)
+- [ ] NFL player props (needs its own market curation + fixture recording)
+- [ ] Web API/UI sport switcher (server currently serves the MLB database only)

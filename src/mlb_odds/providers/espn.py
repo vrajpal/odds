@@ -13,19 +13,18 @@ from typing import Any
 import httpx
 
 from mlb_odds import teams
-from mlb_odds.models import Game, GameOdds, Market, Outcome, Quote, make_game_id
+from mlb_odds.models import Game, GameOdds, Market, Outcome, Quote, Sport, make_game_id
 from mlb_odds.providers.base import ProviderError, assign_game_numbers
 
 logger = logging.getLogger("mlb_odds.providers.espn")
 
-SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
-
-# response market node -> (our market, sides present in that node)
-_MARKETS: list[tuple[str, Market, tuple[Outcome, ...]]] = [
-    ("moneyline", "moneyline", ("home", "away")),
-    ("pointSpread", "run_line", ("home", "away")),
-    ("total", "total", ("over", "under")),
-]
+SCOREBOARD_URLS: dict[str, str] = {
+    "mlb": "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+    "nfl": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+}
+SCOREBOARD_URL = SCOREBOARD_URLS["mlb"]
+# ESPN's pointSpread node is the run line in baseball, the spread in football.
+_SPREAD_MARKET: dict[str, Market] = {"mlb": "run_line", "nfl": "spread"}
 
 
 class ESPN:
@@ -34,12 +33,21 @@ class ESPN:
     def __init__(
         self,
         *,
+        sport: Sport = "mlb",
         strict: bool = False,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         """strict=True turns data surprises (unknown teams) into errors instead of
         logged skips — used in tests. transport is injectable for fixture-based tests.
         """
+        self._sport: Sport = sport
+        self._scoreboard_url = SCOREBOARD_URLS[sport]
+        # response market node -> (our market, sides present in that node)
+        self._markets: list[tuple[str, Market, tuple[Outcome, ...]]] = [
+            ("moneyline", "moneyline", ("home", "away")),
+            ("pointSpread", _SPREAD_MARKET[sport], ("home", "away")),
+            ("total", "total", ("over", "under")),
+        ]
         self._strict = strict
         self._client = httpx.Client(transport=transport, timeout=10.0)
         self.quota_remaining: int | None = None  # unmetered — no quota to report
@@ -58,7 +66,7 @@ class ESPN:
         last_error: Exception | None = None
         for attempt in range(2):
             try:
-                response = self._client.get(SCOREBOARD_URL)
+                response = self._client.get(self._scoreboard_url)
             except httpx.HTTPError as exc:
                 last_error = exc
                 continue
@@ -88,8 +96,8 @@ class ESPN:
             logger.warning("skipping malformed event %s: %s", event.get("id"), exc)
             return None
         try:
-            home = teams.normalize(self.name, raw_home)
-            away = teams.normalize(self.name, raw_away)
+            home = teams.normalize(self._sport, self.name, raw_home)
+            away = teams.normalize(self._sport, self.name, raw_away)
         except teams.TeamLookupError as exc:
             if self._strict:
                 raise
@@ -101,7 +109,7 @@ class ESPN:
         for entry in competition.get("odds", []):
             book = str(entry.get("provider", {}).get("displayName", "espn"))
             book = book.lower().replace(" ", "")
-            for node_key, market, outcomes in _MARKETS:
+            for node_key, market, outcomes in self._markets:
                 node = entry.get(node_key)
                 if not isinstance(node, dict):
                     continue

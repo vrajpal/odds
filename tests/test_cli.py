@@ -232,7 +232,9 @@ def test_collect_once_populates_fresh_db(tmp_path, monkeypatch):
     monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
     monkeypatch.setattr(
         "mlb_odds.cli.TheOddsAPI",
-        lambda: TheOddsAPI(api_key="test-key", transport=fixture_transport("normal_day")),
+        lambda **kw: TheOddsAPI(
+            api_key="test-key", transport=fixture_transport("normal_day"), **kw
+        ),
     )
 
     result = runner.invoke(app, ["collect", "--once", "--db", str(db)])
@@ -370,7 +372,9 @@ def test_collect_changed_only_skips_unchanged_cycles(tmp_path, monkeypatch):
     monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
     monkeypatch.setattr(
         "mlb_odds.cli.TheOddsAPI",
-        lambda: TheOddsAPI(api_key="test-key", transport=fixture_transport("normal_day")),
+        lambda **kw: TheOddsAPI(
+            api_key="test-key", transport=fixture_transport("normal_day"), **kw
+        ),
     )
     db = tmp_path / "collect.sqlite"
 
@@ -436,7 +440,7 @@ def test_sigint_handler_swapped_during_run_and_restored_after(tmp_path):
 def test_collect_wires_once_and_interval_through(tmp_path, monkeypatch, argv, expected_once):
     """Fails if the CLI hardcodes once=True (or drops --interval) when calling
     collector.run."""
-    monkeypatch.setattr("mlb_odds.cli.TheOddsAPI", lambda: FakeProvider())
+    monkeypatch.setattr("mlb_odds.cli.TheOddsAPI", lambda **kw: FakeProvider())
     calls: list[tuple[float, bool]] = []
     monkeypatch.setattr(
         "mlb_odds.cli.collector.run",
@@ -590,7 +594,7 @@ def test_collect_rejects_once_with_live(tmp_path, monkeypatch):
 
 
 def test_collect_wires_live_through(tmp_path, monkeypatch):
-    monkeypatch.setattr("mlb_odds.cli.TheOddsAPI", lambda: FakeProvider())
+    monkeypatch.setattr("mlb_odds.cli.TheOddsAPI", lambda **kw: FakeProvider())
     calls = []
     monkeypatch.setattr(
         "mlb_odds.cli.collector.run",
@@ -608,7 +612,7 @@ def test_collect_provider_espn_needs_no_key(tmp_path, monkeypatch):
     monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
     monkeypatch.setattr(
         "mlb_odds.cli.ESPN",
-        lambda: ESPN(transport=fixture_transport("espn_scoreboard_normal")),
+        lambda **kw: ESPN(transport=fixture_transport("espn_scoreboard_normal"), **kw),
     )
 
     result = runner.invoke(
@@ -625,11 +629,13 @@ def test_collect_provider_all_uses_both(tmp_path, monkeypatch):
     monkeypatch.setenv("THE_ODDS_API_KEY", "test-key")
     monkeypatch.setattr(
         "mlb_odds.cli.TheOddsAPI",
-        lambda: TheOddsAPI(api_key="test-key", transport=fixture_transport("normal_day")),
+        lambda **kw: TheOddsAPI(
+            api_key="test-key", transport=fixture_transport("normal_day"), **kw
+        ),
     )
     monkeypatch.setattr(
         "mlb_odds.cli.ESPN",
-        lambda: ESPN(transport=fixture_transport("espn_scoreboard_normal")),
+        lambda **kw: ESPN(transport=fixture_transport("espn_scoreboard_normal"), **kw),
     )
 
     result = runner.invoke(
