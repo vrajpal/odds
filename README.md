@@ -212,6 +212,32 @@ uvicorn mlb_odds.contest_api:app --port 8001
 Same trust model as the odds API: no auth, keep it on localhost or behind
 your own front door.
 
+## Docker + Tailscale
+
+`docker-compose.yml` runs both APIs in containers, published **only** on the
+host's Tailscale IP (plus loopback for the contest API) — reachable from your
+tailnet via MagicDNS, invisible to every other network. Databases live in
+`./data/` on the host, mounted at `/data`.
+
+```bash
+echo "TAILSCALE_IP=$(tailscale ip -4)" >> .env   # once
+docker compose up -d --build
+```
+
+Then from any tailnet device:
+- `http://workspace:8000` — MLB odds API + built web UI
+- `http://workspace:8001/docs` — contest API (enter Circa lines here)
+
+(Short `workspace` resolves on tailnet clients via the MagicDNS search domain;
+the full `workspace.<tailnet>.ts.net` form works everywhere.)
+
+NFL collection is a one-shot service kept out of `up` (metered credits, D-019
+quota math). Run it manually or from cron, ~3x/day Thu–Sat during the season:
+
+```bash
+docker compose run --rm nfl-collect      # 3 credits per run
+```
+
 ## Library
 
 ```python

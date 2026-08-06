@@ -1,0 +1,37 @@
+# Publishes only on TAILSCALE_IP (set in .env) plus loopback, so the no-auth
+# APIs are reachable from the tailnet via MagicDNS and from SSH port forwards,
+# but never from other networks the host sits on.
+#
+#   http://workspace:8000  — MLB odds API + built web UI
+#   http://workspace:8001  — Circa Million contest API (enter lines at /docs)
+#
+# One-shot NFL collection (cron this Thu-Sat, ~3x/day; 3 credits per run):
+#   docker compose run --rm nfl-collect
+
+services:
+  odds-api:
+    build: .
+    command: uvicorn mlb_odds.api:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./data:/data
+    ports:
+      - "${TAILSCALE_IP:?set TAILSCALE_IP in .env (tailscale ip -4)}:8000:8000"
+    restart: unless-stopped
+
+  contest-api:
+    build: .
+    command: uvicorn mlb_odds.contest_api:app --host 0.0.0.0 --port 8001
+    volumes:
+      - ./data:/data
+    ports:
+      - "${TAILSCALE_IP:?set TAILSCALE_IP in .env (tailscale ip -4)}:8001:8001"
+      - "127.0.0.1:8001:8001"
+    restart: unless-stopped
+
+  nfl-collect:
+    build: .
+    profiles: [collect]
+    command: mlb-odds collect --once --sport nfl
+    env_file: .env # THE_ODDS_API_KEY
+    volumes:
+      - ./data:/data
