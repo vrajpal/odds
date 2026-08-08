@@ -73,5 +73,12 @@ services:
     volumes:
       - ./data:/data
 
+  nfl-results:
+    build: ..
+    profiles: [collect]
+    command: mlb-odds results --sport nfl # ESPN scoreboard: free, no key
+    volumes:
+      - ./data:/data
+
 volumes:
   tailscale-state:
