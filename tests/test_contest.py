@@ -14,14 +14,16 @@ from mlb_odds.contest import (
     book_spreads,
     build_board,
     consensus,
+    game_context,
     key_numbers_crossed,
     lines_post_time,
     pick_deadline,
+    rest_days,
     spread_history,
     week_of,
     week_window,
 )
-from mlb_odds.models import Quote
+from mlb_odds.models import Game, Quote
 from mlb_odds.storage import Storage
 
 
@@ -354,3 +356,76 @@ def test_board_only_shows_games_in_week_window(odds_db):
     board2 = board_for(odds_db, {}, week=2)
     assert set(board1) == {in_week.game.game_id}
     assert set(board2) == {week2.game.game_id}
+
+
+# --- Situational context: rest days / rest differential (C4.5) ---
+
+
+def nfl_game(game_id, home, away, start_pt):
+    return Game(
+        game_id=game_id,
+        start_time=start_pt.astimezone(UTC),
+        home_team=home,
+        away_team=away,
+    )
+
+
+def test_rest_days_counts_calendar_days_not_24h_periods():
+    # SNF kickoff (Sun 5:20 PM PT) -> next Sunday early slot (1:25 PM PT) is
+    # 6d17h of wall clock but 7 days of rest by NFL convention.
+    games = [
+        nfl_game("snf", "KC", "LV", pt(2026, 9, 13, 17, 20)),
+        nfl_game("next", "KC", "DEN", pt(2026, 9, 20, 13, 25)),
+    ]
+    assert rest_days(games, "KC", pt(2026, 9, 20, 13, 25).astimezone(UTC)) == 7
+
+
+def test_rest_days_short_week_and_mini_bye():
+    games = [
+        nfl_game("sun", "DAL", "NYG", pt(2026, 9, 13, 13, 25)),
+        nfl_game("thu", "DAL", "PHI", pt(2026, 9, 17, 17, 15)),
+        nfl_game("after", "DAL", "WAS", pt(2026, 9, 27, 13, 25)),
+    ]
+    kickoff_thu = pt(2026, 9, 17, 17, 15).astimezone(UTC)
+    kickoff_after = pt(2026, 9, 27, 13, 25).astimezone(UTC)
+    assert rest_days(games, "DAL", kickoff_thu) == 4  # short week
+    assert rest_days(games, "DAL", kickoff_after) == 10  # Thursday mini-bye
+
+
+def test_rest_days_none_without_prior_game():
+    games = [nfl_game("opener", "KC", "LV", pt(2026, 9, 13, 13, 25))]
+    assert rest_days(games, "KC", pt(2026, 9, 13, 13, 25).astimezone(UTC)) is None
+    assert rest_days(games, "SF", pt(2026, 9, 13, 13, 25).astimezone(UTC)) is None
+
+
+def test_game_context_rest_differential_and_divisional():
+    matchup = nfl_game("wk3", "MIA", "BUF", pt(2026, 9, 27, 10, 0))
+    games = [
+        # MIA off a bye: last played 14 days ago. BUF played last Sunday.
+        nfl_game("mia-prior", "MIA", "NYJ", pt(2026, 9, 13, 10, 0)),
+        nfl_game("buf-prior", "NE", "BUF", pt(2026, 9, 20, 10, 0)),
+        matchup,
+    ]
+    ctx = game_context(games, matchup)
+    assert ctx.home_rest == 14
+    assert ctx.away_rest == 7
+    assert ctx.rest_differential == 7  # positive = home fresher
+    assert ctx.divisional is True  # both AFC East
+
+
+def test_game_context_rest_differential_none_when_either_side_unknown():
+    matchup = nfl_game("wk2", "SEA", "SF", pt(2026, 9, 20, 13, 25))
+    games = [
+        nfl_game("sea-prior", "SEA", "ARI", pt(2026, 9, 13, 13, 25)),
+        matchup,  # SF has no stored prior game
+    ]
+    ctx = game_context(games, matchup)
+    assert ctx.home_rest == 7
+    assert ctx.away_rest is None
+    assert ctx.rest_differential is None
+
+
+def test_game_context_non_divisional():
+    matchup = nfl_game("wk2", "KC", "DAL", pt(2026, 9, 20, 13, 25))
+    ctx = game_context([matchup], matchup)
+    assert ctx.divisional is False

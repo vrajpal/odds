@@ -124,6 +124,11 @@ class BoardGameOut(BaseModel):
     value_side: str | None
     key_numbers: list[float]
     movement_since_entry: float | None
+    predicted_line: float | None  # market-implied power-rating model (C4.4)
+    home_rest: int | None  # days since each team's previous stored game (C4.5)
+    away_rest: int | None
+    rest_differential: int | None  # home_rest - away_rest; positive = home fresher
+    divisional: bool
 
 
 class BoardOut(BaseModel):
@@ -167,9 +172,17 @@ def get_board(week: int | None = None) -> BoardOut:
     try:
         rows = contest.build_board(odds, store.lines(week), week)
         card = store.card(week)
+        all_games = odds.games()
+        fitted = contest.power_ratings(odds)
+        contexts = {
+            row.game_id: contest.game_context(all_games, game)
+            for row in rows
+            for game in (g for g in all_games if g.game_id == row.game_id)
+        }
     finally:
         store.close()
         odds.close()
+    ratings, hfa = fitted if fitted else ({}, 0.0)
 
     start, end = contest.week_window(week)
     deadline = contest.pick_deadline(week)
@@ -203,6 +216,23 @@ def get_board(week: int | None = None) -> BoardOut:
                 value_side=row.value_side,
                 key_numbers=row.key_numbers,
                 movement_since_entry=row.movement_since_entry,
+                predicted_line=contest.predicted_home_spread(
+                    ratings, hfa, row.home_team, row.away_team
+                ),
+                home_rest=(
+                    contexts[row.game_id].home_rest if row.game_id in contexts else None
+                ),
+                away_rest=(
+                    contexts[row.game_id].away_rest if row.game_id in contexts else None
+                ),
+                rest_differential=(
+                    contexts[row.game_id].rest_differential
+                    if row.game_id in contexts
+                    else None
+                ),
+                divisional=(
+                    contexts[row.game_id].divisional if row.game_id in contexts else False
+                ),
             )
             for row in sorted(rows, key=lambda r: (r.start_time, r.game_id))
         ],
@@ -836,6 +866,140 @@ def get_spread_history(game_id: str) -> SpreadHistoryOut:
         ],
         consensus=consensus_series,
     )
+
+
+class ClvPickOut(BaseModel):
+    week: int
+    game_id: str
+    side: str
+    contest_line: float
+    closing: float | None
+    clv: float | None
+    result: str | None
+
+
+class ClvOut(BaseModel):
+    picks: list[ClvPickOut]
+    n: int  # picks with a computable CLV
+    total_clv: float
+    avg_clv: float | None
+    positive: int
+    negative: int
+
+
+@app.get("/api/contest/stats/clv", response_model=ClvOut)
+def get_clv() -> ClvOut:
+    """Closing line value per locked pick (C4.2) — the north-star process
+    metric: positive means the contest number beat the market close."""
+    odds = _open_odds()
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        rows = contest.clv_report(odds, store)
+    finally:
+        store.close()
+        odds.close()
+    scored = [r.clv for r in rows if r.clv is not None]
+    return ClvOut(
+        picks=[
+            ClvPickOut(
+                week=r.week, game_id=r.game_id, side=r.side,
+                contest_line=r.contest_line, closing=r.closing, clv=r.clv,
+                result=r.result,
+            )
+            for r in rows
+        ],
+        n=len(scored),
+        total_clv=round(sum(scored), 2),
+        avg_clv=round(sum(scored) / len(scored), 3) if scored else None,
+        positive=sum(1 for c in scored if c > 0),
+        negative=sum(1 for c in scored if c < 0),
+    )
+
+
+class CalibrationBucketOut(BaseModel):
+    label: str
+    n: int
+    wins: int
+    losses: int
+    pushes: int
+    cover_rate: float | None
+
+
+@app.get("/api/contest/stats/calibration", response_model=list[CalibrationBucketOut])
+def get_calibration() -> list[CalibrationBucketOut]:
+    """Cover rate by at-lock edge bucket (C4.3): does the edge signal predict?"""
+    odds = _open_odds()
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        buckets = contest.calibration_report(odds, store)
+    finally:
+        store.close()
+        odds.close()
+    return [
+        CalibrationBucketOut(
+            label=b.label, n=b.n, wins=b.wins, losses=b.losses, pushes=b.pushes,
+            cover_rate=b.cover_rate,
+        )
+        for b in buckets
+    ]
+
+
+class RatingOut(BaseModel):
+    team: str
+    rating: float  # points vs league average on a neutral field
+
+
+class RatingsOut(BaseModel):
+    hfa: float
+    n_teams: int
+    ratings: list[RatingOut]  # best first
+
+
+@app.get("/api/contest/stats/ratings", response_model=RatingsOut)
+def get_ratings() -> RatingsOut:
+    """Market-implied power ratings (C4.4), fit from every stored spread."""
+    odds = _open_odds()
+    try:
+        fitted = contest.power_ratings(odds)
+    finally:
+        odds.close()
+    if fitted is None:
+        raise HTTPException(status_code=404, detail="not enough stored spreads to fit")
+    ratings, hfa = fitted
+    ranked = sorted(ratings.items(), key=lambda kv: -kv[1])
+    return RatingsOut(
+        hfa=hfa,
+        n_teams=len(ranked),
+        ratings=[RatingOut(team=t, rating=r) for t, r in ranked],
+    )
+
+
+class MemberStatsOut(BaseModel):
+    member: str
+    proposal_record: str  # "W-L-P"
+    stance_record: str
+    captain_weeks: int
+    captain_points: float
+
+
+@app.get("/api/contest/stats/members", response_model=list[MemberStatsOut])
+def get_member_stats() -> list[MemberStatsOut]:
+    """Per-member records over graded picks (C4.5): whose opinion to weight."""
+    store = contest.ContestStore(_resolve_contest_db())
+    try:
+        stats = contest.member_stats(store, _members())
+    finally:
+        store.close()
+    return [
+        MemberStatsOut(
+            member=s.member,
+            proposal_record=f"{s.proposal_wins}-{s.proposal_losses}-{s.proposal_pushes}",
+            stance_record=f"{s.stance_wins}-{s.stance_losses}-{s.stance_pushes}",
+            captain_weeks=s.captain_weeks,
+            captain_points=s.captain_points,
+        )
+        for s in stats
+    ]
 
 
 @app.get("/api/contest/health")

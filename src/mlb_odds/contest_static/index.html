@@ -99,6 +99,7 @@
       card's deadline to that kickoff (Rule 8).</div>
     <table id="board-table"><thead><tr>
       <th>game</th><th>kickoff (PT)</th><th></th><th class="num">market</th>
+      <th class="num">model</th>
       <th class="num">circa line</th><th class="num">edge</th><th>value</th>
       <th>keys</th><th class="num">drift</th><th></th>
     </tr></thead><tbody></tbody></table>
@@ -184,11 +185,23 @@ function renderBoard() {
   const tb = $("#board-table tbody");
   tb.innerHTML = state.board.games.map(g => {
     const edgeCls = g.edge > 0 ? "good" : g.edge < 0 ? "bad" : "dim";
+    const tags = [
+      g.early_kickoff ? '<span class="tag early">⏱ early</span>' : "",
+      g.divisional ? '<span class="tag majority">DIV</span>' : "",
+      g.home_rest != null && g.home_rest <= 4 ? '<span class="tag contested">H-short</span>' : "",
+      g.away_rest != null && g.away_rest <= 4 ? '<span class="tag contested">A-short</span>' : "",
+      g.home_rest != null && g.home_rest >= 13 ? '<span class="tag unanimous">H-bye</span>' : "",
+      g.away_rest != null && g.away_rest >= 13 ? '<span class="tag unanimous">A-bye</span>' : "",
+      g.rest_differential != null && Math.abs(g.rest_differential) >= 3
+        ? `<span class="tag majority" title="rest differential: home ${g.home_rest}d vs away ${g.away_rest}d">rest ${g.rest_differential > 0 ? "H" : "A"}+${Math.abs(g.rest_differential)}</span>`
+        : "",
+    ].filter(Boolean).join(" ");
     return `<tr data-row="${g.game_id}">
       <td><span class="matchup-link" data-chart="${g.game_id}" title="show line movement">${gameLabel(g)}</span></td>
       <td class="dim">${kickoff(g.start_time)}</td>
-      <td>${g.early_kickoff ? '<span class="tag early">⏱ early</span>' : ""}</td>
+      <td>${tags}</td>
       <td class="num">${fmtSpread(g.consensus)}</td>
+      <td class="num dim">${fmtSpread(g.predicted_line)}</td>
       <td class="num"><input class="spread" data-game="${g.game_id}"
           value="${g.contest_line ?? ""}" placeholder="—"></td>
       <td class="num ${edgeCls}">${g.edge == null ? "–" : fmtSpread(g.edge)}</td>
@@ -473,7 +486,13 @@ async function loadCard() {
 }
 
 async function loadSeason() {
-  const s = await api("/api/contest/season");
+  const [s, clv, cal, ratings, members] = await Promise.all([
+    api("/api/contest/season"),
+    api("/api/contest/stats/clv"),
+    api("/api/contest/stats/calibration"),
+    api("/api/contest/stats/ratings").catch(() => null),
+    api("/api/contest/stats/members"),
+  ]);
   const t = s.tiebreakers;
   $("#season-body").innerHTML = `
     <div class="grid">
@@ -493,7 +512,39 @@ async function loadSeason() {
     <tbody>${s.weeks.map(w => `<tr><td>${w.week}</td>
       <td>${w.wins}-${w.losses}${w.pushes ? "-" + w.pushes : ""}</td>
       <td class="num">${w.points}</td>
-      <td class="dim">${w.graded}/${w.picks}</td></tr>`).join("")}</tbody></table>`;
+      <td class="dim">${w.graded}/${w.picks}</td></tr>`).join("")}</tbody></table>
+
+    <h2>Closing line value (the process metric)</h2>
+    <div class="grid">
+      <div class="stat"><div class="v ${clv.total_clv > 0 ? "good" : clv.total_clv < 0 ? "bad" : ""}">${clv.total_clv > 0 ? "+" : ""}${clv.total_clv}</div><div class="k">total CLV pts (${clv.n} picks)</div></div>
+      <div class="stat"><div class="v">${clv.avg_clv == null ? "–" : (clv.avg_clv > 0 ? "+" : "") + clv.avg_clv}</div><div class="k">avg CLV / pick</div></div>
+      <div class="stat"><div class="v">${clv.positive} / ${clv.negative}</div><div class="k">beat close / lost to close</div></div>
+    </div>
+    ${clv.picks.length ? `<table><thead><tr><th>wk</th><th>game</th><th>side</th>
+      <th class="num">taken</th><th class="num">close</th><th class="num">CLV</th><th>result</th></tr></thead>
+      <tbody>${clv.picks.map(p => `<tr><td>${p.week}</td><td>${p.game_id}</td><td>${p.side}</td>
+        <td class="num">${fmtSpread(p.contest_line)}</td><td class="num">${fmtSpread(p.closing)}</td>
+        <td class="num ${p.clv > 0 ? "good" : p.clv < 0 ? "bad" : "dim"}">${p.clv == null ? "–" : (p.clv > 0 ? "+" : "") + p.clv}</td>
+        <td class="${p.result === "win" ? "good" : p.result === "loss" ? "bad" : "dim"}">${p.result ?? "–"}</td></tr>`).join("")}</tbody></table>` : '<div class="msg dim">No locked picks with contest lines yet.</div>'}
+
+    <h2>Edge calibration (does the signal predict?)</h2>
+    <table><thead><tr><th>bucket</th><th class="num">n</th><th>record</th><th class="num">cover %</th></tr></thead>
+    <tbody>${cal.map(b => `<tr><td>${b.label}</td><td class="num">${b.n}</td>
+      <td>${b.wins}-${b.losses}${b.pushes ? "-" + b.pushes : ""}</td>
+      <td class="num">${b.cover_rate == null ? "–" : (b.cover_rate * 100).toFixed(0) + "%"}</td></tr>`).join("")}</tbody></table>
+
+    <h2>Market-implied power ratings ${ratings ? `(HFA ${ratings.hfa > 0 ? "+" : ""}${ratings.hfa})` : ""}</h2>
+    ${ratings ? `<table><thead><tr><th>#</th><th>team</th><th class="num">rating</th></tr></thead>
+      <tbody>${ratings.ratings.map((r, i) => `<tr><td class="dim">${i + 1}</td><td>${r.team}</td>
+        <td class="num ${r.rating > 0 ? "good" : "bad"}">${r.rating > 0 ? "+" : ""}${r.rating}</td></tr>`).join("")}</tbody></table>`
+      : '<div class="msg dim">Not enough stored spreads to fit ratings yet.</div>'}
+
+    <h2>Member records (graded picks)</h2>
+    <table><thead><tr><th>member</th><th>proposals</th><th>final stances</th>
+      <th class="num">captain wks</th><th class="num">captain pts</th></tr></thead>
+    <tbody>${members.map(m => `<tr><td>${m.member}</td><td>${m.proposal_record}</td>
+      <td>${m.stance_record}</td><td class="num">${m.captain_weeks}</td>
+      <td class="num">${m.captain_points}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function showTab(name) {
