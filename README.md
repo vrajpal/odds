@@ -218,6 +218,9 @@ API surface (Swagger at `/docs`):
   line, edge (`contest - consensus`; positive = value on home), movement
   since entry, key numbers, early-kickoff flags, captain, booby-guard alert.
 - `POST/GET /api/contest/lines` — manual Circa line entry (validated).
+- `GET /api/contest/games/{id}/spread-history` — chart-ready line movement:
+  per-book ticks + the carry-forward consensus series (click a board row in
+  the UI to see it).
 - `POST/GET /api/contest/proposals` — blind one-shot proposal sets (1-5
   picks); others' picks are hidden until your own are submitted (D-021).
 - `POST /api/contest/votes`, `GET /api/contest/consensus` — the reveal:

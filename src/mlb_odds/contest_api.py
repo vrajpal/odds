@@ -9,7 +9,7 @@ Both paths are deployment configuration, never request input.
 import logging
 import os
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -759,6 +759,82 @@ def auto_grade(week: int) -> AutoGradeOut:
         graded=graded,
         skipped=skipped,
         card=_card_out(card, _card_deadline(card)),
+    )
+
+
+class SpreadTickOut(BaseModel):
+    t: str  # Pacific ISO
+    book: str
+    spread: float
+
+
+class ConsensusPointOut(BaseModel):
+    t: str
+    spread: float
+
+
+class SpreadHistoryOut(BaseModel):
+    game_id: str
+    away_team: str
+    home_team: str
+    start_time: str
+    week: int | None
+    lines_post: str | None
+    deadline: str | None
+    contest_line: float | None
+    line_entered_at: str | None
+    books: list[SpreadTickOut]  # every stored home-spread observation
+    consensus: list[ConsensusPointOut]  # carry-forward median at each snapshot time
+
+
+@app.get("/api/contest/games/{game_id}/spread-history", response_model=SpreadHistoryOut)
+def get_spread_history(game_id: str) -> SpreadHistoryOut:
+    """Line movement for one game, chart-ready: raw per-book ticks plus the
+    carry-forward consensus series (same as-of semantics the edge math uses,
+    so the chart and the board can never disagree)."""
+    try:
+        game_date = date.fromisoformat(game_id[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"malformed game_id {game_id!r}") from exc
+    odds = _open_odds()
+    try:
+        game = next((g for g in odds.games(game_date) if g.game_id == game_id), None)
+        if game is None:
+            raise HTTPException(status_code=404, detail=f"unknown game {game_id}")
+        ticks = contest.spread_history(odds, game_id)
+    finally:
+        odds.close()
+
+    week = contest.week_of(game.start_time)
+    line = None
+    if week is not None:
+        store = contest.ContestStore(_resolve_contest_db())
+        try:
+            line = store.lines(week).get(game_id)
+        finally:
+            store.close()
+
+    times = sorted({t.fetched_at for t in ticks})
+    consensus_series = []
+    for t in times:
+        value = contest.consensus(contest.book_spreads(ticks, asof=t))
+        if value is not None:
+            consensus_series.append(ConsensusPointOut(t=_pt(t), spread=value))
+    return SpreadHistoryOut(
+        game_id=game_id,
+        away_team=game.away_team,
+        home_team=game.home_team,
+        start_time=_pt(game.start_time),
+        week=week,
+        lines_post=_pt(contest.lines_post_time(week)) if week else None,
+        deadline=_pt(contest.pick_deadline(week)) if week else None,
+        contest_line=line.home_spread if line else None,
+        line_entered_at=_pt(line.entered_at) if line else None,
+        books=[
+            SpreadTickOut(t=_pt(t.fetched_at), book=t.book, spread=t.home_spread)
+            for t in ticks
+        ],
+        consensus=consensus_series,
     )
 
 

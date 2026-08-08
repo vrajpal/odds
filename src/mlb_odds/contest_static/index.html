@@ -50,6 +50,21 @@
   button.side.sel { background:var(--accent); color:#08101f; border-color:var(--accent); font-weight:700; }
   .card-box { background:var(--panel); border:1px solid var(--line); border-radius:8px;
               padding:16px; margin:12px 0; }
+  /* line-movement chart (colors validated on #171e2e: consensus #5b9dff,
+     book ticks #5f6a86, circa reference #ffb454 — identity also carried by
+     geometry + legend, never color alone) */
+  tr.chart-row td { padding:0 10px 14px; background:#131a29; }
+  .chart-wrap { position:relative; }
+  .chart-legend { display:flex; gap:16px; font-size:12px; color:var(--dim);
+                  padding:10px 4px 2px; }
+  .chart-legend .swatch { display:inline-block; width:14px; height:0;
+                          border-bottom:2px solid; margin-right:5px; vertical-align:middle; }
+  .chart-legend .dotswatch { display:inline-block; width:8px; height:8px; border-radius:50%;
+                             background:#5f6a86; margin-right:5px; }
+  .chart-tip { position:absolute; pointer-events:none; display:none; z-index:5;
+               background:#0d1220; border:1px solid var(--line); border-radius:6px;
+               padding:6px 10px; font-size:12px; line-height:1.45; white-space:nowrap; }
+  .matchup-link { cursor:pointer; text-decoration:underline dotted var(--dim); }
   .msg { margin:10px 0; min-height:22px; font-size:14px; }
   h2 { font-size:15px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
@@ -169,8 +184,8 @@ function renderBoard() {
   const tb = $("#board-table tbody");
   tb.innerHTML = state.board.games.map(g => {
     const edgeCls = g.edge > 0 ? "good" : g.edge < 0 ? "bad" : "dim";
-    return `<tr>
-      <td>${gameLabel(g)}</td>
+    return `<tr data-row="${g.game_id}">
+      <td><span class="matchup-link" data-chart="${g.game_id}" title="show line movement">${gameLabel(g)}</span></td>
       <td class="dim">${kickoff(g.start_time)}</td>
       <td>${g.early_kickoff ? '<span class="tag early">⏱ early</span>' : ""}</td>
       <td class="num">${fmtSpread(g.consensus)}</td>
@@ -191,6 +206,124 @@ function renderBoard() {
         body: JSON.stringify({week: state.week, game_id: gid, home_spread: parseFloat(val)})});
       await loadBoard();
     } catch (e) { alert("line rejected: " + e.message); }
+  });
+  tb.querySelectorAll("[data-chart]").forEach(el => el.onclick = () => toggleChart(el.dataset.chart));
+}
+
+// --- line-movement chart: consensus step line + per-book ticks + circa reference ---
+
+async function toggleChart(gid) {
+  const existing = document.querySelector(`tr.chart-row[data-chart-for="${gid}"]`);
+  if (existing) { existing.remove(); return; }
+  document.querySelectorAll("tr.chart-row").forEach(r => r.remove()); // one at a time
+  const anchor = document.querySelector(`tr[data-row="${gid}"]`);
+  if (!anchor) return;
+  let h;
+  try { h = await api(`/api/contest/games/${gid}/spread-history`); }
+  catch (e) { alert(e.message); return; }
+  const row = document.createElement("tr");
+  row.className = "chart-row";
+  row.dataset.chartFor = gid;
+  const cell = document.createElement("td");
+  cell.colSpan = anchor.children.length;
+  cell.innerHTML = renderChart(h);
+  row.appendChild(cell);
+  anchor.after(row);
+  wireChartHover(cell, h);
+}
+
+function renderChart(h) {
+  if (!h.consensus.length) return '<div class="msg dim">No spread snapshots stored for this game yet.</div>';
+  const W = 860, H = 240, M = {t: 14, r: 64, b: 26, l: 44};
+  const pw = W - M.l - M.r, ph = H - M.t - M.b;
+  const times = h.consensus.map(p => +new Date(p.t));
+  const now = Date.now();
+  const x0 = Math.min(...times), x1 = Math.max(Math.max(...times), Math.min(now, +new Date(h.deadline || now)));
+  const values = [...h.consensus.map(p => p.spread), ...h.books.map(b => b.spread)];
+  if (h.contest_line != null) values.push(h.contest_line);
+  let y0 = Math.min(...values) - 0.5, y1 = Math.max(...values) + 0.5;
+  const X = t => M.l + (x1 === x0 ? pw / 2 : (t - x0) / (x1 - x0) * pw);
+  const Y = v => M.t + (y1 - v) / (y1 - y0) * ph;
+
+  // recessive integer grid, zero line slightly stronger when in range
+  let grid = "";
+  for (let v = Math.ceil(y0); v <= Math.floor(y1); v++) {
+    grid += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(v)}" y2="${Y(v)}"
+      stroke="${v === 0 ? '#39466b' : '#222c45'}" stroke-width="1"/>
+      <text x="${M.l - 7}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="#8b96ad">${v > 0 ? '+' + v : v}</text>`;
+  }
+  // step-after consensus path: a quote holds until the next snapshot changes it
+  let d = "";
+  h.consensus.forEach((p, i) => {
+    const px = X(+new Date(p.t)), py = Y(p.spread);
+    d += i === 0 ? `M${px},${py}` : `H${px}V${py}`;
+  });
+  const lastP = h.consensus[h.consensus.length - 1];
+  d += `H${X(x1)}`; // carry the last value forward to "now"
+  // book ticks
+  const dots = h.books.map(b =>
+    `<circle cx="${X(+new Date(b.t))}" cy="${Y(b.spread)}" r="3" fill="#5f6a86"/>`).join("");
+  // circa reference
+  const circa = h.contest_line == null ? "" :
+    `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(h.contest_line)}" y2="${Y(h.contest_line)}"
+       stroke="#ffb454" stroke-width="2" stroke-dasharray="6 4"/>
+     <text x="${W - M.r + 6}" y="${Y(h.contest_line) + 4}" font-size="11" fill="#ffb454">circa ${fmtSpread(h.contest_line)}</text>`;
+  // last-value direct label
+  const lastLabel = `<text x="${W - M.r + 6}" y="${Y(lastP.spread) + 4}" font-size="11" fill="#5b9dff">now ${fmtSpread(lastP.spread)}</text>`;
+  // x-axis: first/last time labels
+  const fmtT = t => new Date(t).toLocaleString("en-US", {month: "numeric", day: "numeric", hour: "numeric"});
+  const xlabels = `<text x="${M.l}" y="${H - 8}" font-size="11" fill="#8b96ad">${fmtT(x0)}</text>
+    <text x="${W - M.r}" y="${H - 8}" text-anchor="end" font-size="11" fill="#8b96ad">${fmtT(x1)}</text>`;
+
+  return `<div class="chart-wrap">
+    <div class="chart-legend">
+      <span><span class="swatch" style="border-color:#5b9dff"></span>market consensus (home spread)</span>
+      <span><span class="dotswatch"></span>individual books</span>
+      ${h.contest_line != null ? '<span><span class="swatch" style="border-color:#ffb454;border-bottom-style:dashed"></span>circa contest line</span>' : ''}
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block">
+      ${grid}${dots}
+      <path d="${d}" fill="none" stroke="#5b9dff" stroke-width="2" stroke-linejoin="round"/>
+      ${circa}${lastLabel}${xlabels}
+      <line class="cursor" x1="0" x2="0" y1="${M.t}" y2="${H - M.b}" stroke="#39466b" stroke-width="1" visibility="hidden"/>
+    </svg>
+    <div class="chart-tip"></div>
+    <details><summary class="dim" style="cursor:pointer;font-size:12px">data table</summary>
+      <table><thead><tr><th>fetched (PT)</th><th>book</th><th class="num">home spread</th></tr></thead><tbody>
+      ${h.books.map(b => `<tr><td class="dim">${b.t.slice(0, 16).replace("T", " ")}</td><td>${b.book}</td><td class="num">${fmtSpread(b.spread)}</td></tr>`).join("")}
+      </tbody></table>
+    </details>
+  </div>`;
+}
+
+function wireChartHover(cell, h) {
+  const svg = cell.querySelector("svg"), tip = cell.querySelector(".chart-tip"),
+        cursor = cell.querySelector(".cursor");
+  if (!svg || !h.consensus.length) return;
+  const W = 860, M = {l: 44, r: 64};
+  const times = h.consensus.map(p => +new Date(p.t));
+  const x0 = times[0], x1 = Math.max(times[times.length - 1], Date.now());
+  svg.addEventListener("mousemove", ev => {
+    const rect = svg.getBoundingClientRect();
+    const frac = (ev.clientX - rect.left) / rect.width * W;
+    const t = x0 + (frac - M.l) / (W - M.l - M.r) * (x1 - x0);
+    let idx = times.findIndex(tt => tt > t) - 1;
+    if (idx < 0) idx = t >= times[times.length - 1] ? times.length - 1 : 0;
+    const at = times[idx];
+    // books as of the hovered snapshot (carry-forward, matching the server math)
+    const asof = {};
+    h.books.forEach(b => { if (+new Date(b.t) <= at) asof[b.book] = b.spread; });
+    cursor.setAttribute("x1", frac); cursor.setAttribute("x2", frac);
+    cursor.setAttribute("visibility", "visible");
+    tip.style.display = "block";
+    tip.style.left = Math.min(ev.clientX - rect.left + 14, rect.width - 190) + "px";
+    tip.style.top = "40px";
+    tip.innerHTML = `<b>${new Date(at).toLocaleString()}</b><br>` +
+      `consensus <b>${fmtSpread(h.consensus[idx].spread)}</b><br>` +
+      Object.entries(asof).sort().map(([b, v]) => `${b}: ${fmtSpread(v)}`).join("<br>");
+  });
+  svg.addEventListener("mouseleave", () => {
+    tip.style.display = "none"; cursor.setAttribute("visibility", "hidden");
   });
 }
 
