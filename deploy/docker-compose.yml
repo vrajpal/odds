@@ -82,16 +82,17 @@ services:
 
   # Public access for non-tailnet friends (D-026): Cloudflare Tunnel with a
   # Cloudflare Access policy in front (email OTP allowlist). Outbound-only —
-  # still no published ports anywhere. Opt-in:
+  # still no published ports anywhere. Opt-in AFTER the Access policy exists:
   #   docker compose --profile public up -d
-  # Shares the tailscale sidecar's namespace so its localhost IS the contest
-  # API; the dashboard ingress should point at http://localhost:8001.
+  # Locally-managed tunnel: ./cloudflared/ holds config.yml + the tunnel
+  # credentials json (gitignored; created via `cloudflared tunnel create`).
+  # Shares the tailscale sidecar's namespace so localhost IS the contest API.
   cloudflared:
     image: cloudflare/cloudflared:latest
     profiles: [public]
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?create the tunnel in Zero Trust > Networks > Tunnels}
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
     network_mode: service:tailscale
     depends_on:
       tailscale:

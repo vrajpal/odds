@@ -75,12 +75,14 @@ allowlist) as the login layer. No code runs a login flow; Access is the door.
 
 One-time dashboard setup (one.dash.cloudflare.com, free plan):
 
-1. **Tunnel**: Networks → Tunnels → Create tunnel → Cloudflared. Copy the
-   token from the install command into `deploy/.env` as
-   `CLOUDFLARE_TUNNEL_TOKEN`. On the tunnel's Public Hostname tab add:
-   `odds.<your-domain>` → Service `HTTP` → `localhost:8001`.
+1. **Tunnel** (already done via CLI for this deployment): a locally-managed
+   tunnel whose `config.yml` + credentials json live in `deploy/cloudflared/`
+   (gitignored). To recreate elsewhere: `cloudflared tunnel login`,
+   `tunnel create odds`, `tunnel route dns odds <domain>`, copy
+   `~/.cloudflared/<uuid>.json` beside a config.yml pointing ingress at
+   `http://localhost:8001`.
 2. **Access**: Access → Applications → Add → Self-hosted. Application domain:
-   `odds.<your-domain>`. Add a policy: Action *Allow*, Include → Emails →
+   your domain (apex works). Add a policy: Action *Allow*, Include → Emails →
    the three members' addresses. Session duration to taste (e.g. 1 month).
    Identity provider: One-time PIN is enabled by default — that's the email
    code flow, no accounts needed.
