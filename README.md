@@ -237,8 +237,9 @@ API surface (Swagger at `/docs`):
   scores against the stored Circa lines, D-023) and the season dashboard
   (tiebreaker ladder, quarters, booby eligibility).
 
-Same trust model as the odds API: no auth beyond the member list, keep it on
-localhost/tailnet or behind your own front door.
+Same trust model as the odds API on the tailnet path. For friends without
+Tailscale, `deploy/` ships an opt-in Cloudflare Tunnel + Access profile
+(email OTP allowlist, identity-locked members — D-026); see deploy/README.md.
 
 ## Docker + Tailscale
 
