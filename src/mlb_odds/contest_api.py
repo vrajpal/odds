@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -53,6 +53,45 @@ def _members() -> list[str]:
 def _now() -> datetime:
     """Injection seam for tests; everything time-dependent goes through it."""
     return datetime.now(UTC)
+
+
+def _member_emails() -> dict[str, str]:
+    """Cloudflare Access email -> member mapping (D-026). Empty when unset —
+    the tailnet path needs no identity headers."""
+    raw = os.environ.get("CONTEST_MEMBER_EMAILS", "")
+    mapping = {}
+    for pair in raw.split(","):
+        email, _, member = pair.strip().partition(":")
+        if email and member:
+            mapping[email.lower()] = member.strip()
+    return mapping
+
+
+def _identity(request: Request) -> str | None:
+    """The authenticated member, when the request came through Cloudflare
+    Access. Trustworthy because nothing but the tunnel can reach this app
+    from outside the tailnet (no published ports); tailnet requests carry no
+    header and stay on the existing honor system among members."""
+    email = request.headers.get("Cf-Access-Authenticated-User-Email")
+    if not email:
+        return None
+    member = _member_emails().get(email.strip().lower())
+    if member is None:
+        raise HTTPException(
+            status_code=403,
+            detail=f"{email} passed Access but is not mapped in CONTEST_MEMBER_EMAILS",
+        )
+    return member
+
+
+def _enforce_identity(request: Request, member: str) -> None:
+    """A publicly-authenticated user may only act as themselves."""
+    identified = _identity(request)
+    if identified is not None and identified != member:
+        raise HTTPException(
+            status_code=403,
+            detail=f"authenticated as {identified}; cannot act as {member}",
+        )
 
 
 def _require_member(member: str) -> str:
@@ -345,13 +384,14 @@ class ProposalsOut(BaseModel):
 
 
 @app.post("/api/contest/proposals", response_model=ProposalsOut, status_code=201)
-def submit_proposals(body: ProposalsIn) -> ProposalsOut:
+def submit_proposals(body: ProposalsIn, request: Request) -> ProposalsOut:
     """A member's blind proposal set: 1-5 picks, one shot, immutable.
 
     Immutability is what makes the blind phase honest — you cannot peek at
     the reveal and then edit.
     """
     _require_member(body.member)
+    _enforce_identity(request, body.member)
     odds = _open_odds()
     try:
         known = {g.game_id for g in odds.games(window=contest.week_window(body.week))}
@@ -379,9 +419,10 @@ def submit_proposals(body: ProposalsIn) -> ProposalsOut:
 
 
 @app.get("/api/contest/proposals", response_model=ProposalsOut)
-def get_proposals(week: int, member: str) -> ProposalsOut:
+def get_proposals(week: int, member: str, request: Request) -> ProposalsOut:
     """Own proposals always; the whole group's only after yours are submitted."""
     _require_member(member)
+    _enforce_identity(request, member)
     store = contest.ContestStore(_resolve_contest_db())
     try:
         return _proposals_view(store, week, member)
@@ -429,10 +470,11 @@ class ConsensusOut(BaseModel):
 
 
 @app.post("/api/contest/votes", response_model=ConsensusOut)
-def cast_vote(body: VoteIn) -> ConsensusOut:
+def cast_vote(body: VoteIn, request: Request) -> ConsensusOut:
     """Vote (or change your stance) on one game. Requires your proposals in —
     voting is part of the reveal phase."""
     _require_member(body.member)
+    _enforce_identity(request, body.member)
     store = contest.ContestStore(_resolve_contest_db())
     try:
         _require_submitted(store, body.week, body.member)
@@ -447,9 +489,10 @@ def cast_vote(body: VoteIn) -> ConsensusOut:
 
 
 @app.get("/api/contest/consensus", response_model=ConsensusOut)
-def get_consensus(week: int, member: str) -> ConsensusOut:
+def get_consensus(week: int, member: str, request: Request) -> ConsensusOut:
     """The reveal: everyone's stances tallied. Blind rule applies."""
     _require_member(member)
+    _enforce_identity(request, member)
     store = contest.ContestStore(_resolve_contest_db())
     try:
         _require_submitted(store, week, member)
@@ -528,10 +571,11 @@ class CardOut(BaseModel):
 
 
 @app.post("/api/contest/card", response_model=CardOut, status_code=201)
-def lock_card(body: CardIn) -> CardOut:
+def lock_card(body: CardIn, request: Request) -> CardOut:
     """Lock the week's official five. Enforces Rule 8: if any pick kicks off
     before Saturday 4 PM PT, the whole card is due before that kickoff."""
     _require_member(body.member)
+    _enforce_identity(request, body.member)
     picks = [(p.game_id, p.side) for p in body.picks]
     kickoffs = _kickoffs(body.week, [g for g, _ in picks])
     missing = [g for g, _ in picks if g not in kickoffs]
@@ -1000,6 +1044,23 @@ def get_member_stats() -> list[MemberStatsOut]:
         )
         for s in stats
     ]
+
+
+class WhoamiOut(BaseModel):
+    email: str | None  # Cloudflare Access identity, if any
+    member: str | None  # mapped contest member; null on the tailnet path
+
+
+@app.get("/api/contest/whoami", response_model=WhoamiOut)
+def whoami(request: Request) -> WhoamiOut:
+    """Who Access says you are. Tailnet requests (no header) get nulls and
+    the UI keeps its member dropdown; mapped public users are locked to
+    their identity."""
+    email = request.headers.get("Cf-Access-Authenticated-User-Email")
+    member = None
+    if email:
+        member = _member_emails().get(email.strip().lower())
+    return WhoamiOut(email=email, member=member)
 
 
 @app.get("/api/contest/health")

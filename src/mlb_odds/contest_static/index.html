@@ -148,12 +148,21 @@ const kickoff = iso => new Date(iso).toLocaleString("en-US",
   {weekday:"short", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"});
 
 async function loadMembers() {
-  const data = await api("/api/contest/members");
+  const [data, who] = await Promise.all([
+    api("/api/contest/members"),
+    api("/api/contest/whoami").catch(() => ({member: null})),
+  ]);
   const sel = $("#member");
-  sel.innerHTML = data.members.map(m => `<option>${m}</option>`).join("");
-  if (!state.me || !data.members.includes(state.me)) state.me = data.members[0];
-  sel.value = state.me;
-  sel.onchange = () => { state.me = sel.value; localStorage.setItem("member", state.me); refresh(); };
+  if (who.member) {
+    // Came through Cloudflare Access: identity is fixed, not chosen (D-026).
+    state.me = who.member;
+    sel.outerHTML = `<b id="member" title="${who.email}">${who.member}</b>`;
+  } else {
+    sel.innerHTML = data.members.map(m => `<option>${m}</option>`).join("");
+    if (!state.me || !data.members.includes(state.me)) state.me = data.members[0];
+    sel.value = state.me;
+    sel.onchange = () => { state.me = sel.value; localStorage.setItem("member", state.me); refresh(); };
+  }
   state.captains = data.captains;
 }
 

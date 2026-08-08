@@ -66,3 +66,33 @@ runcmd:
 - The sidecar needs `/dev/net/tun` and `net_admin` (kernel networking). In an
   unprivileged LXC/LXD container, enable nesting + tun, or set
   `TS_USERSPACE: "true"` (works everywhere, slightly slower).
+
+## Public access for non-tailnet friends (Cloudflare, D-026)
+
+The `public` profile adds a `cloudflared` tunnel inside the sidecar's network
+namespace — still zero published ports — with Cloudflare Access (email OTP
+allowlist) as the login layer. No code runs a login flow; Access is the door.
+
+One-time dashboard setup (one.dash.cloudflare.com, free plan):
+
+1. **Tunnel**: Networks → Tunnels → Create tunnel → Cloudflared. Copy the
+   token from the install command into `deploy/.env` as
+   `CLOUDFLARE_TUNNEL_TOKEN`. On the tunnel's Public Hostname tab add:
+   `odds.<your-domain>` → Service `HTTP` → `localhost:8001`.
+2. **Access**: Access → Applications → Add → Self-hosted. Application domain:
+   `odds.<your-domain>`. Add a policy: Action *Allow*, Include → Emails →
+   the three members' addresses. Session duration to taste (e.g. 1 month).
+   Identity provider: One-time PIN is enabled by default — that's the email
+   code flow, no accounts needed.
+3. **Identity mapping**: in `deploy/.env` set
+   `CONTEST_MEMBER_EMAILS=email:Member,email:Member,email:Member`
+   (members must match `CONTEST_MEMBERS`). Mapped visitors get their member
+   locked in the UI and cannot act as anyone else; unmapped-but-allowed
+   emails are read-blocked from acting (403).
+4. `docker compose --profile public up -d`
+
+The tailnet URL keeps working unchanged (no header → member dropdown).
+Header trust note: `Cf-Access-Authenticated-User-Email` is trustworthy here
+because the only non-tailnet path into the app is the tunnel itself; if that
+ever changes, upgrade to verifying Cloudflare's signed JWT
+(`Cf-Access-Jwt-Assertion`) instead.

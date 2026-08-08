@@ -407,3 +407,21 @@ differential, divisional via a static NFL_DIVISIONS table in teams.py).
 **Member stats** grade every member's proposals and final stances against
 card results — an opposite-side stance is graded by mirroring the pick's
 result (same line, covering is symmetric) — plus per-captain week points.
+
+## D-026 — Public access via Cloudflare Tunnel + Access, header identity (2026-08-08)
+Non-tailnet members reach the contest UI through a `cloudflared` container in
+the sidecar's network namespace (profile `public`, opt-in): outbound-only
+tunnel, still zero published ports, with Cloudflare Access (free tier,
+email one-time-PIN allowlist) as the entire login layer — the app implements
+no authentication flow.
+
+Identity rides the `Cf-Access-Authenticated-User-Email` header, mapped to a
+member via CONTEST_MEMBER_EMAILS. Mapped visitors are locked to their member
+(the UI hides the dropdown; acting endpoints 403 on mismatch); an email that
+passes Access but isn't mapped is refused on acting endpoints. Tailnet
+requests carry no header and keep the original honor system.
+
+The header (not the signed JWT) is deliberately sufficient: the app's only
+non-tailnet ingress is the tunnel itself, so nothing untrusted can inject
+the header. Documented in the deploy README: if any other public path is
+ever added, upgrade to verifying `Cf-Access-Jwt-Assertion`.

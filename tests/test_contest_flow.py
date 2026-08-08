@@ -238,3 +238,49 @@ def test_ui_served_at_root(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "Circa Million" in resp.text
+
+
+class TestAccessIdentity:
+    """Cloudflare Access identity mapping (D-026): the header locks a public
+    user to their member; tailnet requests (no header) are unchanged."""
+
+    HEADERS = {"Cf-Access-Authenticated-User-Email": "Neem@Example.com"}
+
+    @pytest.fixture(autouse=True)
+    def emails(self, monkeypatch, env):
+        monkeypatch.setenv(
+            "CONTEST_MEMBER_EMAILS",
+            "vijai@example.com:vijai,neem@example.com:sam,mike@example.com:alex",
+        )
+
+    def test_whoami_maps_case_insensitively(self, client):
+        who = client.get("/api/contest/whoami", headers=self.HEADERS).json()
+        assert who == {"email": "Neem@Example.com", "member": "sam"}
+
+    def test_whoami_null_on_tailnet_path(self, client):
+        assert client.get("/api/contest/whoami").json() == {"email": None, "member": None}
+
+    def test_public_user_cannot_act_as_someone_else(self, client, env):
+        gid = env["KC@LAC"]
+        forged = propose_as(client, "vijai", gid, headers=self.HEADERS)
+        assert forged.status_code == 403
+        assert "authenticated as sam" in forged.json()["detail"]
+        allowed = propose_as(client, "sam", gid, headers=self.HEADERS)
+        assert allowed.status_code == 201
+
+    def test_unmapped_access_email_403(self, client, env):
+        bad = {"Cf-Access-Authenticated-User-Email": "stranger@example.com"}
+        resp = propose_as(client, "vijai", env["KC@LAC"], headers=bad)
+        assert resp.status_code == 403
+        assert "not mapped" in resp.json()["detail"]
+
+    def test_tailnet_path_still_honor_system(self, client, env):
+        assert propose_as(client, "vijai", env["KC@LAC"]).status_code == 201
+
+
+def propose_as(client, member, game_id, headers=None):
+    return client.post(
+        "/api/contest/proposals",
+        json={"week": 1, "member": member, "picks": [{"game_id": game_id, "side": "home"}]},
+        headers=headers or {},
+    )
