@@ -1,15 +1,15 @@
 """OddsClient — the one object library users touch. Orchestrates providers + storage."""
 
 import logging
-from collections.abc import Sequence
-from datetime import date, datetime
+from collections.abc import Iterable, Sequence
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pandas as pd
 
 from mlb_odds.models import Game, GameOdds
-from mlb_odds.providers.base import OddsProvider, ProviderError
-from mlb_odds.storage import Storage
+from mlb_odds.providers.base import FinalScore, OddsProvider, ProviderError, ScoreSource
+from mlb_odds.storage import SAME_GAME_START_TOLERANCE, Storage
 
 logger = logging.getLogger("mlb_odds.client")
 
@@ -147,6 +147,53 @@ class OddsClient:
             df["fetched_at"] = pd.to_datetime(df["fetched_at"])
             df["start_time"] = pd.to_datetime(df["start_time"])
         return df
+
+    def fetch_and_store_results(
+        self, source: ScoreSource, days: Iterable[date], *, before: datetime | None = None
+    ) -> int:
+        """Fetch finals for the given scoreboard days and record scores for
+        stored games (D-024). Returns the number of games recorded.
+
+        Matching is (away, home) plus start-time proximity — the same
+        SAME_GAME_START_TOLERANCE storage uses for game identity, so an MLB
+        doubleheader's halves each get their own score. A day whose fetch
+        fails is logged and skipped; the others still land (collector policy).
+        """
+        finals: list[FinalScore] = []
+        for day in sorted(set(days)):
+            try:
+                finals.extend(f for f in source.fetch_final_scores(day) if f.completed)
+            except ProviderError as exc:
+                logger.error("finals fetch failed for %s: %s", day, exc)
+        if not finals:
+            return 0
+        now = datetime.now(UTC)
+        recorded = 0
+        for game in self._storage.games_missing_results(before=before or now):
+            candidates = [
+                f
+                for f in finals
+                if f.away_team == game.away_team
+                and f.home_team == game.home_team
+                and abs(f.start_time - game.start_time) <= SAME_GAME_START_TOLERANCE
+            ]
+            if not candidates:
+                continue
+            final = min(candidates, key=lambda f: abs(f.start_time - game.start_time))
+            self._storage.record_result(
+                game.game_id, final.home_score, final.away_score, fetched_at=now
+            )
+            recorded += 1
+        logger.info("results: %d final score(s) recorded", recorded)
+        return recorded
+
+    def games_missing_results(self, *, before: datetime) -> list[Game]:
+        """Stored games started before `before` with no recorded final."""
+        return self._storage.games_missing_results(before=before)
+
+    def result(self, game_id: str) -> tuple[int, int] | None:
+        """(home_score, away_score) if final, else None."""
+        return self._storage.result(game_id)
 
     def close(self) -> None:
         self._storage.close()

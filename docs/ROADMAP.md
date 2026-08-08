@@ -74,3 +74,11 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
       captain rotation, card lock with Rule-8 enforcement, ETSN tracking (D-021)
 - [x] C3 — Season: grading entry, 1st-place tiebreaker ladder, quarter
       standings, booby-guard alerts, static contest UI at / (D-021)
+
+## C4 — Stats for picking (see circa-million-2026-rules.md)
+- [x] C4.1 — Results collector: `results` table + `mlb-odds results` from the
+      ESPN scoreboard, Sunday-closing-poll cron documented (D-024)
+- [ ] C4.2 — CLV report (contest line taken vs market close, per pick + season)
+- [ ] C4.3 — Edge calibration (cover rate by edge bucket / key numbers)
+- [ ] C4.4 — Market-implied power ratings + predicted line on the board
+- [ ] C4.5 — Situational flags (rest, divisional) + per-member stats

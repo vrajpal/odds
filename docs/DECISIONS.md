@@ -355,3 +355,27 @@ rules 19a grades the NFL-deemed winner as covering — that case stays manual.
 Fixtures: the completed-slate parse test runs against a real recorded MLB
 final slate (2026-08-05, trimmed); the NFL week-1 finals fixture is edited
 (labeled in-file) because 2026 finals cannot exist yet.
+
+## D-024 — Final scores in the odds database, results collector (2026-08-08)
+C4.1 of the contest plan (stats layer). Final scores are collector-written
+game facts, so they live in the per-sport odds database (`results` table,
+migration 4) rather than the contest file: presence of a row means the game
+is final, upsert allows stat corrections, and every future stat (CLV, ATS
+records, edge calibration) joins games ⋈ odds ⋈ results in one file.
+
+Provider side: `FinalScore` and a `ScoreSource` protocol move to
+providers/base.py (ESPN satisfies it; a future scores source plugs in like an
+OddsProvider). `OddsClient.fetch_and_store_results(source, days)` matches
+finals to stored games by (away, home) plus start-time proximity using
+SAME_GAME_START_TOLERANCE — the same rule as game identity, so MLB
+doubleheader halves each get their own score. In-progress games are skipped
+and picked up on the next run; a failed day is logged, not fatal.
+
+CLI: `mlb-odds results [--sport nfl] [--date YYYY-MM-DD]`. Default mode
+derives the scoreboard days (US/Eastern — how ESPN groups slates) from
+stored games started 3+ hours ago with no score, so an empty run costs zero
+requests. Free and unmetered; cron freely.
+
+Also fixed operationally alongside (contest doc C4.1): the NFL collection
+cron gains a Sunday ~9:55 AM PT poll — without it no true closing line ever
+exists for Sunday games, and closing lines are what CLV is measured against.

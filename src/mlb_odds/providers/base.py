@@ -1,6 +1,8 @@
-"""Provider protocol. All source-specific mess stays behind this boundary."""
+"""Provider protocols. All source-specific mess stays behind this boundary."""
 
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Protocol, runtime_checkable
 
 from mlb_odds.models import GameOdds, make_game_id
@@ -25,6 +27,28 @@ class OddsProvider(Protocol):
         American prices, one fetched_at per call. Raises ProviderError on
         unrecoverable failure.
         """
+        ...
+
+
+@dataclass(frozen=True)
+class FinalScore:
+    """One event's score from a scoreboard, teams in canonical codes."""
+
+    away_team: str
+    home_team: str
+    away_score: int
+    home_score: int
+    completed: bool
+    start_time: datetime
+
+
+@runtime_checkable
+class ScoreSource(Protocol):
+    """A source of final scores, one scoreboard day at a time (D-024)."""
+
+    def fetch_final_scores(self, on: date) -> list[FinalScore]:
+        """Scores for one scoreboard day, normalized like fetch_game_lines.
+        Non-completed games are returned with completed=False."""
         ...
 
 
