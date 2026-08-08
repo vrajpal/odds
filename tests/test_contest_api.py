@@ -160,3 +160,30 @@ def test_missing_nfl_db_is_503_and_writes_nothing(tmp_path, monkeypatch):
 
 def test_board_week_out_of_range_422(client):
     assert client.get("/api/contest/board", params={"week": 19}).status_code == 422
+
+
+class TestSpreadHistory:
+    """Chart endpoint: raw ticks + carry-forward consensus, same as-of math
+    as the board so the two can never disagree."""
+
+    def test_history_series_and_consensus(self, client, dbs):
+        h = client.get(f"/api/contest/games/{dbs['game_id']}/spread-history").json()
+        assert h["week"] == 1
+        assert h["contest_line"] is None
+        assert [b["book"] for b in h["books"]].count("circa") == 2  # two snapshots
+        # Consensus at T0: median(-2.5, -3.0); at T1: median(-3.5, -4.0).
+        assert [p["spread"] for p in h["consensus"]] == [-2.75, -3.75]
+        assert h["deadline"].startswith("2026-09-12T16:00")
+
+    def test_history_includes_contest_line_once_entered(self, client, dbs):
+        client.post(
+            "/api/contest/lines",
+            json={"week": 1, "game_id": dbs["game_id"], "home_spread": -2.5},
+        )
+        h = client.get(f"/api/contest/games/{dbs['game_id']}/spread-history").json()
+        assert h["contest_line"] == -2.5
+        assert h["line_entered_at"] is not None
+
+    def test_unknown_and_malformed_game_404(self, client):
+        assert client.get("/api/contest/games/2026-09-13-XX-YY-1/spread-history").status_code == 404
+        assert client.get("/api/contest/games/not-a-game/spread-history").status_code == 404

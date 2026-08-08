@@ -249,12 +249,17 @@ class TestSportSwitcher:
 
         db = tmp_path / "nfl-odds.sqlite"
         storage = Storage(db)
+        # Noon local-time today: always inside the board's local-day window,
+        # unlike now+3h which crosses midnight when the suite runs late.
+        local_noon = datetime.now().astimezone().replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
         storage.store(
             [
                 make_nfl_spread_odds(
                     {"circa": -3.5},
                     datetime.now(UTC),
-                    start_time=datetime.now(UTC) + timedelta(hours=3),
+                    start_time=local_noon.astimezone(UTC),
                 )
             ]
         )
