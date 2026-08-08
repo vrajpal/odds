@@ -7,15 +7,15 @@ Recorded fixture: tests/fixtures/espn_scoreboard_normal.json (2026-07-30).
 """
 
 import logging
-from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from mlb_odds import teams
 from mlb_odds.models import Game, GameOdds, Market, Outcome, Quote, Sport, make_game_id
-from mlb_odds.providers.base import ProviderError, assign_game_numbers
+from mlb_odds.providers.base import FinalScore, ProviderError, assign_game_numbers
 
 logger = logging.getLogger("mlb_odds.providers.espn")
 
@@ -28,16 +28,9 @@ SCOREBOARD_URL = SCOREBOARD_URLS["mlb"]
 _SPREAD_MARKET: dict[str, Market] = {"mlb": "run_line", "nfl": "spread"}
 
 
-@dataclass(frozen=True)
-class FinalScore:
-    """One event's score from the scoreboard, teams in canonical codes."""
-
-    away_team: str
-    home_team: str
-    away_score: int
-    home_score: int
-    completed: bool
-    start_time: datetime
+# ESPN groups scoreboard days by US/Eastern calendar date; callers deriving
+# a `dates=` value from a UTC start_time must convert through this zone.
+SCOREBOARD_DAY_TZ = ZoneInfo("America/New_York")
 
 
 class ESPN:

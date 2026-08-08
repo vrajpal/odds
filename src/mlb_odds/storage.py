@@ -89,6 +89,15 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE odds ADD COLUMN player TEXT;
     """,
+    # Final scores (D-024): row present == game is final; upsert corrects.
+    """
+    CREATE TABLE results (
+        game_id     TEXT PRIMARY KEY REFERENCES games(game_id),
+        home_score  INTEGER NOT NULL,
+        away_score  INTEGER NOT NULL,
+        fetched_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 
@@ -511,6 +520,55 @@ class Storage:
             )
             for (game_id, provider), quotes in quotes_by_key.items()
         ]
+
+    def record_result(
+        self, game_id: str, home_score: int, away_score: int, *, fetched_at: datetime
+    ) -> None:
+        """Store a final score. Presence of a row means the game is final;
+        re-recording overwrites (stat corrections happen)."""
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO results (game_id, home_score, away_score, fetched_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (game_id) DO UPDATE
+                    SET home_score = excluded.home_score,
+                        away_score = excluded.away_score,
+                        fetched_at = excluded.fetched_at
+                """,
+                (game_id, home_score, away_score, _utc_key(fetched_at)),
+            )
+
+    def result(self, game_id: str) -> tuple[int, int] | None:
+        """(home_score, away_score) if the game is final, else None."""
+        row = self._conn.execute(
+            "SELECT home_score, away_score FROM results WHERE game_id = ?", (game_id,)
+        ).fetchone()
+        return (row[0], row[1]) if row else None
+
+    def games_missing_results(self, *, before: datetime) -> list[Game]:
+        """Stored games that started before `before` and have no final score —
+        the collector's work list."""
+        cutoff = _utc_key(before)
+        games = []
+        for game_id, start_time, home, away in self._conn.execute(
+            """
+            SELECT g.game_id, g.start_time, g.home_team, g.away_team
+            FROM games AS g LEFT JOIN results AS r ON r.game_id = g.game_id
+            WHERE r.game_id IS NULL AND g.start_time < ?
+            ORDER BY g.start_time
+            """,
+            (cutoff,),
+        ):
+            games.append(
+                Game(
+                    game_id=game_id,
+                    start_time=datetime.fromisoformat(start_time),
+                    home_team=home,
+                    away_team=away,
+                )
+            )
+        return games
 
     def history_rows(
         self, game_id: str

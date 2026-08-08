@@ -6,7 +6,7 @@ display layer only.
 
 import logging
 import os
-from datetime import date, datetime, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -204,6 +204,58 @@ def props(
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
+    finally:
+        client.close()
+
+
+@app.command()
+def results(
+    on: Annotated[
+        str | None,
+        typer.Option(
+            "--date",
+            help="YYYY-MM-DD scoreboard day (US/Eastern, how ESPN groups days). "
+            "Default: every day with a stored game started >3h ago and no score.",
+        ),
+    ] = None,
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
+    db: DbOption = None,
+) -> None:
+    """Store final scores for completed games (ESPN scoreboard — free, D-024).
+
+    Cron this after slates finish; re-runs are safe (corrections overwrite,
+    unfinished games are skipped and picked up next run).
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    from mlb_odds.providers.espn import SCOREBOARD_DAY_TZ
+
+    client = OddsClient(providers=[], db=_resolve_db(db, sport))
+    try:
+        # Only games that plausibly finished: started 3+ hours ago.
+        cutoff = datetime.now(UTC) - timedelta(hours=3)
+        if on is not None:
+            days = [date.fromisoformat(on)]
+            cutoff = datetime.now(UTC)  # explicit day: trust the operator
+        else:
+            pending = client.games_missing_results(before=cutoff)
+            days = sorted(
+                {g.start_time.astimezone(SCOREBOARD_DAY_TZ).date() for g in pending}
+            )
+            if not days:
+                typer.echo("No completed games are missing scores.")
+                return
+        recorded = client.fetch_and_store_results(
+            ESPN(sport=sport.value), days, before=cutoff
+        )
+        still_missing = len(
+            client.games_missing_results(before=datetime.now(UTC) - timedelta(hours=3))
+        )
+        typer.echo(f"{recorded} final score(s) recorded; {still_missing} still missing.")
     finally:
         client.close()
 

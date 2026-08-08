@@ -252,3 +252,37 @@ Follows the existing dependency direction and reuses the current stack:
   contest node's root (D-021).
 
 All three milestones landed before registration closes (Sep 12, 2026).
+
+## C4 — Stats for picking (added 2026-08-08)
+
+A decision-support layer on top of the existing data. Ordering is by
+leverage, and the first two are time-sensitive: anything not collected from
+Week 1 is unrecoverable, and 90 picks/season is too small a sample for win
+rate to judge the process — closing line value converges much faster and is
+the north-star metric.
+
+- **C4.1 — Results collector + Sunday closing poll**: persist final scores
+  (ESPN, free) into the per-sport odds DB via a `mlb-odds results` command,
+  cron-able like `collect`; add a Sunday ~9:55 AM PT collect so true closing
+  lines exist for Sunday games (current cron is Thu–Sat only). Foundation for
+  everything below.
+- **C4.2 — CLV report**: per graded pick, contest line taken vs market
+  closing line; season aggregate on the Season tab. Positive CLV = beating
+  the market regardless of short-term results.
+- **C4.3 — Edge calibration**: cover rate bucketed by edge size (0–1, 1–2,
+  2+) and key-number crossings, from graded picks + reconstructable
+  at-lock-time edges. Tells us how much to trust the edge finder on
+  contested votes.
+- **C4.4 — Market-implied power ratings**: least-squares team ratings +
+  home-field advantage fit from stored spreads; adds a predicted line per
+  game to the board as a third reference beside Circa's number and consensus.
+- **C4.5 — Situational flags + member stats**: rest differential (short
+  weeks, byes), divisional flags on the board; per-member proposal cover
+  rate, contested-vote accuracy, and captain-decision record on the Season
+  tab.
+
+Deliberately skipped: injury feeds (market movement already embeds them),
+public betting percentages (unavailable on our feed), weather (totals
+signal, we pick spreads). Also noted: The Odds API `us` region lacks Circa's
+own market line (`us2`/`bookmakers=circasports`) — polling it would be
+uniquely relevant context but costs extra credits; decide at season start.

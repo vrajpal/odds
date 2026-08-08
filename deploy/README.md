@@ -26,12 +26,19 @@ docker compose run --rm nfl-collect     # seed NFL lines (3 credits)
 Existing databases can be seeded by copying them into `deploy/data/` before
 first start (`odds.sqlite`, `nfl-odds.sqlite`).
 
-Collection cadence during the season (host crontab, Thu–Sat 3x/day ≈ 27
-credits/week):
+Season cadence (host crontab). Thu–Sat line polls ≈ 27 credits/week; the
+Sunday 9:55 AM PT poll captures true closing lines for CLV (D-024); results
+runs are free:
 
 ```cron
 0 8,13,18 * * 4-6  cd /opt/odds/deploy && docker compose run --rm nfl-collect
+55 9 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-collect
+0 21 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-results
+30 8 * * 2         cd /opt/odds/deploy && docker compose run --rm nfl-results
 ```
+
+(9:55 AM Sunday = just before the early window; 9 PM Sunday catches the day's
+finals; Tuesday morning sweeps MNF and any stragglers.)
 
 ## Fresh VM provisioning (cloud-init)
 
