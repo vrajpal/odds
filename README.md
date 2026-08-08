@@ -228,6 +228,10 @@ API surface (Swagger at `/docs`):
   Rule-8 effective deadline.
 - `POST/PATCH/GET /api/contest/card` — lock the week's five (Rule 8 enforced
   at lock time), record the Circa ETSN.
+- `GET /api/contest/stats/{clv,calibration,ratings,members}` — the C4 stats
+  layer (D-025): closing line value, edge calibration, market-implied power
+  ratings, member records. Rendered on the Season tab; the board carries the
+  model's predicted line and rest/divisional context.
 - `POST /api/contest/results`, `POST /api/contest/results/auto`,
   `GET /api/contest/season` — grading (manual, or auto-graded from ESPN final
   scores against the stored Circa lines, D-023) and the season dashboard

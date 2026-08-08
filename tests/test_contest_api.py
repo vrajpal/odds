@@ -55,6 +55,11 @@ def test_board_without_lines_shows_market_context(client, dbs):
     assert game["consensus"] == -3.75
     assert game["contest_line"] is None
     assert game["edge"] is None
+    # C4.5 context: only one stored game, so neither team has a prior
+    assert game["home_rest"] is None
+    assert game["away_rest"] is None
+    assert game["rest_differential"] is None
+    assert game["divisional"] is True  # KC @ LAC, both AFC West
 
 
 def test_enter_line_then_board_computes_edge(client, dbs):
@@ -187,3 +192,31 @@ class TestSpreadHistory:
     def test_unknown_and_malformed_game_404(self, client):
         assert client.get("/api/contest/games/2026-09-13-XX-YY-1/spread-history").status_code == 404
         assert client.get("/api/contest/games/not-a-game/spread-history").status_code == 404
+
+
+class TestStatsEndpoints:
+    """C4 stats endpoints: correct empty-season states and board enrichment."""
+
+    def test_board_carries_context_and_model_fields(self, client, dbs):
+        (game,) = client.get("/api/contest/board", params={"week": 1}).json()["games"]
+        assert game["divisional"] is True  # KC @ LAC: both AFC West
+        assert game["home_rest"] is None  # first stored game for both teams
+        assert game["predicted_line"] is None  # one game: no rating fit yet
+
+    def test_clv_empty_state(self, client, dbs):
+        body = client.get("/api/contest/stats/clv").json()
+        assert body == {"picks": [], "n": 0, "total_clv": 0.0, "avg_clv": None,
+                        "positive": 0, "negative": 0}
+
+    def test_calibration_empty_state(self, client, dbs):
+        buckets = client.get("/api/contest/stats/calibration").json()
+        assert len(buckets) == 5
+        assert all(b["n"] == 0 and b["cover_rate"] is None for b in buckets)
+
+    def test_ratings_404_below_minimum_games(self, client, dbs):
+        assert client.get("/api/contest/stats/ratings").status_code == 404
+
+    def test_member_stats_zeroed(self, client, dbs):
+        stats = client.get("/api/contest/stats/members").json()
+        assert [s["member"] for s in stats] == ["player1", "player2", "player3"]
+        assert all(s["proposal_record"] == "0-0-0" for s in stats)

@@ -25,6 +25,7 @@ from pathlib import Path
 from statistics import median
 from zoneinfo import ZoneInfo
 
+from mlb_odds.models import Game
 from mlb_odds.storage import Storage
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
@@ -767,3 +768,294 @@ def grade_pick(side: str, home_spread: float, home_score: int, away_score: int) 
         return "push"
     home_covered = margin > 0
     return "win" if (side == "home") == home_covered else "loss"
+
+
+# --- C4.2-C4.5: decision-support stats ---------------------------------------
+
+
+def pick_side_value(side: str, contest_line: float, market: float) -> float:
+    """Points of value the taken side gets versus a market number: positive
+    means the contest number is better than `market` for that side. With
+    market = current consensus this is the pick's edge; with market = closing
+    consensus it is the pick's CLV."""
+    if side not in ("home", "away"):
+        raise ValueError(f"side must be home/away, got {side!r}")
+    diff = contest_line - market
+    return round(diff if side == "home" else -diff, 2)
+
+
+@dataclass(frozen=True)
+class ClvRow:
+    week: int
+    game_id: str
+    side: str
+    contest_line: float
+    closing: float | None  # consensus as of kickoff; None = no pre-start snapshot
+    clv: float | None
+    result: str | None
+
+
+def clv_report(odds: Storage, store: ContestStore) -> list[ClvRow]:
+    """Closing line value for every locked pick with a contest line (C4.2).
+
+    CLV converges long before win rate does at 90 picks/season: it is the
+    north-star metric for whether the process beats the market."""
+    rows: list[ClvRow] = []
+    for card in store.all_cards():
+        lines = store.lines(card.week)
+        games = {g.game_id: g for g in odds.games(window=week_window(card.week))}
+        for pick in card.picks:
+            line = lines.get(pick.game_id)
+            game = games.get(pick.game_id)
+            if line is None or game is None:
+                continue
+            ticks = spread_history(odds, pick.game_id)
+            closing = consensus(book_spreads(ticks, asof=game.start_time))
+            clv = (
+                pick_side_value(pick.side, line.home_spread, closing)
+                if closing is not None
+                else None
+            )
+            rows.append(
+                ClvRow(
+                    week=card.week,
+                    game_id=pick.game_id,
+                    side=pick.side,
+                    contest_line=line.home_spread,
+                    closing=closing,
+                    clv=clv,
+                    result=pick.result,
+                )
+            )
+    return rows
+
+
+@dataclass(frozen=True)
+class CalibrationBucket:
+    label: str
+    n: int
+    wins: int
+    losses: int
+    pushes: int
+
+    @property
+    def cover_rate(self) -> float | None:
+        decided = self.wins + self.losses
+        return round(self.wins / decided, 3) if decided else None
+
+
+def calibration_report(odds: Storage, store: ContestStore) -> list[CalibrationBucket]:
+    """Cover rate by at-lock edge bucket, plus a key-number-crossing bucket
+    (C4.3). Edge is side-adjusted: positive = we took the market-value side.
+    The `< 0` bucket is the honest one — picks made against the edge signal."""
+    tallies: dict[str, list[int]] = {
+        "edge < 0": [0, 0, 0],
+        "0 <= edge < 1": [0, 0, 0],
+        "1 <= edge < 2": [0, 0, 0],
+        "edge >= 2": [0, 0, 0],
+        "key number crossed": [0, 0, 0],
+    }
+    slot = {"win": 0, "loss": 1, "push": 2}
+    for card in store.all_cards():
+        lines = store.lines(card.week)
+        for pick in card.picks:
+            line = lines.get(pick.game_id)
+            if pick.result is None or line is None:
+                continue
+            ticks = spread_history(odds, pick.game_id)
+            at_lock = consensus(book_spreads(ticks, asof=card.locked_at))
+            if at_lock is None:
+                continue
+            edge = pick_side_value(pick.side, line.home_spread, at_lock)
+            if edge < 0:
+                label = "edge < 0"
+            elif edge < 1:
+                label = "0 <= edge < 1"
+            elif edge < 2:
+                label = "1 <= edge < 2"
+            else:
+                label = "edge >= 2"
+            tallies[label][slot[pick.result]] += 1
+            if key_numbers_crossed(line.home_spread, at_lock):
+                tallies["key number crossed"][slot[pick.result]] += 1
+    return [
+        CalibrationBucket(label=label, n=sum(t), wins=t[0], losses=t[1], pushes=t[2])
+        for label, t in tallies.items()
+    ]
+
+
+def power_ratings(odds: Storage) -> tuple[dict[str, float], float] | None:
+    """Market-implied team ratings + home-field advantage (C4.4).
+
+    Each game with a market spread contributes one equation
+    r_home - r_away + hfa = -spread (predicted home margin); ridge-regularized
+    least squares over every stored game keeps early-season fits sane. Uses
+    the closing consensus for started games and the latest otherwise, so the
+    fit follows the market's most-informed number per game.
+    """
+    import numpy as np
+
+    games = odds.games()
+    rows: list[tuple[str, str, float]] = []
+    for game in games:
+        ticks = spread_history(odds, game.game_id)
+        market = consensus(book_spreads(ticks, asof=game.start_time))
+        if market is None:
+            market = consensus(book_spreads(ticks))
+        if market is not None:
+            rows.append((game.home_team, game.away_team, -market))
+    if len(rows) < 8:  # not enough equations for 32 unknowns to mean anything
+        return None
+    teams_sorted = sorted({t for h, a, _ in rows for t in (h, a)})
+    index = {t: i for i, t in enumerate(teams_sorted)}
+    n = len(teams_sorted)
+    x = np.zeros((len(rows), n + 1))
+    y = np.zeros(len(rows))
+    for i, (home, away, margin) in enumerate(rows):
+        x[i, index[home]] = 1.0
+        x[i, index[away]] = -1.0
+        x[i, n] = 1.0  # hfa column
+        y[i] = margin
+    lam = 1.0  # ridge: shrinks ratings toward 0 when a team has few lines
+    a = x.T @ x + lam * np.eye(n + 1)
+    b = x.T @ y
+    solution = np.linalg.solve(a, b)
+    ratings_raw = solution[:n]
+    ratings_raw = ratings_raw - ratings_raw.mean()  # identifiable: mean 0
+    ratings = {t: round(float(r), 2) for t, r in zip(teams_sorted, ratings_raw, strict=True)}
+    return ratings, round(float(solution[n]), 2)
+
+
+def predicted_home_spread(
+    ratings: dict[str, float], hfa: float, home: str, away: str
+) -> float | None:
+    """The model's home spread: negative = home favored (same convention as
+    every spread in this package)."""
+    if home not in ratings or away not in ratings:
+        return None
+    return round(-(ratings[home] - ratings[away] + hfa), 1)
+
+
+@dataclass(frozen=True)
+class GameContext:
+    """Situational flags (C4.5), derived purely from the stored schedule."""
+
+    home_rest: int | None  # days since the team's previous stored game
+    away_rest: int | None
+    divisional: bool
+
+    @property
+    def rest_differential(self) -> int | None:
+        """home_rest - away_rest: positive = home team is better rested.
+
+        None until both teams have a stored prior game (e.g. week 1). The
+        handicapping-relevant magnitudes are 3+ (bye or Thursday mini-bye vs
+        a normal week); +/-1 is ordinary schedule jitter."""
+        if self.home_rest is None or self.away_rest is None:
+            return None
+        return self.home_rest - self.away_rest
+
+
+def rest_days(all_games: Sequence[Game], team: str, before: datetime) -> int | None:
+    """Calendar days (Pacific) between the team's previous stored game and
+    `before` — the NFL convention: Sunday -> next Sunday is 7, Sunday ->
+    Thursday is 4. Counting floor(24h) periods on the UTC instants instead
+    would undercount any late-kickoff -> earlier-kickoff gap (SNF -> next
+    Sunday 1:25 is 6d17h), and UTC dates would push night games onto the
+    wrong day entirely (SNF kicks off past midnight UTC)."""
+    prior = [
+        g.start_time
+        for g in all_games
+        if team in (g.home_team, g.away_team) and g.start_time < before
+    ]
+    if not prior:
+        return None
+    last = max(prior)
+    return (before.astimezone(PACIFIC).date() - last.astimezone(PACIFIC).date()).days
+
+
+def game_context(all_games: Sequence[Game], game: Game) -> GameContext:
+    from mlb_odds.teams import NFL_DIVISIONS
+
+    return GameContext(
+        home_rest=rest_days(all_games, game.home_team, game.start_time),
+        away_rest=rest_days(all_games, game.away_team, game.start_time),
+        divisional=(
+            NFL_DIVISIONS.get(game.home_team) is not None
+            and NFL_DIVISIONS.get(game.home_team) == NFL_DIVISIONS.get(game.away_team)
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class MemberStats:
+    member: str
+    proposal_wins: int
+    proposal_losses: int
+    proposal_pushes: int
+    stance_wins: int
+    stance_losses: int
+    stance_pushes: int
+    captain_weeks: int
+    captain_points: float
+
+
+def _mirror(result: str) -> str:
+    return {"win": "loss", "loss": "win", "push": "push"}[result]
+
+
+def member_stats(store: ContestStore, members: Sequence[str]) -> list[MemberStats]:
+    """Per-member records over graded card picks (C4.5).
+
+    A pick graded on the card's side also grades every member's *stance* on
+    that game: same side → same result, opposite side → mirrored (the line is
+    identical, so covering is symmetric). Proposal record counts only games
+    the member originally proposed; stance record uses their final position
+    (vote overriding proposal). Captain record: the week's points under each
+    member's captaincy.
+    """
+    counts: dict[str, dict[str, int]] = {
+        m: {"pw": 0, "pl": 0, "pp": 0, "sw": 0, "sl": 0, "sp": 0, "cw": 0}
+        for m in members
+    }
+    captain_points: dict[str, float] = {m: 0.0 for m in members}
+    for card in store.all_cards():
+        graded = {p.game_id: p for p in card.picks if p.result is not None}
+        captain = captain_for(card.week, members)
+        if captain in counts:
+            counts[captain]["cw"] += 1
+            captain_points[captain] += week_score(card).points
+        proposals = store.proposals(card.week)
+        stances: dict[tuple[str, str], str] = {}
+        for p in proposals:
+            stances[(p.member, p.game_id)] = p.side
+        for v in store.votes(card.week):
+            stances[(v.member, v.game_id)] = v.side
+        for p in proposals:
+            pick = graded.get(p.game_id)
+            if pick is None or p.member not in counts:
+                continue
+            outcome = pick.result or "push"
+            result = outcome if p.side == pick.side else _mirror(outcome)
+            counts[p.member]["p" + result[0]] += 1
+        for (member, game_id), side in stances.items():
+            pick = graded.get(game_id)
+            if pick is None or member not in counts:
+                continue
+            outcome = pick.result or "push"
+            result = outcome if side == pick.side else _mirror(outcome)
+            counts[member]["s" + result[0]] += 1
+    return [
+        MemberStats(
+            member=m,
+            proposal_wins=counts[m]["pw"],
+            proposal_losses=counts[m]["pl"],
+            proposal_pushes=counts[m]["pp"],
+            stance_wins=counts[m]["sw"],
+            stance_losses=counts[m]["sl"],
+            stance_pushes=counts[m]["sp"],
+            captain_weeks=counts[m]["cw"],
+            captain_points=round(captain_points[m], 1),
+        )
+        for m in members
+    ]

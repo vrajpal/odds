@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "fastapi>=0.115",
     "uvicorn>=0.32",
+    "numpy>=1.26",  # power-ratings least squares (D-025); already transitive via pandas
 ]
 
 [project.scripts]

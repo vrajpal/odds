@@ -78,7 +78,8 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 ## C4 — Stats for picking (see circa-million-2026-rules.md)
 - [x] C4.1 — Results collector: `results` table + `mlb-odds results` from the
       ESPN scoreboard, Sunday-closing-poll cron documented (D-024)
-- [ ] C4.2 — CLV report (contest line taken vs market close, per pick + season)
-- [ ] C4.3 — Edge calibration (cover rate by edge bucket / key numbers)
-- [ ] C4.4 — Market-implied power ratings + predicted line on the board
-- [ ] C4.5 — Situational flags (rest, divisional) + per-member stats
+- [x] C4.2 — CLV report: per-pick + season aggregates on the Season tab (D-025)
+- [x] C4.3 — Edge calibration: cover rate by at-lock edge bucket + key numbers (D-025)
+- [x] C4.4 — Market-implied power ratings (ridge LSQ) + model line on the board (D-025)
+- [x] C4.5 — Situational flags (rest, rest differential, divisional) + member
+      proposal/stance/captain records (D-025)

@@ -130,3 +130,17 @@ def normalize(sport: str, provider: str, raw_name: str) -> str:
         raise TeamLookupError(
             f"unknown team name {raw_name!r} from {sport!r}/{provider!r}"
         ) from None
+
+
+# NFL divisions (2026 alignment), canonical codes — used by the contest tool
+# for divisional-game flags (D-025). League facts, so they live with the codes.
+NFL_DIVISIONS: dict[str, str] = {
+    "BUF": "AFC East", "MIA": "AFC East", "NE": "AFC East", "NYJ": "AFC East",
+    "BAL": "AFC North", "CIN": "AFC North", "CLE": "AFC North", "PIT": "AFC North",
+    "HOU": "AFC South", "IND": "AFC South", "JAX": "AFC South", "TEN": "AFC South",
+    "DEN": "AFC West", "KC": "AFC West", "LAC": "AFC West", "LV": "AFC West",
+    "DAL": "NFC East", "NYG": "NFC East", "PHI": "NFC East", "WAS": "NFC East",
+    "CHI": "NFC North", "DET": "NFC North", "GB": "NFC North", "MIN": "NFC North",
+    "ATL": "NFC South", "CAR": "NFC South", "NO": "NFC South", "TB": "NFC South",
+    "ARI": "NFC West", "LAR": "NFC West", "SEA": "NFC West", "SF": "NFC West",
+}

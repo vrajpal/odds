@@ -379,3 +379,31 @@ requests. Free and unmetered; cron freely.
 Also fixed operationally alongside (contest doc C4.1): the NFL collection
 cron gains a Sunday ~9:55 AM PT poll — without it no true closing line ever
 exists for Sunday games, and closing lines are what CLV is measured against.
+
+## D-025 — C4 stats layer: CLV, calibration, market-implied ratings, context (2026-08-08)
+Completes the C4 plan (C4.2-C4.5). All four are read-only reports over data
+already collected; nothing new is written anywhere.
+
+**One sign convention for edge and CLV** — `pick_side_value(side, contest,
+market)`: points of value the *taken side* gets versus a market number,
+positive = the contest number is better for that side. With market = current
+consensus it is the pick's edge; with market = closing consensus it is CLV.
+One function, one convention, no way for the two reports to disagree.
+
+**Calibration** buckets graded picks by at-lock side-adjusted edge (<0,
+[0,1), [1,2), >=2) plus a key-number-crossing bucket; the `< 0` bucket is
+deliberate — it counts picks made *against* the signal.
+
+**Power ratings** are market-implied: ridge-regularized least squares
+(lambda=1, numpy — now a declared direct dependency, previously transitive
+via pandas) over one equation per stored game, `r_home - r_away + hfa =
+-spread`, using closing consensus for started games and latest otherwise.
+Ratings are mean-centered; the board shows the model's predicted line as a
+third reference. No play-by-play data, no external feeds — the market rates
+the teams, we just solve for what it thinks.
+
+**Context flags** derive purely from the stored schedule (rest days, rest
+differential, divisional via a static NFL_DIVISIONS table in teams.py).
+**Member stats** grade every member's proposals and final stances against
+card results — an opposite-side stance is graded by mirroring the pick's
+result (same line, covering is symmetric) — plus per-captain week points.
