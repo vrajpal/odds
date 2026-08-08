@@ -77,7 +77,11 @@
 <body>
 <header>
   <h1>🏈 Circa Million</h1>
-  <span class="chip">week <b id="hdr-week">–</b></span>
+  <span class="chip">week
+    <button class="side" id="week-prev" title="previous week">‹</button>
+    <select id="hdr-week"></select>
+    <button class="side" id="week-next" title="next week">›</button>
+  </span>
   <span class="chip">captain <b id="hdr-captain">–</b></span>
   <span class="chip" id="countdown">deadline <b>–</b></span>
   <span class="chip">you are
@@ -173,7 +177,14 @@ async function loadBoard() {
     state.week = 1; state.board = await api("/api/contest/board?week=1");
   }
   state.week = state.board.week;
-  $("#hdr-week").textContent = state.board.week;
+  const wk = $("#hdr-week");
+  if (!wk.options.length) {
+    wk.innerHTML = Array.from({length: 18}, (_, i) => `<option>${i + 1}</option>`).join("");
+    wk.onchange = () => setWeek(parseInt(wk.value, 10));
+    $("#week-prev").onclick = () => setWeek(state.week - 1);
+    $("#week-next").onclick = () => setWeek(state.week + 1);
+  }
+  wk.value = state.board.week;
   $("#hdr-captain").textContent = state.board.captain;
   $("#alert").style.display = state.board.booby_guard_alert ? "inline-block" : "none";
   tickCountdown();
@@ -570,6 +581,18 @@ $("#tabs").onclick = e => {
   if (tab === "card") loadCard();
   if (tab === "season") loadSeason();
 };
+
+function setWeek(week) {
+  if (week < 1 || week > 18) return;
+  state.week = week;
+  state.proposal = {};  // proposal draft is per-week
+  document.querySelectorAll("tr.chart-row").forEach(r => r.remove());
+  refresh();
+  // re-pull whichever data tab is open for the new week
+  const active = document.querySelector("#tabs button.active")?.dataset.tab;
+  if (active === "consensus") loadConsensus();
+  if (active === "card") loadCard();
+}
 
 async function refresh() { await loadBoard(); refreshProposeStatus(); }
 (async () => { await loadMembers(); await refresh(); })();
