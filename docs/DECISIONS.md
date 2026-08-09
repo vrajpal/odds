@@ -446,3 +446,34 @@ Consensus stays an unweighted median; pinnacle joins it as one book. A
 pinnacle-weighted consensus was considered and rejected for now: the median
 already resists one-book outliers, and a weight is a modeling decision to
 revisit with CLV data in hand.
+
+## D-028 — Survivor tool: same app, own domain module, own migration chain (2026-08-09)
+The Circa Survivor entry manager (see circa-survivor-2026-rules.md) rides the
+existing contest server rather than becoming a second app: `survivor_api.py`
+is an APIRouter included by `contest_api` at the bottom of its module (so the
+router can import contest_api's identity/db/now helpers back as a module
+object without a cycle), and the UI is a sibling static page (survivor.html)
+next to the Million page. One process, one tunnel, one identity layer.
+
+State lives in the same contest.sqlite file but under survivor's own tables
+and its own `survivor_schema_version` table — two independent migration
+lists over one file never interleave, and the Million tables stay untouched.
+
+Domain shape differs from the Million deliberately:
+- The calendar is 20 *legs* keyed by string ids ("1".."18", "TG", "XMAS"),
+  transcribed from Rules 7/11/12/13 rather than derived: the holiday legs and
+  the week-12/16 fragments after them have irregular windows, opens, and
+  deadlines that don't fit a formula. Weeks 11/15 are truncated where the
+  holiday Contest Weeks begin.
+- Pick validation trusts the stored NFL schedule (a pick needs a stored game
+  in the leg window), while the rules' hardcoded holiday slates
+  (THANKSGIVING_TEAMS/CHRISTMAS_TEAMS) power *planning* warnings only — an
+  NFL schedule change flows in with the next collect without a code edit.
+- Hard rules are enforced (used team = 409 + UNIQUE(team) in SQL as the
+  Rule-15a backstop; effective deadline = min(leg deadline, picked team's
+  kickoff); one immutable pick per leg); *strategic* mistakes (burning
+  holiday-slate teams early) are warnings returned at lock time, not blocks —
+  a bad idea is still a legal pick, and the group may have reasons.
+- Straight-up win probability shown on the board comes from the market spread
+  via a normal margin model (sigma 13.45); ties fold into the loss side to
+  match Rule 6a grading. No new dependency — math.erf.

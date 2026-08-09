@@ -18,6 +18,8 @@ src/mlb_odds/
   api.py               # FastAPI server: MLB odds REST API + static frontend
   contest.py           # Circa Million tool: contest calendar, line store, edge math
   contest_api.py       # FastAPI app for the contest board (D-020)
+  survivor.py          # Circa Survivor tool: 20-leg calendar, pick store, constraint math
+  survivor_api.py      # Survivor routes (/api/survivor), mounted by contest_api (D-028)
 tests/
   fixtures/            # recorded provider JSON responses
   conftest.py          # FakeProvider, temp-db fixture
@@ -33,6 +35,13 @@ The contest tool sits beside the client at the consumer layer:
 SQLite file — D-020), plus `contest_api → providers.espn` for auto-grading
 finals (D-023) — the API layer constructing a provider mirrors the CLI. The
 contest domain module never imports providers, client, or collector.
+
+The survivor tool follows the same shape one file over: `survivor_api →
+(survivor, contest, contest_api helpers) → storage`. Its router is included
+by `contest_api` (one server, one identity layer, one contest.sqlite file;
+survivor tables migrate under their own version table — D-028). `survivor.py`
+imports `contest.py` only for shared market math (consensus, power ratings)
+and the week calendar it derives its normal legs from.
 
 ## Domain models (`models.py`)
 

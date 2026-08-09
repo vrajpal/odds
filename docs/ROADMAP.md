@@ -83,3 +83,15 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] C4.4 — Market-implied power ratings (ridge LSQ) + model line on the board (D-025)
 - [x] C4.5 — Situational flags (rest, rest differential, divisional) + member
       proposal/stance/captain records (D-025)
+
+## S — Circa Survivor entry manager (see circa-survivor-2026-rules.md)
+- [x] S1 — Calendar + constraints: 20-leg calendar (Weeks 1-18 + Thanksgiving
+      + Christmas legs with rule-exact windows/deadlines), SurvivorStore in
+      contest.sqlite, used-team tracking, holiday-slate outlook and burn
+      warnings, entry elimination derivation (D-028)
+- [x] S2 — Consensus + lock: blind one-team proposals, reveal, stance voting,
+      per-leg captain rotation, pick lock with used-team/deadline enforcement,
+      ETSN tracking, manual + ESPN auto straight-up grading (tie = loss) (D-028)
+- [x] S3 — UI: survivor.html beside the Million page (Board with win
+      probabilities and burned-team flags, Propose/Consensus/Pick tabs, Plan
+      tab with holiday-slate danger meters and all-20-legs schedule) (D-028)
