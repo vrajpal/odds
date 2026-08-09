@@ -13,11 +13,9 @@
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
-@media (prefers-color-scheme: dark) {
-  .game-card {
-    background-color: #2a2a2a;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  }
+[data-theme='dark'] .game-card {
+  background-color: #2a2a2a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 .game-card:hover {
@@ -25,10 +23,8 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-@media (prefers-color-scheme: dark) {
-  .game-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
-  }
+[data-theme='dark'] .game-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
 }
 
 .game-header {
@@ -69,10 +65,8 @@
   background-color: #ecf0f1;
 }
 
-@media (prefers-color-scheme: dark) {
-  .odds-table thead {
-    background-color: #333;
-  }
+[data-theme='dark'] .odds-table thead {
+  background-color: #333;
 }
 
 .odds-table th {
@@ -83,10 +77,8 @@
   color: #666;
 }
 
-@media (prefers-color-scheme: dark) {
-  .odds-table th {
-    color: #aaa;
-  }
+[data-theme='dark'] .odds-table th {
+  color: #aaa;
 }
 
 .odds-table td {
@@ -95,10 +87,8 @@
   font-size: 0.95rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  .odds-table td {
-    border-bottom-color: #444;
-  }
+[data-theme='dark'] .odds-table td {
+  border-bottom-color: #444;
 }
 
 .book-name {
@@ -106,10 +96,8 @@
   color: #2980b9;
 }
 
-@media (prefers-color-scheme: dark) {
-  .book-name {
-    color: #3498db;
-  }
+[data-theme='dark'] .book-name {
+  color: #3498db;
 }
 
 .click-hint {
@@ -121,12 +109,10 @@
   border-top: 1px solid #ecf0f1;
 }
 
-@media (prefers-color-scheme: dark) {
-  .click-hint {
-    background-color: #222;
-    border-top-color: #444;
-    color: #777;
-  }
+[data-theme='dark'] .click-hint {
+  background-color: #222;
+  border-top-color: #444;
+  color: #777;
 }
 
 @media (max-width: 600px) {

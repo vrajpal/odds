@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import TodayBoard from './components/TodayBoard'
 import Dashboard from './components/Dashboard'
 import GameHistory from './components/GameHistory'
+import { useTheme } from './theme'
 import './App.css'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [selectedGame, setSelectedGame] = useState(null)
   const [sport, setSport] = useState('mlb')
-
+  const [theme, toggleTheme] = useTheme()
 
   const switchSport = (next) => {
     setSport(next)
@@ -19,6 +20,13 @@ function App() {
   return (
     <div className="app">
       <header className="header">
+        <button
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
         <h1>{sport.toUpperCase()} Odds</h1>
         <nav className="nav sport-switch">
           {['mlb', 'nfl'].map(s => (
