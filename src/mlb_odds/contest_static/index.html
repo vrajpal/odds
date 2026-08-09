@@ -339,6 +339,19 @@ async function toggleChart(gid) {
   row.appendChild(cell);
   anchor.after(row);
   wireChartHover(cell, h);
+  // D-035 model strip: the two-lens win probability for this matchup
+  const bg = state.board.games.find(x => x.game_id === gid);
+  if (bg && bg.model_win_prob != null) {
+    const fav = bg.model_win_prob >= 0.5 ? bg.home_team : bg.away_team;
+    const favP = bg.model_win_prob >= 0.5 ? bg.model_win_prob : 1 - bg.model_win_prob;
+    const strip = document.createElement("div");
+    strip.className = "msg dim";
+    strip.innerHTML = `model: <b>${fav}</b> wins ${(favP * 100).toFixed(1)}% ` +
+      `<span class="dim">(moneyline lens ${bg.ml_lens_prob != null ? (bg.ml_lens_prob * 100).toFixed(1) + "%" : "–"} · ` +
+      `spread lens ${bg.spread_lens_prob != null ? (bg.spread_lens_prob * 100).toFixed(1) + "%" : "–"})</span>` +
+      (bg.predicted_line != null ? ` · line ${fmtSpread(bg.predicted_line)}` : "");
+    cell.insertBefore(strip, cell.firstChild);
+  }
   // Team lens loads after the chart paints (D-034)
   lensHtml(`/api/contest/games/${gid}/matchup`).then(html => {
     const box = document.createElement("div");

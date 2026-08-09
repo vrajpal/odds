@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from mlb_odds import contest, contest_api, survivor
+from mlb_odds import contest, contest_api, model, survivor, valuation
 from mlb_odds.models import Game
 from mlb_odds.providers.base import ProviderError
 from mlb_odds.teams import NFL_CODES, NFL_DIVISIONS
@@ -192,8 +192,11 @@ class SurvivorGameOut(BaseModel):
     early_kickoff: bool  # kicks before the leg deadline: this pick due at kickoff
     consensus: float | None  # market home spread (median across books)
     predicted_line: float | None  # power-rating model home spread
-    home_win_prob: float | None  # straight-up, ties folded into loss (Rule 6a)
+    home_win_prob: float | None  # market: devigged ML consensus, else spread-implied
     away_win_prob: float | None
+    model_win_prob: float | None  # D-035 two-lens blend (home side)
+    ml_lens_prob: float | None  # moneyline-implied strengths lens
+    spread_lens_prob: float | None  # spread-ratings lens
     home_used: str | None  # leg the team was burned in, if any
     away_used: str | None
     divisional: bool
@@ -237,20 +240,39 @@ def get_board(leg: str | None = None) -> SurvivorBoardOut:
             key=lambda g: (g.start_time, g.game_id),
         )
         fitted = contest.power_ratings(odds)
+        fitted_ml = valuation.implied_strengths(odds)
         histories = {g.game_id: contest.spread_history(odds, g.game_id) for g in games}
+        ml_pairs = {
+            g.game_id: valuation.book_probs(valuation.moneyline_history(odds, g.game_id))
+            for g in games
+        }
         used = store.used_teams()
         pick = store.pick(leg_.leg_id)
     finally:
         store.close()
         odds.close()
     ratings, hfa = fitted if fitted else ({}, 0.0)
+    ml_strengths, ml_hfa = fitted_ml if fitted_ml else ({}, None)
 
     rows = []
     for g in games:
         market = contest.consensus(contest.book_spreads(histories[g.game_id]))
-        model = contest.predicted_home_spread(ratings, hfa, g.home_team, g.away_team)
-        reference = market if market is not None else model
-        home_wp = survivor.win_probability(reference) if reference is not None else None
+        model_line = contest.predicted_home_spread(ratings, hfa, g.home_team, g.away_team)
+        # Market straight-up probability: devigged moneyline consensus when
+        # books quote it, else the spread-implied conversion (D-035).
+        ml_consensus = valuation.consensus_prob(ml_pairs[g.game_id])
+        reference = market if market is not None else model_line
+        home_wp = (
+            ml_consensus
+            if ml_consensus is not None
+            else survivor.win_probability(reference) if reference is not None else None
+        )
+        ml_lens = (
+            valuation.model_home_prob(ml_strengths, ml_hfa, g.home_team, g.away_team)
+            if ml_hfa is not None
+            else None
+        )
+        model_wp, spread_lens = model.nfl_model_prob(ml_lens, model_line)
         rows.append(
             SurvivorGameOut(
                 game_id=g.game_id,
@@ -259,9 +281,12 @@ def get_board(leg: str | None = None) -> SurvivorBoardOut:
                 start_time=_pt(g.start_time),
                 early_kickoff=g.start_time < leg_.deadline,
                 consensus=market,
-                predicted_line=model,
+                predicted_line=model_line,
                 home_win_prob=home_wp,
                 away_win_prob=round(1 - home_wp, 3) if home_wp is not None else None,
+                model_win_prob=model_wp,
+                ml_lens_prob=ml_lens,
+                spread_lens_prob=spread_lens,
                 home_used=used.get(g.home_team),
                 away_used=used.get(g.away_team),
                 divisional=(
