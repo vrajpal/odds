@@ -1,8 +1,10 @@
-"""Projection import tests (D-037). CSV fixtures here are representative of
-FanDuel Research-style exports (headers vary; the parser is synonym-tolerant)
-— lock the mapping tighter once a real export is committed."""
+"""Projection import tests (D-037). Inline CSVs are representative game-level
+shapes; fixtures/fanduel_research_mlb_daily.csv is an unedited real FanDuel
+Research MLB export (player-level DFS projections), which is the shape the
+site actually ships — the parser aggregates it to per-game run projections."""
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -31,6 +33,10 @@ def test_resolve_team_forms():
     assert resolve_team("nfl", "Chiefs") == "KC"
     assert resolve_team("mlb", "Sox") is None  # ambiguous suffix (Red/White)
     assert resolve_team("mlb", "Narwhals") is None
+    # FanDuel abbreviations that differ from our canonical codes.
+    assert resolve_team("mlb", "CHW") == "CWS"
+    assert resolve_team("mlb", "OAK") == "ATH"
+    assert resolve_team("nfl", "JAC") == "JAX"
 
 
 # --- parsing ---
@@ -68,6 +74,47 @@ def test_parse_skips_bad_rows_but_fails_on_unmappable_headers():
         parse_csv("colA,colB\nx,y\n", "mlb")
     with pytest.raises(ProjectionParseError, match="no rows"):
         parse_csv("away,home,home win%\nTBD,TBD,50%\n", "mlb")
+
+
+# --- player-level exports (the real FanDuel Research shape) ---
+
+
+def test_parse_real_fanduel_player_export():
+    text = (Path(__file__).parent / "fixtures"
+            / "fanduel_research_mlb_daily.csv").read_text()
+    rows = parse_csv(text, "mlb")
+    assert len(rows) == 10  # ten games on the slate
+    by_game = {(r.away_team, r.home_team): r for r in rows}
+    assert ("CLE", "CWS") in by_game  # gameInfo said CHW
+    assert ("ATH", "BOS") in by_game  # gameInfo said OAK
+    row = by_game[("COL", "STL")]
+    assert row.home_win_prob is None  # player exports carry no win prob
+    # Lineup run sums normalized to a 38-PA game land in a sane MLB range,
+    # and the derived probability stays near a coin flip.
+    assert row.away_score is not None and 3.0 < row.away_score < 6.0
+    assert row.home_score is not None and 3.0 < row.home_score < 6.0
+    p = projection_prob(None, row.away_score, row.home_score, "mlb")
+    assert p is not None and 0.4 < p < 0.6
+
+
+def test_player_aggregation_normalizes_lineup_length():
+    # Same per-PA scoring rate on both sides; the home side lists fewer
+    # hitters. Normalization must equalize the projected scores.
+    header = "player,team,runs,plateAppearances,gameInfo\n"
+    away = [f"A{i},New York Yankees,0.5,4.0,NYY @ BOS" for i in range(9)]
+    home = [f"H{i},Boston Red Sox,0.5,4.0,NYY @ BOS" for i in range(7)]
+    (row,) = parse_csv(header + "\n".join(away + home) + "\n", "mlb")
+    assert row.away_score == row.home_score
+    # And too-thin listings don't produce a game at all.
+    thin = [f"H{i},Boston Red Sox,0.5,4.0,NYY @ BOS" for i in range(3)]
+    with pytest.raises(ProjectionParseError, match="no aggregatable"):
+        parse_csv(header + "\n".join(away + thin) + "\n", "mlb")
+
+
+def test_player_export_rejected_for_nfl():
+    text = "player,team,runs,gameInfo\nJosh Allen,Buffalo Bills,2,BUF @ KC\n"
+    with pytest.raises(ProjectionParseError, match="only aggregatable for mlb"):
+        parse_csv(text, "nfl")
 
 
 # --- storage: append-only history ---
