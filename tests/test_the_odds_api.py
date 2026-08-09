@@ -210,3 +210,42 @@ def test_missing_api_key_raises(monkeypatch):
     monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
     with pytest.raises(ProviderError, match="key missing"):
         TheOddsAPI()
+
+
+def test_bookmakers_param_replaces_region(monkeypatch):
+    """D-027: named books ride the `bookmakers` param; `regions` is dropped
+    so the two never combine (which would raise the poll cost)."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(dict(request.url.params))
+        return httpx.Response(
+            200, json=load_fixture("odds_api_nfl_normal"),
+            headers={"x-requests-remaining": "463"},
+        )
+
+    provider = TheOddsAPI(
+        api_key="k", sport="nfl",
+        bookmakers=["pinnacle", "draftkings"],
+        transport=httpx.MockTransport(handler),
+    )
+    provider.fetch_game_lines()
+    assert seen["bookmakers"] == "pinnacle,draftkings"
+    assert "regions" not in seen
+
+
+def test_default_still_polls_us_region():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["regions"] == "us"
+        assert "bookmakers" not in dict(request.url.params)
+        return httpx.Response(
+            200, json=load_fixture("normal_day"),
+            headers={"x-requests-remaining": "463"},
+        )
+
+    TheOddsAPI(api_key="k", transport=httpx.MockTransport(handler)).fetch_game_lines()
+
+
+def test_more_than_ten_bookmakers_refused():
+    with pytest.raises(ProviderError, match="max 10"):
+        TheOddsAPI(api_key="k", bookmakers=[f"book{i}" for i in range(11)])

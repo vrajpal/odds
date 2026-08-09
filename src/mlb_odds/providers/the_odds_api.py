@@ -45,15 +45,27 @@ class TheOddsAPI:
         api_key: str | None = None,
         *,
         sport: Sport = "mlb",
+        bookmakers: Sequence[str] | None = None,
         strict: bool = False,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         """strict=True turns data surprises (unknown teams) into errors instead of
         logged skips — used in tests. transport is injectable for fixture-based tests.
+
+        `bookmakers` selects named books instead of the default `us` region
+        (D-027): each group of up to 10 books costs the same as one region, so
+        a curated 10-book list including sharp non-US books (pinnacle) polls
+        at the unchanged 3 credits. More than 10 raises — that would silently
+        double the poll cost.
         """
         key = api_key or os.environ.get("THE_ODDS_API_KEY")
         if not key:
             raise ProviderError("The Odds API key missing: pass api_key or set THE_ODDS_API_KEY")
+        if bookmakers is not None and len(bookmakers) > 10:
+            raise ProviderError(
+                f"{len(bookmakers)} bookmakers would cost 2 region-equivalents; max 10"
+            )
+        self._bookmakers = list(bookmakers) if bookmakers else None
         self._api_key = key
         self._sport: Sport = sport
         base = f"https://api.the-odds-api.com/v4/sports/{SPORT_KEYS[sport]}"
@@ -159,10 +171,13 @@ class TheOddsAPI:
     def _request(self) -> list[dict[str, Any]]:
         params = {
             "apiKey": self._api_key,
-            "regions": "us",
             "markets": "h2h,spreads,totals",
             "oddsFormat": "american",
         }
+        if self._bookmakers is not None:
+            params["bookmakers"] = ",".join(self._bookmakers)
+        else:
+            params["regions"] = "us"
         result: list[dict[str, Any]] = self._request_json(self._api_url, params)
         return result
 

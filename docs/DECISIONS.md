@@ -425,3 +425,24 @@ The header (not the signed JWT) is deliberately sufficient: the app's only
 non-tailnet ingress is the tunnel itself, so nothing untrusted can inject
 the header. Documented in the deploy README: if any other public path is
 ever added, upgrade to verifying `Cf-Access-Jwt-Assertion`.
+
+## D-027 — Curated bookmakers: Pinnacle in, Bookmaker.eu unavailable (2026-08-09)
+The Odds API's `bookmakers` parameter replaces the `regions` selector when
+set, and each group of up to 10 named books costs one region-equivalent —
+so a curated 10-book list polls at the unchanged 3 credits while adding
+books the `us` region lacks. The NFL cron now polls: pinnacle, draftkings,
+fanduel, betmgm, williamhill_us, betrivers, betonlineag, lowvig, bovada,
+mybookieag. Pinnacle is the point: the sharpest book in the market and the
+best single reference for consensus, movement, and CLV (live probe caught
+it a full point off the US books on the season opener). The provider caps
+the list at 10 (ProviderError) so a poll can't silently double in cost.
+
+Bookmaker.eu was requested and is NOT on The Odds API's feed (probe returned
+pinnacle/betonlineag/lowvig/draftkings from
+"pinnacle,bookmaker,betonlineag,lowvig,draftkings") — if its lines ever
+matter enough, that's a different data source, not a config change.
+
+Consensus stays an unweighted median; pinnacle joins it as one book. A
+pinnacle-weighted consensus was considered and rejected for now: the median
+already resists one-book outliers, and a weight is a modeling decision to
+revisit with CLV data in hand.

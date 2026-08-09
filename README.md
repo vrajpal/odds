@@ -131,6 +131,10 @@ mlb-odds closing --sport nfl --date 2026-09-10
 mlb-odds export --sport nfl --format parquet --out nfl.parquet
 ```
 
+`collect --bookmaker pinnacle --bookmaker draftkings ...` polls named books
+instead of the `us` region — up to 10 for the same 3-credit cost (D-027);
+the deployed NFL cron uses a curated list including pinnacle.
+
 Each sport lives in its **own database** (MLB `KC` and NFL `KC` are different
 franchises that would collide on canonical game ids — D-019). The Odds API
 quota is shared across sports: an NFL poll costs the same 3 credits. In the
