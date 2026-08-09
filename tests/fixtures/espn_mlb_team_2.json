@@ -1,0 +1,14 @@
+{
+ "team": {
+  "id": "2",
+  "displayName": "Boston Red Sox",
+  "record": {
+   "items": [
+    {
+     "summary": "64-52"
+    }
+   ]
+  },
+  "standingSummary": "3rd in AL East"
+ }
+}

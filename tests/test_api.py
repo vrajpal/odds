@@ -467,3 +467,86 @@ class TestDashboard:
         assert dash_client.get(
             "/api/dashboard", params={"on": "not-a-date"}
         ).status_code == 422
+
+
+class TestMatchupLens:
+    """Matchup page team lens (D-034): ESPN season stats compared per row."""
+
+    @pytest.fixture
+    def lens_client(self, seeded_db, monkeypatch):
+        import json as _json
+
+        import httpx as _httpx
+
+        from conftest import FIXTURES
+        from mlb_odds.providers.espn import ESPN
+
+        def handler(request: _httpx.Request) -> _httpx.Response:
+            path = request.url.path
+            if path.endswith("/mlb/teams"):
+                payload = _json.loads((FIXTURES / "espn_mlb_teams.json").read_text())
+            elif path.endswith("/statistics"):
+                tid = path.split("/")[-2]
+                payload = _json.loads(
+                    (FIXTURES / f"espn_mlb_teamstats_{tid}.json").read_text()
+                )
+            else:
+                tid = path.split("/")[-1]
+                payload = _json.loads((FIXTURES / f"espn_mlb_team_{tid}.json").read_text())
+            return _httpx.Response(200, json=payload)
+
+        monkeypatch.setattr(
+            api, "ESPN",
+            lambda sport="mlb": ESPN(sport=sport, transport=_httpx.MockTransport(handler)),
+        )
+        monkeypatch.setattr(api, "_matchup_cache", {})
+        monkeypatch.setattr(api, "_team_ids_ttl", {})
+
+        # Seed a game whose teams match the recorded fixtures (BOS @ NYY).
+        db = os.environ["MLB_ODDS_DB"]
+        storage = Storage(db)
+        go = make_game_odds(away="BOS", home="NYY",
+                            start_time=datetime(2026, 8, 9, 23, 5, tzinfo=UTC))
+        storage.store([go])
+        storage.close()
+        client = TestClient(api.app, raise_server_exceptions=False)
+        return client, go.game.game_id
+
+    def test_matchup_rows_compare_directionally(self, lens_client):
+        client, gid = lens_client
+        body = client.get(f"/api/games/{gid}/matchup").json()
+        assert body["away_team"] == "BOS" and body["home_team"] == "NYY"
+        assert body["home_record"] and "-" in body["home_record"]
+        rows = {r["label"]: r for r in body["rows"]}
+        assert set(rows) >= {"AVG", "OPS", "ERA", "WHIP", "K/9"}
+        for r in rows.values():
+            if r["better"] is not None:
+                assert r["better"] in ("away", "home")
+        # Direction sanity: ERA better side must have the LOWER value.
+        era = rows["ERA"]
+        if era["better"] is not None:
+            lo = min(float(era["away"]), float(era["home"]))
+            winner = era["away"] if era["better"] == "away" else era["home"]
+            assert float(winner) == lo
+
+    def test_matchup_uses_cache_on_second_call(self, lens_client, monkeypatch):
+        client, gid = lens_client
+        assert client.get(f"/api/games/{gid}/matchup").status_code == 200
+        # Poison the transport: cached lens must still serve.
+        import httpx as _httpx
+
+        from mlb_odds.providers.espn import ESPN
+
+        monkeypatch.setattr(
+            api, "ESPN",
+            lambda sport="mlb": ESPN(
+                sport=sport,
+                transport=_httpx.MockTransport(lambda r: _httpx.Response(500)),
+            ),
+        )
+        body = client.get(f"/api/games/{gid}/matchup").json()
+        assert body["rows"]
+
+    def test_matchup_unknown_game_404(self, lens_client):
+        client, _ = lens_client
+        assert client.get("/api/games/2026-08-09-XX-YY-1/matchup").status_code == 404

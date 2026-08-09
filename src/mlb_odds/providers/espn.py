@@ -19,6 +19,39 @@ from mlb_odds.providers.base import FinalScore, ProviderError, assign_game_numbe
 
 logger = logging.getLogger("mlb_odds.providers.espn")
 
+SITE_API = "https://site.api.espn.com/apis/site/v2/sports"
+SPORT_PATHS: dict[str, str] = {"mlb": "baseball/mlb", "nfl": "football/nfl"}
+
+# The matchup page's statistical lens (D-034): (category, stat, label,
+# higher_is_better). Curated, not exhaustive — comparative signal per row.
+MATCHUP_STATS: dict[str, list[tuple[str, str, str, bool]]] = {
+    "mlb": [
+        ("batting", "avg", "AVG", True),
+        ("batting", "onBasePct", "OBP", True),
+        ("batting", "slugAvg", "SLG", True),
+        ("batting", "OPS", "OPS", True),
+        ("batting", "runs", "Runs", True),
+        ("batting", "homeRuns", "HR", True),
+        ("batting", "stolenBases", "SB", True),
+        ("pitching", "ERA", "ERA", False),
+        ("pitching", "WHIP", "WHIP", False),
+        ("pitching", "opponentAvg", "Opp AVG", False),
+        ("pitching", "strikeoutsPerNineInnings", "K/9", True),
+        ("pitching", "qualityStarts", "Quality starts", True),
+    ],
+    "nfl": [
+        ("scoring", "totalPointsPerGame", "Points/G", True),
+        ("passing", "netPassingYardsPerGame", "Pass yds/G", True),
+        ("rushing", "rushingYardsPerGame", "Rush yds/G", True),
+        ("passing", "completionPct", "Comp %", True),
+        ("passing", "passingTouchdowns", "Pass TD", True),
+        ("passing", "interceptions", "INT thrown", False),
+        ("defensive", "sacks", "Sacks", True),
+        ("defensiveInterceptions", "interceptions", "Takeaway INTs", True),
+        ("defensive", "tacklesForLoss", "TFL", True),
+    ],
+}
+
 SCOREBOARD_URLS: dict[str, str] = {
     "mlb": "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
     "nfl": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
@@ -137,6 +170,78 @@ class ESPN:
                         g.start_time.date().isoformat(), g.away_team, g.home_team, number
                     )
         return games
+
+    def fetch_team_ids(self) -> dict[str, str]:
+        """Canonical code -> ESPN team id, matched on displayName through the
+        existing name registry (ESPN abbreviations disagree with ours)."""
+        url = f"{SITE_API}/{SPORT_PATHS[self._sport]}/teams"
+        payload = self._get_json(url)
+        out: dict[str, str] = {}
+        try:
+            entries = payload["sports"][0]["leagues"][0]["teams"]
+        except (KeyError, IndexError) as exc:
+            raise ProviderError(f"unexpected teams response shape: {exc}") from exc
+        for entry in entries:
+            team = entry.get("team", {})
+            try:
+                code = teams.normalize(self._sport, self.name, team["displayName"])
+            except (teams.TeamLookupError, KeyError) as exc:
+                logger.warning("skipping team entry: %s", exc)
+                continue
+            out[code] = str(team["id"])
+        return out
+
+    def fetch_team_profile(self, team_id: str) -> dict[str, str | None]:
+        """Record summary + standing for the matchup header."""
+        url = f"{SITE_API}/{SPORT_PATHS[self._sport]}/teams/{team_id}"
+        team = self._get_json(url).get("team", {})
+        items = (team.get("record") or {}).get("items") or [{}]
+        return {
+            "record": items[0].get("summary") if isinstance(items[0], dict) else None,
+            "standing": team.get("standingSummary"),
+        }
+
+    def fetch_team_statistics(self, team_id: str) -> dict[tuple[str, str], dict[str, object]]:
+        """(category, stat) -> {value, display} for every stat ESPN returns;
+        callers curate via MATCHUP_STATS."""
+        url = f"{SITE_API}/{SPORT_PATHS[self._sport]}/teams/{team_id}/statistics"
+        payload = self._get_json(url)
+        out: dict[tuple[str, str], dict[str, object]] = {}
+        categories = (
+            payload.get("results", {}).get("stats", {}).get("categories", [])
+            if isinstance(payload.get("results"), dict)
+            else []
+        )
+        for cat in categories:
+            for stat in cat.get("stats", []):
+                if "name" in stat:
+                    out[(cat.get("name", ""), stat["name"])] = {
+                        "value": stat.get("value"),
+                        "display": stat.get("displayValue"),
+                    }
+        return out
+
+    def _get_json(self, url: str) -> dict[str, Any]:
+        last_error: Exception | None = None
+        for _attempt in range(2):
+            try:
+                resp = self._client.get(url)
+            except httpx.HTTPError as exc:
+                last_error = exc
+                continue
+            if resp.status_code >= 500:
+                last_error = ProviderError(f"server error {resp.status_code}")
+                continue
+            if resp.status_code != 200:
+                raise ProviderError(f"request failed: {resp.status_code} {url}")
+            try:
+                payload = resp.json()
+            except ValueError as exc:
+                raise ProviderError(f"invalid JSON from {url}: {exc}") from exc
+            if not isinstance(payload, dict):
+                raise ProviderError(f"unexpected response shape from {url}")
+            return payload
+        raise ProviderError(f"request failed after retry: {last_error}") from last_error
 
     def fetch_final_scores(self, on: date) -> list[FinalScore]:
         """Scores for one scoreboard day (ESPN groups days in US/Eastern).
