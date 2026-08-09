@@ -14,11 +14,9 @@ body {
   color: #333;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #1a1a1a;
-    color: #e0e0e0;
-  }
+[data-theme='dark'] body {
+  background-color: #1a1a1a;
+  color: #e0e0e0;
 }
 
 code {

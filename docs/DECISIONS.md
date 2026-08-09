@@ -590,3 +590,13 @@ downstream models on them (the modeled inputs are Statcast/market — this
 lens is for human eyes). In-process TTL caches (1h stats, 24h team ids)
 keep a busy page to a few ESPN calls per hour. Works for both sports; the
 page keeps the Statcast scout card (MLB) and the LineMovement charts below.
+
+## D-035 — Theme: OS preference + manual toggle via data-theme (2026-08-09)
+Dark mode was previously scattered `@media (prefers-color-scheme: dark)`
+blocks — correct default, but impossible to override from the page. All dark
+styles now hang off `[data-theme='dark']` on `<html>`, set before first paint
+(no flash) by a tiny theme module: a saved choice in localStorage wins,
+otherwise the OS preference applies and live-tracks its changes. The header
+gets a ☀️/🌙 toggle that saves the override. A time-of-day scheme (dark
+19:00–07:00) was considered and dropped: it fights the OS setting during the
+day and surprises users; the OS already encodes the person's actual intent.
