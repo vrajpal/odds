@@ -637,3 +637,25 @@ deliberately omitted on contest pages — contest picks are not priced bets.
 Honest framing, same as D-032: both NFL lenses are market-implied (the
 model detects internal inconsistency, not private information), blend
 weights are priors, and calibration waits on the nightly-accruing results.
+
+## D-037 — Third-party projections: FanDuel Research imports + accuracy ledger (2026-08-09)
+The first non-market lens for NFL and a second independent one for MLB.
+FanDuel Research (the numberFire successor) exports MLB/NFL projections as
+CSV behind a login, so the pipeline is deliberately manual: export in the
+browser, `mlb-odds projections <file> --sport ...`. The parser is
+header-synonym-tolerant (win-prob or projected-score columns; team names
+resolve via full name, code, or unique nickname suffix) and fails loudly
+listing headers it couldn't map — to be locked tighter against the first
+real export.
+
+**History is the product.** Every import appends a timestamped snapshot
+(migration 6, projections table, never overwritten), which buys two things:
+(1) the model uses the latest snapshot as its projection lens — NFL blend
+becomes moneyline/spread/projection at 0.35/0.35/0.30, MLB becomes
+market/statcast/projection at 0.49/0.21/0.30 (exactly D-032's 70/30 when no
+projection exists), weights renormalizing over present lenses; (2) the
+accuracy ledger: GET /api/projections/report scores each source's LAST
+PRE-KICKOFF snapshot per finished game against stored results (Brier + hit
+rate; post-kickoff snapshots are excluded — hindsight is not forecasting).
+That ledger is how every blend weight in D-032/D-036/D-037 eventually stops
+being a prior: once n is meaningful, fit the weights to it.

@@ -16,6 +16,7 @@ import typer
 from dotenv import load_dotenv
 
 from mlb_odds import collector
+from mlb_odds import projections as projections_mod
 from mlb_odds import statcast as statcast_mod
 from mlb_odds.client import OddsClient
 from mlb_odds.models import PROP_MARKETS_BY_SPORT, Game, GameOdds, Market, Quote
@@ -272,6 +273,63 @@ def results(
         typer.echo(f"{recorded} final score(s) recorded; {still_missing} still missing.")
     finally:
         client.close()
+
+
+@app.command()
+def projections(
+    csv_file: Annotated[Path, typer.Argument(help="Exported projections CSV.")],
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
+    source: Annotated[
+        str, typer.Option("--source", help="Projection source tag.")
+    ] = projections_mod.DEFAULT_SOURCE,
+    db: DbOption = None,
+) -> None:
+    """Import a projections CSV (D-037): FanDuel Research exports and
+    similar. Every import appends a timestamped snapshot — history is the
+    accuracy ledger, so import daily rather than only on game day.
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    from mlb_odds.storage import SAME_GAME_START_TOLERANCE, Storage
+
+    try:
+        rows = projections_mod.parse_csv(csv_file.read_text(), sport.value)
+    except (OSError, projections_mod.ProjectionParseError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+    storage = Storage(_resolve_db(db, sport))
+    try:
+        now = datetime.now(UTC)
+        # Candidate games: anything upcoming or recent enough to matter.
+        candidates: dict[tuple[str, str], list[Game]] = {}
+        for g in storage.games():
+            if g.start_time >= now - timedelta(days=2):
+                candidates.setdefault((g.away_team, g.home_team), []).append(g)
+        matched = 0
+        for row in rows:
+            games_for = candidates.get((row.away_team, row.home_team), [])
+            upcoming = [g for g in games_for
+                        if g.start_time >= now - SAME_GAME_START_TOLERANCE]
+            if not upcoming:
+                continue
+            game = min(upcoming, key=lambda g: g.start_time)
+            storage.add_projection(
+                game.game_id, source, fetched_at=now,
+                home_win_prob=row.home_win_prob,
+                away_score=row.away_score, home_score=row.home_score,
+            )
+            matched += 1
+        typer.echo(
+            f"{matched}/{len(rows)} projections matched to stored games "
+            f"(source: {source})."
+        )
+    finally:
+        storage.close()
 
 
 @app.command()

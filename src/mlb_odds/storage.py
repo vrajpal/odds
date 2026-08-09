@@ -132,6 +132,21 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (name, season)
     );
     """,
+    # Third-party projections (D-037): append-only snapshots, one row per
+    # import per game — the history IS the product (accuracy measurement,
+    # eventually evidence-based blend weights).
+    """
+    CREATE TABLE projections (
+        id            INTEGER PRIMARY KEY,
+        game_id       TEXT NOT NULL REFERENCES games(game_id),
+        source        TEXT NOT NULL,
+        fetched_at    TEXT NOT NULL,
+        home_win_prob REAL,
+        away_score    REAL,
+        home_score    REAL
+    );
+    CREATE INDEX idx_projections_game ON projections (game_id, source, fetched_at);
+    """,
 ]
 
 
@@ -636,6 +651,70 @@ class Storage:
                 [(n, s2, pa, xba, xslg, xwoba, xera, _utc_key(fetched_at))
                  for n, s2, pa, xba, xslg, xwoba, xera in rows],
             )
+
+    def add_projection(
+        self,
+        game_id: str,
+        source: str,
+        *,
+        fetched_at: datetime,
+        home_win_prob: float | None,
+        away_score: float | None,
+        home_score: float | None,
+    ) -> None:
+        """Append one projection snapshot (never overwrites — D-037)."""
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO projections
+                    (game_id, source, fetched_at, home_win_prob, away_score, home_score)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (game_id, source, _utc_key(fetched_at), home_win_prob,
+                 away_score, home_score),
+            )
+
+    def latest_projection(
+        self, game_id: str, *, source: str | None = None
+    ) -> tuple[str, str, float | None, float | None, float | None] | None:
+        """(source, fetched_at, home_win_prob, away_score, home_score) —
+        the newest snapshot, optionally per source."""
+        sql = (
+            "SELECT source, fetched_at, home_win_prob, away_score, home_score"
+            " FROM projections WHERE game_id = ?"
+        )
+        params: tuple[str, ...] = (game_id,)
+        if source is not None:
+            sql += " AND source = ?"
+            params = (game_id, source)
+        row = self._conn.execute(sql + " ORDER BY fetched_at DESC, id DESC", params).fetchone()
+        if row is None:
+            return None
+        return (str(row[0]), str(row[1]), row[2], row[3], row[4])
+
+    def projection_outcomes(
+        self, *, source: str | None = None
+    ) -> list[tuple[str, float | None, float | None, float | None, int, int]]:
+        """Per finished game: (game_id, latest home_win_prob, away_score
+        projection, home_score projection, actual home, actual away) — the
+        accuracy ledger's raw material (latest pre-kickoff snapshot)."""
+        sql = """
+            SELECT p.game_id, p.home_win_prob, p.away_score, p.home_score,
+                   r.home_score, r.away_score
+            FROM projections AS p
+            JOIN results AS r ON r.game_id = p.game_id
+            JOIN games AS g ON g.game_id = p.game_id
+            WHERE p.fetched_at <= g.start_time
+              AND p.id = (
+                  SELECT p2.id FROM projections AS p2
+                  JOIN games AS g2 ON g2.game_id = p2.game_id
+                  WHERE p2.game_id = p.game_id
+                    AND (? IS NULL OR p2.source = ?)
+                    AND p2.fetched_at <= g2.start_time
+                  ORDER BY p2.fetched_at DESC, p2.id DESC LIMIT 1
+              )
+        """
+        return self._conn.execute(sql, (source, source)).fetchall()
 
     def statcast_team_rows(self, season: int) -> list[tuple[int, float | None]]:
         """(pa, xwoba) per team — the league-average input (D-032)."""
