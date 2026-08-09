@@ -103,3 +103,92 @@ Header trust note: `Cf-Access-Authenticated-User-Email` is trustworthy here
 because the only non-tailnet path into the app is the tunnel itself; if that
 ever changes, upgrade to verifying Cloudflare's signed JWT
 (`Cf-Access-Jwt-Assertion`) instead.
+
+## Operations quick reference
+
+```bash
+# All commands from ~/containers/odds/deploy on apps.
+docker compose --profile public ps                 # what's running
+docker compose --profile public up -d              # start/refresh everything
+git pull && docker compose build && docker compose --profile public up -d   # deploy an update
+docker compose run --rm nfl-collect                # manual line poll (3 credits)
+docker compose run --rm nfl-results                # manual finals sweep (free)
+docker compose logs -f contest-api                 # follow app logs
+tail -f ~/containers/odds/collect.log              # cron output
+```
+
+Always pass `--profile public` once the tunnel is in use — compose ignores
+profiled services otherwise, and a plain `up -d` will treat cloudflared as an
+orphan.
+
+Health checks, all from any tailnet machine:
+
+```bash
+curl https://odds.<tailnet>.ts.net/api/contest/health          # app up
+curl -o /dev/null -w '%{http_code}\n' https://<public-domain>/ # 302 = Access wall up
+cloudflared tunnel info odds                                   # connector registered?
+curl -H "Cf-Access-Authenticated-User-Email: <email>" \
+  https://odds.<tailnet>.ts.net/api/contest/whoami             # identity mapping
+```
+
+## Troubleshooting
+
+Every entry below is a failure mode this deployment has actually hit.
+
+**Tailscale SSH to the host hangs, then "failed to fetch next SSH action".**
+Tailscale SSH check mode: each session needs browser approval (valid ~12h),
+and the approval URL dies with its session after ~2 minutes. Approve fast, or
+run the commands from an interactive terminal where the check flows natively.
+
+**Sidecar stuck unhealthy, login URL keeps changing.** Without TS_AUTHKEY,
+containerboot times out waiting for the interactive login, exits, restarts,
+and mints a new URL — a race humans lose. Use a pre-approved auth key in
+.env instead (one enrollment, then state persists in the tailscale-state
+volume; revoke the key after).
+
+**cloudflared restart-loops: "couldn't read tunnel credentials: permission
+denied".** The image runs as a non-root user; the mounted credentials must be
+world-readable (dir 755, files 644) or chowned to the container UID.
+
+**Public domain serves Cloudflare error 1033 / tunnel unreachable.** Check
+`cloudflared tunnel info odds` — no connector means the container isn't
+running or can't reach Cloudflare. The Access 302 comes from the edge, so a
+working login wall does NOT prove the tunnel is up.
+
+**A one-shot service errors with an option/feature that just shipped.**
+`up -d --build` rebuilds only services it starts; profile-gated one-shots
+(nfl-collect, nfl-results) keep their old image. Run `docker compose build`
+explicitly after every pull.
+
+**Host suddenly cannot resolve any hostname (git pull, API calls fail); SSH
+still works.** /etc/resolv.conf points solely at Tailscale MagicDNS
+(100.100.100.100). Confirm with `nslookup github.com 1.1.1.1` (works = DNS,
+not network) then `sudo systemctl restart tailscaled`. Container DNS forwards
+to the host resolver, so crons and the tunnel fail on new lookups too until
+this is fixed.
+
+**Garbage member name in the UI dropdown / identity mapping dead.** Two
+.env pitfalls: (1) appending with `echo >>` to a file without a trailing
+newline glues onto the last line — check `tail -c1 .env | xxd`; (2) a
+variable in .env reaches a container ONLY if the service's `environment:`
+declares it — `docker exec odds-contest-api-1 env | grep CONTEST` shows the
+truth. Compose interpolation succeeding proves nothing about the container.
+
+**Cron fires at the wrong hour.** This host runs America/New_York; crontab
+times are ET conversions of PT intents (see the crontab comments). Re-derive
+before editing — the Sunday closing poll must land ~9:55 AM PT, and Sunday
+9 PM PT is Monday 00:00 ET.
+
+**Access application won't save: "allow_authenticate_via_warp cannot be
+set...".** Turn off the "WARP authentication identity" toggle in the
+application's login-methods section (or set a Cloudflare One session duration
+under Access > Settings). WARP is not used here.
+
+**A friend passes the login wall but gets 403 "not mapped" when acting.**
+Their email is in the Access policy but not in CONTEST_MEMBER_EMAILS (or
+spelled differently). Matching is case-insensitive; fix the mapping and
+`docker compose --profile public up -d contest-api`.
+
+**Contest board 503 "NFL odds database unavailable".** The read-only open
+found no database file — run one collect (`docker compose run --rm
+nfl-collect`) and it appears; the API never creates databases by design.
