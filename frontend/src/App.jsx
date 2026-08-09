@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import TodayBoard from './components/TodayBoard'
 import Dashboard from './components/Dashboard'
 import GameHistory from './components/GameHistory'
-import { watchTheme } from './theme'
 import './App.css'
 
 function App() {
@@ -10,7 +9,6 @@ function App() {
   const [selectedGame, setSelectedGame] = useState(null)
   const [sport, setSport] = useState('mlb')
 
-  useEffect(() => watchTheme(), [])
 
   const switchSport = (next) => {
     setSport(next)
