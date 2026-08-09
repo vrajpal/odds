@@ -40,10 +40,18 @@ runs are free:
 55 9 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-collect
 0 21 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-results
 30 8 * * 2         cd /opt/odds/deploy && docker compose run --rm nfl-results
+# Survivor holiday legs (D-028): TG is decided Tue-Wed (deadline Wed Nov 25
+# 4 PM PT), XMAS on Wed (Thu polls exist via the 4-6 rule) — without these,
+# holiday picks would be made on stale Sunday lines. ~18 credits/season.
+0 8,13 24 11 *     cd /opt/odds/deploy && docker compose run --rm nfl-collect
+0 8,12 25 11 *     cd /opt/odds/deploy && docker compose run --rm nfl-collect
+0 8,13 23 12 *     cd /opt/odds/deploy && docker compose run --rm nfl-collect
 ```
 
 (9:55 AM Sunday = just before the early window; 9 PM Sunday catches the day's
-finals; Tuesday morning sweeps MNF and any stragglers.)
+finals; Tuesday morning sweeps MNF and any stragglers. Holiday entries are
+shown in PT here — the deployed host runs ET, so its crontab carries the
+ET conversions.)
 
 ## Fresh VM provisioning (cloud-init)
 
