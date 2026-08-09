@@ -659,3 +659,18 @@ PRE-KICKOFF snapshot per finished game against stored results (Brier + hit
 rate; post-kickoff snapshots are excluded — hindsight is not forecasting).
 That ledger is how every blend weight in D-032/D-036/D-037 eventually stops
 being a prior: once n is meaningful, fit the weights to it.
+
+**Addendum (2026-08-09), after the first real export:** FanDuel Research's
+MLB export is *player-level* DFS projections (per-hitter PA/runs/HR/fantasy
+with a "COL @ STL" gameInfo column), not game-level win probabilities. The
+parser aggregates that shape: sum each lineup's projected runs, normalize to
+a 38-PA game (listing length varies, 7–10 hitters, and raw sums are biased
+by it), and let the run margin become a win probability through the MLB
+margin sigma. Two knowns worth restating: the margin is neutral-site (no
+home-field bump — a systematic ~2–4% home-side underestimate the accuracy
+ledger will quantify before we correct it), and FanDuel abbreviations that
+differ from ours (CHW, OAK, AZ…) are alias-mapped in `projections.py`. The
+unedited export is committed as
+`tests/fixtures/fanduel_research_mlb_daily.csv`. Player-level NFL exports
+are rejected with a pointer to game-level exports — fantasy-point sums don't
+decompose into team points the way runs do.

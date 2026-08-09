@@ -6,9 +6,15 @@ import appends a timestamped snapshot; history is never overwritten, because
 the history is the point — it is the accuracy ledger that will eventually
 set this lens's blend weight from evidence instead of a prior.
 
-The parser is header-tolerant (synonym lists below) and locked down further
-against real exports as they arrive. A file whose headers can't be mapped
-fails loudly, listing what it found.
+Two shapes are understood. Game-level rows (away/home plus a win-probability
+or projected-score column) map directly. The real FanDuel Research MLB export
+(tests/fixtures/fanduel_research_mlb_daily.csv) turned out to be player-level
+DFS projections instead — per-hitter plate appearances and runs with a
+"COL @ STL" gameInfo column — so that shape is aggregated: each lineup's
+projected runs are summed and normalized to a standard-length game, and the
+run margin later becomes a win probability via the sport's margin sigma
+(projection_prob). A file matching neither shape fails loudly, listing the
+headers it found.
 """
 
 from __future__ import annotations
@@ -44,6 +50,26 @@ _AWAY_SCORE_HEADERS = (
     "away score", "away_score", "proj away score", "projected away score",
     "away pts", "away points", "away runs",
 )
+# Player-level exports (the shape FanDuel Research actually ships for MLB).
+_PLAYER_TEAM_HEADERS = ("team",)
+_GAMEINFO_HEADERS = ("gameinfo", "game info", "game")
+_RUNS_HEADERS = ("runs",)
+_PA_HEADERS = ("plateappearances", "plate appearances", "pa")
+
+# FanDuel's abbreviations where they differ from our canonical codes.
+_CODE_ALIASES: dict[str, dict[str, str]] = {
+    "mlb": {
+        "CHW": "CWS", "OAK": "ATH", "AZ": "ARI", "WSN": "WSH", "WAS": "WSH",
+        "SDP": "SD", "SFG": "SF", "TBR": "TB", "KCR": "KC",
+    },
+    "nfl": {"JAC": "JAX", "WSH": "WAS", "LA": "LAR"},
+}
+
+# A full team game is ~38 plate appearances; exports list whoever is in the
+# projected lineup (sometimes 8, sometimes bench extras), so raw run sums are
+# biased by listing length. Normalizing to runs-per-PA x 38 removes that.
+_LINEUP_PA = 38.0
+_MIN_PLAYERS = 6
 
 
 @dataclass(frozen=True)
@@ -70,6 +96,7 @@ def resolve_team(sport: str, raw: str) -> str | None:
     except teams.TeamLookupError:
         pass
     code = raw.upper()
+    code = _CODE_ALIASES[sport].get(code, code)
     if code in teams.CANONICAL_CODES[sport]:
         return code
     mapping = teams._PROVIDER_MAPPINGS[(sport, "the_odds_api")]
@@ -132,9 +159,23 @@ def parse_csv(text: str, sport: str) -> list[ProjectionRow]:
     hs_h = _pick(headers, _HOME_SCORE_HEADERS)
     as_h = _pick(headers, _AWAY_SCORE_HEADERS)
     if away_h is None or home_h is None or (hp_h is None and ap_h is None and hs_h is None):
+        team_h = _pick(headers, _PLAYER_TEAM_HEADERS)
+        gi_h = _pick(headers, _GAMEINFO_HEADERS)
+        runs_h = _pick(headers, _RUNS_HEADERS)
+        if team_h and gi_h and runs_h:
+            if sport != "mlb":
+                raise ProjectionParseError(
+                    "player-level exports are only aggregatable for mlb (runs "
+                    "sum to team scores); for nfl use a game-level export"
+                )
+            return _parse_player_csv(
+                reader, team_h, gi_h, runs_h, _pick(headers, _PA_HEADERS), sport
+            )
         raise ProjectionParseError(
-            "couldn't map CSV headers — need away/home team columns and a win-"
-            f"probability or projected-score column; found: {headers}"
+            "couldn't map CSV headers — need away/home team columns plus a "
+            "win-probability or projected-score column (game-level), or "
+            "team/gameInfo/runs columns (player-level); found: "
+            f"{headers}"
         )
     rows: list[ProjectionRow] = []
     for record in reader:
@@ -161,6 +202,72 @@ def parse_csv(text: str, sport: str) -> list[ProjectionRow]:
         )
     if not rows:
         raise ProjectionParseError("no rows with resolvable teams in the CSV")
+    return rows
+
+
+def _parse_player_csv(
+    reader: csv.DictReader[str],
+    team_h: str,
+    gi_h: str,
+    runs_h: str,
+    pa_h: str | None,
+    sport: str,
+) -> list[ProjectionRow]:
+    """Aggregate a player-level export into one row per game.
+
+    Team score = sum of the lineup's projected runs, normalized to a
+    _LINEUP_PA-length game so an 8-hitter listing isn't undercounted relative
+    to a 10-hitter one. The margin is neutral-site (no home-field bump) —
+    a documented bias the accuracy ledger will quantify.
+    """
+    sums: dict[tuple[str, str], dict[str, list[float]]] = {}
+    for record in reader:
+        team = resolve_team(sport, record.get(team_h) or "")
+        info = (record.get(gi_h) or "").split("@")
+        if team is None or len(info) != 2:
+            logger.warning(
+                "skipping player row: unresolvable team %r or gameInfo %r",
+                record.get(team_h), record.get(gi_h),
+            )
+            continue
+        away = resolve_team(sport, info[0])
+        home = resolve_team(sport, info[1])
+        if away is None or home is None or team not in (away, home):
+            logger.warning("skipping player row: gameInfo %r doesn't resolve "
+                           "or contain team %r", record.get(gi_h), team)
+            continue
+        runs = _score(record.get(runs_h))
+        if runs is None:
+            continue
+        pa = (_score(record.get(pa_h)) if pa_h else None) or 0.0
+        entry = sums.setdefault((away, home), {}).setdefault(team, [0.0, 0.0, 0.0])
+        entry[0] += runs
+        entry[1] += pa
+        entry[2] += 1
+    rows: list[ProjectionRow] = []
+    for (away, home), by_team in sorted(sums.items()):
+        if any(
+            code not in by_team or by_team[code][2] < _MIN_PLAYERS
+            for code in (away, home)
+        ):
+            logger.warning("skipping game %s @ %s: fewer than %d projected "
+                           "players on a side", away, home, _MIN_PLAYERS)
+            continue
+
+        scores = {}
+        for code in (away, home):
+            runs, pa, _n = by_team[code]
+            scores[code] = round(runs * (_LINEUP_PA / pa) if pa else runs, 2)
+        rows.append(
+            ProjectionRow(
+                away_team=away, home_team=home, home_win_prob=None,
+                away_score=scores[away], home_score=scores[home],
+            )
+        )
+    if not rows:
+        raise ProjectionParseError(
+            "no aggregatable games in the player-level CSV"
+        )
     return rows
 
 
