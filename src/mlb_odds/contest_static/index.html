@@ -71,7 +71,27 @@
   .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
   .stat .v { font-size:22px; font-weight:700; }
   .stat .k { font-size:12px; color:var(--dim); }
-  @media (max-width:720px){ main{padding:10px} th,td{padding:5px 6px} }
+  /* Wide tables scroll inside their tab, never the page (mobile) */
+  main > div { overflow-x:auto; }
+  /* Sticky matchup column: know which game you're on while scrolling numbers */
+  #board-table tr:not(.chart-row) td:first-child, #board-table th:first-child,
+  #propose-table td:first-child, #propose-table th:first-child {
+    position:sticky; left:0; background:var(--bg); z-index:2; }
+  #board-table tr:not(.chart-row):hover td:first-child,
+  #propose-table tr:hover td:first-child { background:#1b2438; }
+  /* Prose tables wrap normally — the global nowrap is for number grids */
+  #tab-glossary td { white-space:normal; }
+  #tab-glossary td:first-child { white-space:nowrap; vertical-align:top; }
+  @media (max-width:720px){
+    main{padding:10px}
+    th,td{padding:6px 6px; font-size:13px}
+    header{padding:10px 12px; gap:8px}
+    nav{padding:8px 10px 0; overflow-x:auto}
+    nav button{padding:8px 10px}
+    button.side{padding:6px 12px; min-height:34px}
+    input.spread{width:64px; min-height:30px}
+    .stat .v{font-size:18px}
+  }
 </style>
 </head>
 <body>
