@@ -95,6 +95,7 @@
   <button data-tab="consensus">Consensus</button>
   <button data-tab="card">Card</button>
   <button data-tab="season">Season</button>
+  <button data-tab="glossary">Glossary</button>
 </nav>
 <main>
   <div id="tab-board">
@@ -132,6 +133,48 @@
 
   <div id="tab-season" hidden>
     <div id="season-body"></div>
+  </div>
+
+  <div id="tab-glossary" hidden>
+    <h2>Lines &amp; numbers</h2>
+    <table><tbody>
+      <tr><td><b>spread</b></td><td>The home team's line everywhere in this app. Negative = home favored: <b>-3.5</b> means home must win by 4+ to cover; the away side of the same number is +3.5.</td></tr>
+      <tr><td><b>market</b></td><td>Consensus of the live sportsbook spreads we collect (median across books) — what the betting market currently thinks the line should be.</td></tr>
+      <tr><td><b>circa line</b></td><td>Circa's <i>static</i> contest spread, posted Thursday ~10 AM PT (Wednesday on Thanksgiving/Christmas weeks) and never updated. Entered here by hand — it exists on no data feed. It's the number all five picks are graded against.</td></tr>
+      <tr><td><b>model</b></td><td>Our market-implied power-rating prediction: team ratings + home-field advantage solved from every posted spread at once. A third reference — when it disagrees with a game's own line, one of them is off.</td></tr>
+      <tr><td><b>edge</b></td><td>Circa line minus market consensus, from the taken side's view. <span class="good">+2.0</span> = the contest number gives your side 2 points more than the market says is fair. The core value signal.</td></tr>
+      <tr><td><b>value</b></td><td>Which side (home/away) the edge favors at the contest number.</td></tr>
+      <tr><td><b>keys</b></td><td>Key numbers <b>3</b> and <b>7</b> — the most common NFL margins of victory. A contest line and market on opposite sides of one is worth more than the raw point gap (e.g. -2.5 vs -3.5 straddles 3).</td></tr>
+      <tr><td><b>drift</b></td><td>How far market consensus has moved since the Circa line was entered. Big drift toward your side = the market agrees with your pick more than when Circa set the number. Click a matchup for the full movement chart.</td></tr>
+      <tr><td><b>CLV</b></td><td>Closing Line Value: the number you took vs where the market <i>closed</i> at kickoff. Positive CLV means you beat the market — the best evidence a picking process works, long before win/loss records mean anything (90 picks/season is a tiny sample).</td></tr>
+      <tr><td><b>HFA</b></td><td>Home-field advantage in points, fitted from the market (~1.5–2 in the modern NFL).</td></tr>
+    </tbody></table>
+
+    <h2>Contest mechanics</h2>
+    <table><tbody>
+      <tr><td><b>contest week</b></td><td>Wednesday 2:00 AM PT through the next Wednesday 1:59 AM PT (Rule 19). Weeks 1–18.</td></tr>
+      <tr><td><b>deadline</b></td><td>Saturday 4:00 PM PT — when the week's five picks are due at Circa (Rule 7).</td></tr>
+      <tr><td><b>⏱ early</b></td><td>This game kicks off <i>before</i> the Saturday deadline (Thursday night, December Saturdays). Rule 8: put it on your card and the <b>whole card</b> is due before that kickoff — no partial submissions.</td></tr>
+      <tr><td><b>booby prize</b></td><td>Circa pays <b>last place $100k</b> (2nd-last $50k; $25k per quarter) — but only to entries that made 5 picks in <i>every completed week</i>. Miss one week and you're permanently ineligible, which is why…</td></tr>
+      <tr><td><b>booby guard</b></td><td>…the red header alert fires if no card is locked by Saturday 10 AM PT. A missed week costs the week's points <i>and</i> booby eligibility forever.</td></tr>
+      <tr><td><b>quarters / MVP</b></td><td>The season splits into Q1 (wks 1–4), Q2 (5–9), Q3 (10–13), Q4 (14–18); each quarter pays its own $150k first prize ("Quarter MVP").</td></tr>
+      <tr><td><b>ETSN</b></td><td>Circa's 12-digit electronic ticket serial number — proof the card was physically submitted at the sportsbook. Record it on the Card tab after submitting.</td></tr>
+      <tr><td><b>push</b></td><td>The game lands exactly on the number (home wins by 3 on a -3 line). Worth half a point in the contest.</td></tr>
+    </tbody></table>
+
+    <h2>Group workflow</h2>
+    <table><tbody>
+      <tr><td><b>blind proposals</b></td><td>Everyone submits their picks before seeing anyone else's — one shot, no edits. Stops the first opinion from anchoring the group.</td></tr>
+      <tr><td><b>stance</b></td><td>Your current side on a game. Voting on a game you proposed <i>changes</i> your stance — one opinion per member per game.</td></tr>
+      <tr><td><b>unanimous / majority / contested</b></td><td>How many members back a candidate: all three / two / fewer. Contested picks fall to the captain.</td></tr>
+      <tr><td><b>working card</b></td><td>The top five candidates by backing — what would lock right now.</td></tr>
+      <tr><td><b>captain</b></td><td>The week's tiebreaker and submitter of record, rotating in member order (week 1 → first member, and so on).</td></tr>
+      <tr><td><b>DIV</b></td><td>Divisional matchup — same division, twice-a-year familiarity; these historically play closer to the number.</td></tr>
+      <tr><td><b>H-short / A-short</b></td><td>Home/away team on a short week (4 days' rest or fewer, usually Thursday after a Sunday game).</td></tr>
+      <tr><td><b>H-bye / A-bye</b></td><td>Coming off an idle week (13+ days' rest).</td></tr>
+      <tr><td><b>rest H+N / A+N</b></td><td>Rest differential of 3+ days in that team's favor.</td></tr>
+    </tbody></table>
+    <div class="msg dim">Full contest rules: circa-million-2026-rules.md in the repo; official rules at circasports.com/million.</div>
   </div>
 </main>
 <script>
@@ -570,7 +613,7 @@ async function loadSeason() {
 function showTab(name) {
   document.querySelectorAll("#tabs button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === name));
-  ["board","propose","consensus","card","season"].forEach(t =>
+  ["board","propose","consensus","card","season","glossary"].forEach(t =>
     $("#tab-" + t).hidden = t !== name);
 }
 $("#tabs").onclick = e => {
