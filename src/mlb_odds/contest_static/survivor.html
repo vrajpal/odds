@@ -309,13 +309,29 @@ function renderPropose() {
       <button class="side" data-pick="${g.home_team}" ${g.home_used ? "disabled" : ""}>${g.home_team}</button>
     </td>
   </tr>`).join("");
+  // D-033: ranked choices — click order assigns A, then B, then C (max 3);
+  // clicking a selected team removes it and re-ranks the rest.
+  if (!Array.isArray(state.proposal)) state.proposal = [];
+  const paint = () => {
+    const letters = ["A", "B", "C"];
+    tb.querySelectorAll("[data-pick]").forEach(b => {
+      const idx = state.proposal.indexOf(b.dataset.pick);
+      b.classList.toggle("sel", idx >= 0);
+      b.textContent = idx >= 0 ? `${letters[idx]}: ${b.dataset.pick}` : b.dataset.pick;
+    });
+    $("#propose-msg").textContent = state.proposal.length
+      ? state.proposal.map((t, i) => `${letters[i]}: ${t}`).join(" · ")
+      : "no teams selected (pick up to 3, in preference order)";
+  };
   tb.querySelectorAll("[data-pick]").forEach(btn => btn.onclick = () => {
-    state.proposal = state.proposal === btn.dataset.pick ? null : btn.dataset.pick;
-    tb.querySelectorAll("[data-pick]").forEach(b =>
-      b.classList.toggle("sel", state.proposal === b.dataset.pick));
-    $("#propose-msg").textContent = state.proposal
-      ? `proposing ${state.proposal}` : "no team selected";
+    const team = btn.dataset.pick;
+    const idx = state.proposal.indexOf(team);
+    if (idx >= 0) state.proposal.splice(idx, 1);
+    else if (state.proposal.length < 3) state.proposal.push(team);
+    else return alert("three ranked choices max");
+    paint();
   });
+  paint();
   refreshProposeStatus();
 }
 
@@ -328,17 +344,20 @@ async function refreshProposeStatus() {
       `<b>submitted:</b> ${p.submitted.join(", ") || "nobody yet"} ·
        <b>waiting on:</b> ${p.waiting_on.join(", ") || "—"}` +
       (submitted ? `<br><b>proposals:</b> ` + p.proposals.map(x =>
-        `${x.member}: <b>${x.team}</b>${x.note ? " ("+x.note+")" : ""}`).join(" · ") : "");
+        `${x.member} ${"ABC"[x.rank - 1] || "?"}: <b>${x.team}</b>${x.note ? " ("+x.note+")" : ""}`).join(" · ") : "");
   } catch (e) { $("#propose-status").textContent = e.message; }
 }
 
 $("#propose-submit").onclick = async () => {
-  if (!state.proposal) return alert("select a team");
-  if (!confirm(`Propose ${state.proposal} for ${state.board.label} as ${state.me}? One-shot and final.`)) return;
+  if (!Array.isArray(state.proposal) || !state.proposal.length) return alert("select 1-3 teams in preference order");
+  const letters = ["A", "B", "C"];
+  const summary = state.proposal.map((t, i) => `${letters[i]}: ${t}`).join(", ");
+  if (!confirm(`Propose ${summary} for ${state.board.label} as ${state.me}? One-shot and final.`)) return;
   try {
+    const choices = state.proposal.map((t, i) => ({team: t, note: i === 0 ? $("#propose-note").value : ""}));
     await api("/api/survivor/proposal", {method:"POST", body: JSON.stringify(
-      {leg: state.leg, member: state.me, team: state.proposal, note: $("#propose-note").value})});
-    state.proposal = null; refreshProposeStatus(); showTab("consensus"); loadConsensus();
+      {leg: state.leg, member: state.me, choices})});
+    state.proposal = []; refreshProposeStatus(); showTab("consensus"); loadConsensus();
   } catch (e) { alert(e.message); }
 };
 
@@ -357,8 +376,8 @@ async function loadConsensus() {
     <th>status</th><th>move your backing</th></tr></thead><tbody>` +
     c.candidates.map((cand, i) => `<tr>
       <td class="dim">${i === 0 ? "▶" : ""}</td>
-      <td><b>${cand.team}</b>${badges(cand.team)}</td>
-      <td class="dim">${cand.backers.join(", ")}</td>
+      <td><b>${cand.team}</b>${badges(cand.team)} <span class="dim">${cand.points}pt</span></td>
+      <td class="dim">${(cand.support || []).map(([m, r]) => `${m} ${r === 0 ? "vote" : "ABC"[r - 1]}`).join(", ")}</td>
       <td><span class="tag ${cand.status}">${cand.status}</span></td>
       <td>${c.pick_locked ? "" :
         `<button class="side" data-vote="${cand.team}">back ${cand.team}</button>`}</td>

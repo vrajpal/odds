@@ -106,7 +106,7 @@ def test_blind_proposal_reveal_and_vote_flow(client):
     # vijai proposes blind; sam can't see it before submitting their own.
     r = client.post(
         "/api/survivor/proposal",
-        json={"leg": "1", "member": "vijai", "team": "LAC", "note": "home number"},
+        json={"leg": "1", "member": "vijai", "choices": [{"team": "LAC", "note": "home number"}]},
     )
     assert r.status_code == 201
     view = client.get(
@@ -120,10 +120,12 @@ def test_blind_proposal_reveal_and_vote_flow(client):
     assert r.status_code == 409
 
     client.post(
-        "/api/survivor/proposal", json={"leg": "1", "member": "sam", "team": "KC"}
+        "/api/survivor/proposal",
+        json={"leg": "1", "member": "sam", "choices": [{"team": "KC"}]},
     )
     client.post(
-        "/api/survivor/proposal", json={"leg": "1", "member": "alex", "team": "LAC"}
+        "/api/survivor/proposal",
+        json={"leg": "1", "member": "alex", "choices": [{"team": "LAC"}]},
     )
     c = client.get(
         "/api/survivor/consensus", params={"leg": "1", "member": "sam"}
@@ -147,24 +149,28 @@ def test_blind_proposal_reveal_and_vote_flow(client):
 
 def test_proposal_is_one_shot_and_validates_team(client):
     client.post(
-        "/api/survivor/proposal", json={"leg": "1", "member": "vijai", "team": "LAC"}
+        "/api/survivor/proposal",
+        json={"leg": "1", "member": "vijai", "choices": [{"team": "LAC"}]},
     )
     assert (
         client.post(
-            "/api/survivor/proposal", json={"leg": "1", "member": "vijai", "team": "KC"}
+            "/api/survivor/proposal",
+            json={"leg": "1", "member": "vijai", "choices": [{"team": "KC"}]},
         ).status_code
         == 409
     )
     # Unknown code -> 422; known code with no stored game this leg -> 404.
     assert (
         client.post(
-            "/api/survivor/proposal", json={"leg": "1", "member": "sam", "team": "LAX"}
+            "/api/survivor/proposal",
+            json={"leg": "1", "member": "sam", "choices": [{"team": "LAX"}]},
         ).status_code
         == 422
     )
     assert (
         client.post(
-            "/api/survivor/proposal", json={"leg": "1", "member": "sam", "team": "NYJ"}
+            "/api/survivor/proposal",
+            json={"leg": "1", "member": "sam", "choices": [{"team": "NYJ"}]},
         ).status_code
         == 404
     )
@@ -195,7 +201,8 @@ def test_lock_pick_burns_team_across_all_legs(client):
     # in later legs both refuse it.
     assert (
         client.post(
-            "/api/survivor/proposal", json={"leg": "2", "member": "sam", "team": "LAC"}
+            "/api/survivor/proposal",
+            json={"leg": "2", "member": "sam", "choices": [{"team": "LAC"}]},
         ).status_code
         == 409
     )
@@ -234,7 +241,8 @@ def test_lock_refused_after_deadline(client, monkeypatch):
 
 def test_vote_blocked_once_pick_locked(client):
     client.post(
-        "/api/survivor/proposal", json={"leg": "1", "member": "vijai", "team": "LAC"}
+        "/api/survivor/proposal",
+        json={"leg": "1", "member": "vijai", "choices": [{"team": "LAC"}]},
     )
     client.post(
         "/api/survivor/pick", json={"leg": "1", "member": "vijai", "team": "LAC"}

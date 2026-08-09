@@ -135,7 +135,7 @@ def test_two_leg_season_walk(client, env, clock, monkeypatch):
         assert (
             client.post(
                 "/api/survivor/proposal",
-                json={"leg": "1", "member": member, "team": team},
+                json={"leg": "1", "member": member, "choices": [{"team": team}]},
             ).status_code
             == 201
         )
@@ -153,7 +153,8 @@ def test_two_leg_season_walk(client, env, clock, monkeypatch):
     )
 
     client.post(
-        "/api/survivor/proposal", json={"leg": "1", "member": "alex", "team": "KC"}
+        "/api/survivor/proposal",
+        json={"leg": "1", "member": "alex", "choices": [{"team": "KC"}]},
     )
     c = client.get(
         "/api/survivor/consensus", params={"leg": "1", "member": "alex"}
@@ -196,7 +197,8 @@ def test_two_leg_season_walk(client, env, clock, monkeypatch):
     # it plays this leg.
     assert (
         client.post(
-            "/api/survivor/proposal", json={"leg": "2", "member": "vijai", "team": "LAC"}
+            "/api/survivor/proposal",
+            json={"leg": "2", "member": "vijai", "choices": [{"team": "LAC"}]},
         ).status_code
         == 409
     )
@@ -351,7 +353,7 @@ class TestSurvivorIdentity:
 
     def test_public_user_cannot_act_as_someone_else(self, client):
         for path, body in (
-            ("/api/survivor/proposal", {"leg": "1", "member": "sam", "team": "LAC"}),
+            ("/api/survivor/proposal", {"leg": "1", "member": "sam", "choices": [{"team": "LAC"}]}),
             ("/api/survivor/vote", {"leg": "1", "member": "sam", "team": "LAC"}),
             ("/api/survivor/pick", {"leg": "1", "member": "sam", "team": "LAC"}),
         ):
@@ -362,7 +364,7 @@ class TestSurvivorIdentity:
     def test_mapped_user_acts_as_self(self, client):
         r = client.post(
             "/api/survivor/proposal",
-            json={"leg": "1", "member": "vijai", "team": "LAC"},
+            json={"leg": "1", "member": "vijai", "choices": [{"team": "LAC"}]},
             headers=self.HEADER,
         )
         assert r.status_code == 201
@@ -370,7 +372,7 @@ class TestSurvivorIdentity:
     def test_unmapped_access_email_403(self, client):
         r = client.post(
             "/api/survivor/proposal",
-            json={"leg": "1", "member": "vijai", "team": "LAC"},
+            json={"leg": "1", "member": "vijai", "choices": [{"team": "LAC"}]},
             headers={"Cf-Access-Authenticated-User-Email": "stranger@example.com"},
         )
         assert r.status_code == 403
@@ -378,6 +380,7 @@ class TestSurvivorIdentity:
 
     def test_tailnet_path_stays_honor_system(self, client):
         r = client.post(
-            "/api/survivor/proposal", json={"leg": "1", "member": "sam", "team": "KC"}
+            "/api/survivor/proposal",
+            json={"leg": "1", "member": "sam", "choices": [{"team": "KC"}]},
         )
         assert r.status_code == 201

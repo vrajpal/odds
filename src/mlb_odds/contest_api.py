@@ -339,6 +339,7 @@ def get_contest_lines(week: int) -> list[ContestLineOut]:
 
 
 Side = Literal["home", "away"]
+StanceSide = Literal["home", "away", "pass"]  # proposals/votes may pass (D-033)
 
 
 class MembersOut(BaseModel):
@@ -359,14 +360,14 @@ def get_members() -> MembersOut:
 
 class ProposalPickIn(BaseModel):
     game_id: str
-    side: Side
+    side: StanceSide
     note: str = ""
 
 
 class ProposalsIn(BaseModel):
     week: int = Field(ge=1, le=contest.NUM_WEEKS)
     member: str
-    picks: list[ProposalPickIn] = Field(min_length=1, max_length=5)
+    picks: list[ProposalPickIn] = Field(min_length=1, max_length=20)
 
 
 class ProposalOut(BaseModel):
@@ -449,7 +450,7 @@ class VoteIn(BaseModel):
     week: int = Field(ge=1, le=contest.NUM_WEEKS)
     member: str
     game_id: str
-    side: Side
+    side: StanceSide
 
 
 class CandidateOut(BaseModel):
@@ -462,6 +463,7 @@ class CandidateOut(BaseModel):
 class ConsensusOut(BaseModel):
     week: int
     captain: str
+    passes: dict[str, list[str]]  # game_id -> members explicitly passing (D-033)
     candidates: list[CandidateOut]
     working_card: list[CandidateOut]  # top 5 by backing — what would lock now
     effective_deadline: str  # Rule 8: pulled to earliest kickoff on the working card
@@ -514,6 +516,7 @@ def _consensus_view(store: contest.ContestStore, week: int) -> ConsensusOut:
     return ConsensusOut(
         week=week,
         captain=contest.captain_for(week, _members()),
+        passes=contest.passes_by_game(store.proposals(week), store.votes(week)),
         candidates=[
             CandidateOut(
                 game_id=c.game_id, side=c.side, backers=list(c.backers), status=c.status

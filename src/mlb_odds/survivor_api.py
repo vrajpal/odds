@@ -286,17 +286,23 @@ def get_board(leg: str | None = None) -> SurvivorBoardOut:
     )
 
 
+class RankedChoiceIn(BaseModel):
+    team: str
+    note: str = ""
+
+
 class SurvivorProposalIn(BaseModel):
     leg: str
     member: str
-    team: str
-    note: str = ""
+    # Preference order: first = A choice, then B, C (D-033).
+    choices: list[RankedChoiceIn] = Field(min_length=1, max_length=3)
 
 
 class SurvivorProposalOut(BaseModel):
     member: str
     team: str
     note: str
+    rank: int  # 1 = A, 2 = B, 3 = C
 
 
 class SurvivorProposalsOut(BaseModel):
@@ -313,21 +319,22 @@ def submit_proposal(body: SurvivorProposalIn, request: Request) -> SurvivorPropo
     contest_api._require_member(body.member)
     contest_api._enforce_identity(request, body.member)
     leg_ = _leg_or_422(body.leg)
-    _game_for_team(leg_, _require_team(body.team))
+    for choice in body.choices:
+        _game_for_team(leg_, _require_team(choice.team))
     store = _store()
     try:
         used = store.used_teams()
-        if body.team in used:
+        burned = [c.team for c in body.choices if c.team in used]
+        if burned:
             raise HTTPException(
                 status_code=409,
-                detail=f"{body.team} was already used in leg {used[body.team]}",
+                detail=f"already used: {', '.join(f'{t} (leg {used[t]})' for t in burned)}",
             )
         try:
             store.submit_proposal(
                 leg_.leg_id,
                 body.member,
-                body.team,
-                body.note,
+                [(c.team, c.note) for c in body.choices],
                 submitted_at=contest_api._now(),
             )
         except ValueError as exc:
@@ -361,7 +368,7 @@ def _proposals_view(
         submitted=submitted,
         waiting_on=[m for m in contest_api._members() if m not in submitted],
         proposals=[
-            SurvivorProposalOut(member=p.member, team=p.team, note=p.note)
+            SurvivorProposalOut(member=p.member, team=p.team, note=p.note, rank=p.rank)
             for p in rows
         ],
     )
@@ -375,8 +382,10 @@ class SurvivorVoteIn(BaseModel):
 
 class TeamCandidateOut(BaseModel):
     team: str
-    backers: list[str]
-    status: str  # unanimous | majority | contested
+    backers: list[str]  # top-choice backers (status ladder)
+    status: str
+    points: int  # A=3, B=2, C=1 across members (D-033)
+    support: list[list[object]]  # [member, rank] pairs; rank 0 = vote
 
 
 class PickWarningOut(BaseModel):
@@ -477,12 +486,17 @@ def _consensus_view(
             survivor.LEG_INDEX[leg_.leg_id] + 1, contest_api._members()
         ),
         candidates=[
-            TeamCandidateOut(team=c.team, backers=list(c.backers), status=c.status)
+            TeamCandidateOut(
+            team=c.team, backers=list(c.backers), status=c.status,
+            points=c.points, support=[[m, r] for m, r in c.support],
+        )
             for c in candidates
         ],
         working_pick=(
             TeamCandidateOut(
-                team=working.team, backers=list(working.backers), status=working.status
+                team=working.team, backers=list(working.backers),
+                status=working.status, points=working.points,
+                support=[[m, r] for m, r in working.support],
             )
             if working
             else None

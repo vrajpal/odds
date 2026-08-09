@@ -148,16 +148,44 @@ def test_blind_submission_is_one_shot(store):
 
 
 def test_proposals_validation(store):
-    with pytest.raises(ValueError, match="1-5"):
+    with pytest.raises(ValueError, match="1-20"):
         store.submit_proposals(1, "vijai", [], submitted_at=NOW)
-    with pytest.raises(ValueError, match="1-5"):
+    with pytest.raises(ValueError, match="1-20"):
         store.submit_proposals(
-            1, "vijai", [(f"g{i}", "home", "") for i in range(6)], submitted_at=NOW
+            1, "vijai", [(f"g{i}", "home", "") for i in range(21)], submitted_at=NOW
         )
     with pytest.raises(ValueError, match="duplicate"):
         store.submit_proposals(
             1, "vijai", [("g1", "home", ""), ("g1", "away", "")], submitted_at=NOW
         )
+    with pytest.raises(ValueError, match="home/away/pass"):
+        store.submit_proposals(1, "vijai", [("g1", "over", "")], submitted_at=NOW)
+    # D-033: more than five stances and explicit passes are legal.
+    store.submit_proposals(
+        1, "vijai",
+        [(f"g{i}", "home" if i % 3 == 0 else "pass" if i % 3 == 1 else "away", "")
+         for i in range(8)],
+        submitted_at=NOW,
+    )
+    assert len(store.proposals(1)) == 8
+
+
+def test_pass_stances_review_without_backing(store):
+    from mlb_odds.contest import passes_by_game, tally_candidates
+
+    store.submit_proposals(
+        1, "vijai", [("g1", "home", ""), ("g2", "pass", "")], submitted_at=NOW
+    )
+    store.submit_proposals(1, "sam", [("g2", "pass", "")], submitted_at=NOW)
+    props = store.proposals(1)
+    cands = tally_candidates(props, [], ["vijai", "sam", "alex"])
+    # Passes back nothing: only g1-home is a candidate.
+    assert [(c.game_id, c.side) for c in cands] == [("g1", "home")]
+    assert passes_by_game(props, []) == {"g2": ["sam", "vijai"]}
+    # A vote can withdraw a lean to a pass.
+    store.cast_vote(1, "vijai", "g1", "pass", cast_at=NOW)
+    cands = tally_candidates(store.proposals(1), store.votes(1), ["vijai", "sam", "alex"])
+    assert cands == []
 
 
 def test_vote_upsert_keeps_latest_stance(store):

@@ -234,6 +234,23 @@ SURVIVOR_MIGRATIONS: list[str] = [
         result    TEXT CHECK (result IN ('win', 'loss'))
     );
     """,
+    # D-033 (Mike's feedback): ranked A/B/C proposals per leg. Existing
+    # single-team proposals carry over as the A choice (rank 1).
+    """
+    CREATE TABLE survivor_proposals_new (
+        leg          TEXT NOT NULL,
+        member       TEXT NOT NULL,
+        rank         INTEGER NOT NULL CHECK (rank BETWEEN 1 AND 3),
+        team         TEXT NOT NULL,
+        note         TEXT NOT NULL DEFAULT '',
+        submitted_at TEXT NOT NULL,
+        PRIMARY KEY (leg, member, rank)
+    );
+    INSERT INTO survivor_proposals_new (leg, member, rank, team, note, submitted_at)
+        SELECT leg, member, 1, team, note, submitted_at FROM survivor_proposals;
+    DROP TABLE survivor_proposals;
+    ALTER TABLE survivor_proposals_new RENAME TO survivor_proposals;
+    """,
 ]
 
 
@@ -243,6 +260,7 @@ class SurvivorProposal:
     member: str
     team: str
     note: str
+    rank: int = 1  # 1 = A choice, 2 = B, 3 = C (D-033)
 
 
 @dataclass(frozen=True)
@@ -292,19 +310,35 @@ class SurvivorStore:
     # -- blind proposals ------------------------------------------------------
 
     def submit_proposal(
-        self, leg_id: str, member: str, team: str, note: str, *, submitted_at: datetime
+        self,
+        leg_id: str,
+        member: str,
+        choices: Sequence[tuple[str, str]],
+        *,
+        submitted_at: datetime,
     ) -> None:
-        """One blind team per member per leg, immutable once in — same honesty
-        rule as the Million: no editing after the reveal."""
+        """One blind RANKED submission per member per leg (D-033): 1-3
+        (team, note) pairs in preference order — A, then B, then C. Immutable
+        once in, same honesty rule as the Million."""
         _require_leg(leg_id)
-        _require_team(team)
+        if not 1 <= len(choices) <= 3:
+            raise ValueError(f"propose 1-3 ranked choices, got {len(choices)}")
+        teams_chosen = [t for t, _n in choices]
+        if len(set(teams_chosen)) != len(teams_chosen):
+            raise ValueError("ranked choices must be distinct teams")
+        for team in teams_chosen:
+            _require_team(team)
         if self.has_submitted(leg_id, member):
             raise ValueError(f"{member} already submitted a proposal for leg {leg_id}")
         with self._conn:
-            self._conn.execute(
-                "INSERT INTO survivor_proposals (leg, member, team, note, submitted_at)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (leg_id, member, team, note, _to_utc_iso(submitted_at)),
+            self._conn.executemany(
+                "INSERT INTO survivor_proposals"
+                " (leg, member, rank, team, note, submitted_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (leg_id, member, rank, team, note, _to_utc_iso(submitted_at))
+                    for rank, (team, note) in enumerate(choices, start=1)
+                ],
             )
 
     def has_submitted(self, leg_id: str, member: str) -> bool:
@@ -321,7 +355,7 @@ class SurvivorStore:
             row[0]
             for row in self._conn.execute(
                 "SELECT member FROM survivor_proposals WHERE leg = ?"
-                " ORDER BY submitted_at",
+                " GROUP BY member ORDER BY MIN(submitted_at)",
                 (leg_id,),
             )
         ]
@@ -329,14 +363,18 @@ class SurvivorStore:
     def proposals(
         self, leg_id: str, *, member: str | None = None
     ) -> list[SurvivorProposal]:
-        sql = "SELECT leg, member, team, note FROM survivor_proposals WHERE leg = ?"
+        sql = (
+            "SELECT leg, member, rank, team, note FROM survivor_proposals WHERE leg = ?"
+        )
         params: tuple[object, ...] = (leg_id,)
         if member is not None:
             sql += " AND member = ?"
             params = (leg_id, member)
         return [
-            SurvivorProposal(leg_id=lg, member=m, team=t, note=n)
-            for lg, m, t, n in self._conn.execute(sql + " ORDER BY member", params)
+            SurvivorProposal(leg_id=lg, member=m, team=t, note=n, rank=r)
+            for lg, m, r, t, n in self._conn.execute(
+                sql + " ORDER BY member, rank", params
+            )
         ]
 
     # -- stances --------------------------------------------------------------
@@ -475,11 +513,18 @@ def _to_utc_iso(value: datetime) -> str:
 class TeamCandidate:
     """One proposed team with everyone's current stance. Same status ladder as
     the Million: unanimous auto-clears, majority is presumptive, contested
-    falls to the week's captain."""
+    falls to the week's captain.
+
+    D-033: `backers` are TOP-choice backers (vote or A-rank proposal), which
+    drives the status ladder unchanged; `points` fold in B/C preferences
+    (A=3, B=2, C=1 per member) and order the candidate list, so a team that
+    is everyone's B can outrank a team that is one member's A."""
 
     team: str
     backers: tuple[str, ...]
     status: str  # unanimous | majority | contested
+    points: int = 0
+    support: tuple[tuple[str, int], ...] = ()  # (member, rank) pairs, rank 0 = vote
 
 
 def tally_teams(
@@ -490,18 +535,29 @@ def tally_teams(
     """Fold proposals + votes into per-team candidates; a member's vote
     overrides their proposal (one stance each). Ordered by backing, so the
     head of the list is the working pick."""
-    stance: dict[str, str] = {}
+    # A member's ranked preferences; a vote replaces the whole ranking with a
+    # single top choice (you changed your mind — the old B/C died with it).
+    rankings: dict[str, list[tuple[str, int]]] = {}
     for p in proposals:
-        stance[p.member] = p.team
+        rankings.setdefault(p.member, []).append((p.team, p.rank))
     for v in votes:
-        stance[v.member] = v.team
+        rankings[v.member] = [(v.team, 0)]  # rank 0 = explicit vote
 
-    backers: dict[str, list[str]] = {}
-    for member, team in stance.items():
-        backers.setdefault(team, []).append(member)
+    rank_points = {0: 3, 1: 3, 2: 2, 3: 1}
+    top_backers: dict[str, list[str]] = {}
+    points: dict[str, int] = {}
+    support: dict[str, list[tuple[str, int]]] = {}
+    for member, ranked in rankings.items():
+        ranked.sort(key=lambda tr: tr[1])
+        if ranked:
+            top_backers.setdefault(ranked[0][0], []).append(member)
+        for team, rank in ranked:
+            points[team] = points.get(team, 0) + rank_points[rank]
+            support.setdefault(team, []).append((member, rank))
 
     candidates = []
-    for team, who in backers.items():
+    for team, pts in points.items():
+        who = top_backers.get(team, [])
         who_ordered = tuple(m for m in members if m in who)
         if len(who_ordered) == len(members):
             status = "unanimous"
@@ -509,8 +565,18 @@ def tally_teams(
             status = "majority"
         else:
             status = "contested"
-        candidates.append(TeamCandidate(team=team, backers=who_ordered, status=status))
-    candidates.sort(key=lambda c: (-len(c.backers), c.team))
+        candidates.append(
+            TeamCandidate(
+                team=team,
+                backers=who_ordered,
+                status=status,
+                points=pts,
+                support=tuple(
+                    sorted(support[team], key=lambda mr: (mr[1], mr[0]))
+                ),
+            )
+        )
+    candidates.sort(key=lambda c: (-c.points, -len(c.backers), c.team))
     return candidates
 
 
