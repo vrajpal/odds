@@ -1077,6 +1077,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# Survivor endpoints (/api/survivor/*) share this app, its identity layer,
+# and contest.sqlite. Imported at the bottom on purpose: survivor_api imports
+# this module back for the shared helpers, and by this point every one of
+# them exists (D-028).
+from mlb_odds.survivor_api import router as _survivor_router  # noqa: E402
+
+app.include_router(_survivor_router)
+
 # Static contest UI at / — registered last so it cannot shadow API routes
 # (same registration-order lesson as api.py's frontend mount).
 _STATIC_DIR = Path(__file__).parent / "contest_static"

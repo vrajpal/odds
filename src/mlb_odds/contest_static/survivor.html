@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circa Survivor — Consensus</title>
+<style>
+  :root { --bg:#0f1420; --panel:#171e2e; --line:#2a3550; --text:#dde4f0; --dim:#8b96ad;
+          --accent:#5b9dff; --good:#3fce8b; --bad:#ff6b6b; --warn:#ffb454; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+           padding:14px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0 12px 0 0; }
+  .chip { background:var(--panel); border:1px solid var(--line); border-radius:16px;
+          padding:3px 12px; font-size:13px; color:var(--dim); text-decoration:none; }
+  .chip b { color:var(--text); }
+  #countdown b { color:var(--accent); font-variant-numeric:tabular-nums; }
+  #entry-chip.alive b { color:var(--good); }
+  #entry-chip.dead b { color:var(--bad); }
+  #alert { display:none; background:#3a1d1d; color:var(--bad); border:1px solid var(--bad);
+           border-radius:6px; padding:6px 12px; font-weight:600; }
+  nav { display:flex; gap:4px; padding:10px 20px 0; }
+  nav button { background:none; border:none; color:var(--dim); font-size:15px;
+               padding:8px 14px; cursor:pointer; border-bottom:2px solid transparent; }
+  nav button.active { color:var(--text); border-color:var(--accent); }
+  main { padding:16px 20px 60px; max-width:1180px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line);
+           white-space:nowrap; }
+  th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase; }
+  tr:hover td { background:#1b2438; }
+  .num { font-variant-numeric:tabular-nums; }
+  .good { color:var(--good); font-weight:600; }
+  .bad { color:var(--bad); }
+  .warn { color:var(--warn); }
+  .dim { color:var(--dim); }
+  .tag { font-size:11px; border-radius:4px; padding:1px 7px; font-weight:700; }
+  .tag.unanimous { background:#153b2c; color:var(--good); }
+  .tag.majority { background:#16304f; color:var(--accent); }
+  .tag.contested { background:#3d2c14; color:var(--warn); }
+  .tag.early { background:#3a1d1d; color:var(--bad); }
+  .tag.used { background:#252b3a; color:var(--dim); text-decoration:line-through; }
+  input, select { background:#0d1220; color:var(--text); border:1px solid var(--line);
+          border-radius:5px; padding:5px 8px; font:inherit; }
+  button.action { background:var(--accent); color:#08101f; border:none; border-radius:6px;
+                  padding:7px 16px; font-weight:700; cursor:pointer; font:inherit; }
+  button.action:disabled { background:var(--line); color:var(--dim); cursor:not-allowed; }
+  button.side { background:#0d1220; color:var(--dim); border:1px solid var(--line);
+                border-radius:5px; padding:4px 10px; cursor:pointer; font:inherit; }
+  button.side.sel { background:var(--accent); color:#08101f; border-color:var(--accent); font-weight:700; }
+  button.side:disabled { color:#4a5468; text-decoration:line-through; cursor:not-allowed; }
+  .card-box { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+              padding:16px; margin:12px 0; }
+  .msg { margin:10px 0; min-height:22px; font-size:14px; }
+  h2 { font-size:15px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .stat .v { font-size:22px; font-weight:700; }
+  .stat .k { font-size:12px; color:var(--dim); }
+  .teamchip { display:inline-block; background:#0d1220; border:1px solid var(--line);
+              border-radius:5px; padding:2px 8px; margin:2px; font-size:13px;
+              font-variant-numeric:tabular-nums; }
+  .teamchip.burned { color:#4a5468; text-decoration:line-through; }
+  .outlook { border-left:4px solid var(--line); }
+  .outlook.caution { border-left-color:var(--warn); }
+  .outlook.critical, .outlook.fatal { border-left-color:var(--bad); }
+  .sev-info { color:var(--dim); }
+  .sev-warning { color:var(--warn); font-weight:600; }
+  .sev-fatal { color:var(--bad); font-weight:700; }
+  @media (max-width:720px){ main{padding:10px} th,td{padding:5px 6px} }
+</style>
+</head>
+<body>
+<header>
+  <h1>💀 Circa Survivor</h1>
+  <span class="chip">leg
+    <button class="side" id="leg-prev" title="previous leg">‹</button>
+    <select id="hdr-leg"></select>
+    <button class="side" id="leg-next" title="next leg">›</button>
+  </span>
+  <span class="chip">captain <b id="hdr-captain">–</b></span>
+  <span class="chip" id="countdown">deadline <b>–</b></span>
+  <span class="chip" id="entry-chip"><b>–</b></span>
+  <span class="chip">you are <select id="member"></select></span>
+  <a class="chip" href="/">🏈 Million →</a>
+  <span id="alert"></span>
+</header>
+<nav id="tabs">
+  <button data-tab="board" class="active">Board</button>
+  <button data-tab="propose">Propose</button>
+  <button data-tab="consensus">Consensus</button>
+  <button data-tab="pick">Pick</button>
+  <button data-tab="plan">Plan</button>
+  <button data-tab="glossary">Glossary</button>
+</nav>
+<main>
+  <div id="tab-board">
+    <div class="msg dim" id="board-note">One team to win outright, each team once per season.
+      Win% is market-implied straight-up probability (ties grade as losses). 🦃/🎄 = the team is
+      on the Thanksgiving/Christmas restricted slate — burning it early costs holiday options.
+      ⏱ = kicks before the leg deadline: picking that team means the pick is due at kickoff.</div>
+    <div class="msg warn" id="board-slate"></div>
+    <table id="board-table"><thead><tr>
+      <th>game</th><th>kickoff (PT)</th><th></th><th class="num">market</th>
+      <th class="num">model</th><th>win % (home)</th><th>availability</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+
+  <div id="tab-propose" hidden>
+    <div class="msg dim">Propose ONE team, blind — nobody sees anyone else's until their own is in.
+      One submission, no edits. Used teams are struck out.</div>
+    <table id="propose-table"><thead><tr>
+      <th>game</th><th>kickoff</th><th class="num">win %</th><th>your team</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="msg"><input id="propose-note" placeholder="why (optional)" size="40"></div>
+    <div class="msg" id="propose-msg"></div>
+    <button class="action" id="propose-submit">Submit proposal</button>
+    <div class="card-box" id="propose-status"></div>
+  </div>
+
+  <div id="tab-consensus" hidden>
+    <div class="msg" id="consensus-msg"></div>
+    <div id="consensus-body"></div>
+  </div>
+
+  <div id="tab-pick" hidden>
+    <div id="pick-body"></div>
+  </div>
+
+  <div id="tab-plan" hidden>
+    <div id="plan-body"></div>
+  </div>
+
+  <div id="tab-glossary" hidden>
+    <h2>The contest in one breath</h2>
+    <div class="msg">Pick one NFL team to win straight up each leg. Wrong (loss <i>or tie</i>) = the
+      entry is dead. Miss a deadline = dead. Each team usable once across all 20 legs. Last entry
+      standing takes the whole $20M pool.</div>
+    <h2>Mechanics</h2>
+    <table><tbody>
+      <tr><td><b>20 legs</b></td><td>NFL Weeks 1–18 <i>plus</i> two standalone holiday legs: Thanksgiving (Wed Nov 25 – Fri Nov 27 games) and Christmas (Dec 24–25 games). Surviving the season means going 20-0.</td></tr>
+      <tr><td><b>deadline</b></td><td>Saturday 4:00 PM PT for normal legs. Thanksgiving leg: <b>Wed Nov 25, 4 PM</b>. Christmas leg: <b>Thu Dec 24, 4 PM</b>. Weeks 12 and 16 are short fragments after the holiday legs — their windows open Saturday 12 AM and close the same day at 4 PM.</td></tr>
+      <tr><td><b>⏱ early kickoff</b></td><td>You can't pick a team whose game already started, so a Thursday-night team's pick is due at kickoff. Unlike the Million there's no card to drag along — only the picked team's kickoff matters.</td></tr>
+      <tr><td><b>🦃 / 🎄 slates</b></td><td>The holiday legs only offer the teams scheduled those days (10 at Thanksgiving, 8 at Christmas — PHI, GB, CHI, BUF, DEN, LAR appear on <i>both</i>). Arrive with your whole slate burned and you're eliminated with no legal pick (Rules 8/9). The Plan tab tracks this.</td></tr>
+      <tr><td><b>tie = loss</b></td><td>Rule 6a. There is no push in survivor. Enter ties as losses when grading.</td></tr>
+      <tr><td><b>missed leg = dead</b></td><td>Unlike the Million (score 0, keep playing), a survivor entry that doesn't submit by the deadline is eliminated (Rule 12).</td></tr>
+      <tr><td><b>win %</b></td><td>Straight-up win probability implied by the market spread (normal margin model, σ≈13.45). A -7 favorite ≈ 70%. Survivor is about not losing, but the used-team constraint means the "safest" pick each week is rarely optimal for the season.</td></tr>
+      <tr><td><b>ETSN</b></td><td>Circa's 12-digit ticket serial from the app confirmation — the only proof the pick got in. Record it on the Pick tab.</td></tr>
+      <tr><td><b>repeat pick = DQ</b></td><td>Rule 15a: if Circa's software lets a used team through, the entry is disqualified anyway — tracking used teams is on us. This app hard-blocks repeats.</td></tr>
+    </tbody></table>
+    <h2>Group workflow</h2>
+    <table><tbody>
+      <tr><td><b>blind proposal</b></td><td>Each member privately backs one team; reveal after all (or your own) submission. Stops anchoring.</td></tr>
+      <tr><td><b>stance / vote</b></td><td>After the reveal you can move your backing to any candidate. One stance per member; unanimous → lock it, majority → presumptive, contested → captain decides.</td></tr>
+      <tr><td><b>captain</b></td><td>Rotates per leg in member order; breaks deadlocks and is the submitter of record at Circa.</td></tr>
+    </tbody></table>
+    <div class="msg dim">Full rules: circa-survivor-2026-rules.md in the repo; official rules at circasports.com/survivor.</div>
+  </div>
+</main>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const api = async (path, opts) => {
+  const r = await fetch(path, opts ? {headers:{"Content-Type":"application/json"}, ...opts} : undefined);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : r.statusText);
+  return body;
+};
+// Rules 8a/9a slates (planning badges only — the server validates picks
+// against the stored schedule, which wins on any NFL schedule change).
+const TG = new Set(["GB","LAR","CHI","DET","PHI","DAL","KC","BUF","DEN","PIT"]);
+const XMAS = new Set(["HOU","PHI","GB","CHI","BUF","DEN","LAR","SEA"]);
+
+const state = { leg:null, board:null, status:null, me:localStorage.getItem("member") || null,
+                proposal:null };
+
+const fmtSpread = v => v == null ? "–" : (v > 0 ? "+" + v : String(v));
+const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+const kickoff = iso => new Date(iso).toLocaleString("en-US",
+  {weekday:"short", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"});
+const badges = t => (TG.has(t) ? "🦃" : "") + (XMAS.has(t) ? "🎄" : "");
+
+async function loadMembers() {
+  const [data, who] = await Promise.all([
+    api("/api/contest/members"),
+    api("/api/contest/whoami").catch(() => ({member: null})),
+  ]);
+  const sel = $("#member");
+  if (who.member) {
+    state.me = who.member;
+    sel.outerHTML = `<b id="member" title="${who.email}">${who.member}</b>`;
+  } else {
+    sel.innerHTML = data.members.map(m => `<option>${m}</option>`).join("");
+    if (!state.me || !data.members.includes(state.me)) state.me = data.members[0];
+    sel.value = state.me;
+    sel.onchange = () => { state.me = sel.value; localStorage.setItem("member", state.me); refresh(); };
+  }
+}
+
+async function loadStatus() {
+  state.status = await api("/api/survivor/status");
+  const s = state.status;
+  const chip = $("#entry-chip");
+  if (s.entry.alive) {
+    chip.className = "chip alive";
+    chip.innerHTML = `entry <b>ALIVE</b> · ${s.entry.survived} survived · ${Object.keys(s.used).length}/32 used`;
+  } else {
+    chip.className = "chip dead";
+    chip.innerHTML = `entry <b>ELIMINATED</b> — ${s.entry.reason} (leg ${s.entry.at_leg})`;
+  }
+  const alerts = [];
+  if (!s.entry.alive) alerts.push(`💀 eliminated at leg ${s.entry.at_leg}: ${s.entry.reason}`);
+  for (const o of s.holiday_outlook) {
+    if (o.danger === "fatal") alerts.push(`⚠ ${o.label} leg has NO eligible teams left — guaranteed elimination`);
+    else if (o.danger === "critical") alerts.push(`⚠ only ${o.remaining.length} ${o.label}-eligible teams left: ${o.remaining.join(", ")}`);
+  }
+  // deadline danger: inside 24h of the current leg's deadline with no pick locked
+  const cur = s.legs.find(l => l.leg_id === s.current_leg);
+  if (cur && !cur.pick && s.entry.alive) {
+    const secs = (new Date(cur.deadline) - Date.now()) / 1000;
+    if (secs > 0 && secs < 86400) alerts.push(`⏰ ${cur.label} pick not locked — deadline in ${Math.floor(secs/3600)}h ${Math.floor(secs%3600/60)}m. A missed leg is elimination!`);
+  }
+  const el = $("#alert");
+  el.style.display = alerts.length ? "inline-block" : "none";
+  el.textContent = alerts.join("  ·  ");
+}
+
+async function loadBoard() {
+  const q = state.leg ? `?leg=${encodeURIComponent(state.leg)}` : "";
+  try { state.board = await api("/api/survivor/board" + q); }
+  catch (e) { state.leg = "1"; state.board = await api("/api/survivor/board?leg=1"); }
+  state.leg = state.board.leg_id;
+  const sel = $("#hdr-leg");
+  if (!sel.options.length && state.status) {
+    sel.innerHTML = state.status.legs.map(l =>
+      `<option value="${l.leg_id}">${l.label}${l.pick ? " ✓" : ""}</option>`).join("");
+    sel.onchange = () => setLeg(sel.value);
+    $("#leg-prev").onclick = () => stepLeg(-1);
+    $("#leg-next").onclick = () => stepLeg(1);
+  }
+  sel.value = state.leg;
+  $("#hdr-captain").textContent = state.board.captain;
+  tickCountdown();
+  renderBoard(); renderPropose();
+}
+
+function stepLeg(delta) {
+  const order = state.status.legs.map(l => l.leg_id);
+  const i = order.indexOf(state.leg) + delta;
+  if (i >= 0 && i < order.length) setLeg(order[i]);
+}
+
+function tickCountdown() {
+  if (!state.board) return;
+  const secs = Math.floor((new Date(state.board.deadline) - Date.now()) / 1000);
+  const el = $("#countdown b");
+  if (secs <= 0) { el.textContent = "LOCKED"; el.style.color = "var(--bad)"; return; }
+  el.style.color = "";
+  const d = Math.floor(secs/86400), h = Math.floor(secs%86400/3600), m = Math.floor(secs%3600/60);
+  el.textContent = (d ? d+"d " : "") + h + "h " + m + "m";
+}
+setInterval(tickCountdown, 30_000);
+
+function teamCell(code, used, wp) {
+  const u = used ? ` <span class="tag used" title="burned in leg ${used}">used ${used}</span>` : "";
+  return `<b>${code}</b>${badges(code)} <span class="num dim">${pct(wp)}</span>${u}`;
+}
+
+function renderBoard() {
+  const tb = $("#board-table tbody");
+  const b = state.board;
+  $("#board-slate").textContent = b.holiday_slate.length
+    ? `Restricted slate leg — eligible teams per the rules: ${b.holiday_slate.join(", ")}. ` +
+      "An entry that has burned them all is eliminated here."
+    : "";
+  if (!b.games.length) {
+    tb.innerHTML = `<tr><td colspan="7" class="dim">No stored NFL games in the ${b.label} window yet —
+      run the collector (mlb-odds collect --once --sport nfl) once this leg's odds are up.</td></tr>`;
+    return;
+  }
+  tb.innerHTML = b.games.map(g => {
+    const tags = [
+      g.early_kickoff ? '<span class="tag early">⏱</span>' : "",
+      g.divisional ? '<span class="tag majority">DIV</span>' : "",
+    ].filter(Boolean).join(" ");
+    return `<tr>
+      <td>${teamCell(g.away_team, g.away_used, g.away_win_prob)} @ ${teamCell(g.home_team, g.home_used, g.home_win_prob)}</td>
+      <td class="dim">${kickoff(g.start_time)}</td>
+      <td>${tags}</td>
+      <td class="num">${fmtSpread(g.consensus)}</td>
+      <td class="num dim">${fmtSpread(g.predicted_line)}</td>
+      <td class="num">${pct(g.home_win_prob)}</td>
+      <td class="dim">${g.away_used || g.home_used ? "partially burned" : "open"}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderPropose() {
+  const tb = $("#propose-table tbody");
+  tb.innerHTML = state.board.games.map(g => `<tr>
+    <td>${g.away_team}${badges(g.away_team)} @ ${g.home_team}${badges(g.home_team)}
+        ${g.early_kickoff ? '<span class="tag early">⏱</span>' : ""}</td>
+    <td class="dim">${kickoff(g.start_time)}</td>
+    <td class="num">${pct(g.away_win_prob)} / ${pct(g.home_win_prob)}</td>
+    <td>
+      <button class="side" data-pick="${g.away_team}" ${g.away_used ? "disabled" : ""}>${g.away_team}</button>
+      <button class="side" data-pick="${g.home_team}" ${g.home_used ? "disabled" : ""}>${g.home_team}</button>
+    </td>
+  </tr>`).join("");
+  tb.querySelectorAll("[data-pick]").forEach(btn => btn.onclick = () => {
+    state.proposal = state.proposal === btn.dataset.pick ? null : btn.dataset.pick;
+    tb.querySelectorAll("[data-pick]").forEach(b =>
+      b.classList.toggle("sel", state.proposal === b.dataset.pick));
+    $("#propose-msg").textContent = state.proposal
+      ? `proposing ${state.proposal}` : "no team selected";
+  });
+  refreshProposeStatus();
+}
+
+async function refreshProposeStatus() {
+  try {
+    const p = await api(`/api/survivor/proposals?leg=${encodeURIComponent(state.leg)}&member=${state.me}`);
+    const submitted = p.submitted.includes(state.me);
+    $("#propose-submit").disabled = submitted;
+    $("#propose-status").innerHTML =
+      `<b>submitted:</b> ${p.submitted.join(", ") || "nobody yet"} ·
+       <b>waiting on:</b> ${p.waiting_on.join(", ") || "—"}` +
+      (submitted ? `<br><b>proposals:</b> ` + p.proposals.map(x =>
+        `${x.member}: <b>${x.team}</b>${x.note ? " ("+x.note+")" : ""}`).join(" · ") : "");
+  } catch (e) { $("#propose-status").textContent = e.message; }
+}
+
+$("#propose-submit").onclick = async () => {
+  if (!state.proposal) return alert("select a team");
+  if (!confirm(`Propose ${state.proposal} for ${state.board.label} as ${state.me}? One-shot and final.`)) return;
+  try {
+    await api("/api/survivor/proposal", {method:"POST", body: JSON.stringify(
+      {leg: state.leg, member: state.me, team: state.proposal, note: $("#propose-note").value})});
+    state.proposal = null; refreshProposeStatus(); showTab("consensus"); loadConsensus();
+  } catch (e) { alert(e.message); }
+};
+
+async function loadConsensus() {
+  const box = $("#consensus-body"), msg = $("#consensus-msg");
+  box.innerHTML = ""; msg.textContent = "";
+  let c;
+  try { c = await api(`/api/survivor/consensus?leg=${encodeURIComponent(state.leg)}&member=${state.me}`); }
+  catch (e) { msg.innerHTML = `<span class="warn">${e.message}</span>`; return; }
+  msg.innerHTML = `captain: <b>${c.captain}</b>` +
+    (c.effective_deadline ? ` · working pick due: <b>${new Date(c.effective_deadline).toLocaleString()}</b>` : "") +
+    (c.pick_locked ? ' · <span class="tag unanimous">PICK LOCKED</span>' : "");
+  const warnings = c.working_pick_warnings.map(w =>
+    `<div class="sev-${w.severity}">${w.severity === "fatal" ? "🛑" : w.severity === "warning" ? "⚠" : "ℹ"} ${w.message}</div>`).join("");
+  box.innerHTML = `<table><thead><tr><th></th><th>team</th><th>backers</th>
+    <th>status</th><th>move your backing</th></tr></thead><tbody>` +
+    c.candidates.map((cand, i) => `<tr>
+      <td class="dim">${i === 0 ? "▶" : ""}</td>
+      <td><b>${cand.team}</b>${badges(cand.team)}</td>
+      <td class="dim">${cand.backers.join(", ")}</td>
+      <td><span class="tag ${cand.status}">${cand.status}</span></td>
+      <td>${c.pick_locked ? "" :
+        `<button class="side" data-vote="${cand.team}">back ${cand.team}</button>`}</td>
+    </tr>`).join("") + "</tbody></table>" +
+    (c.working_pick && !c.pick_locked ? `<div class="card-box">
+       <b>Working pick:</b> ${c.working_pick.team}${badges(c.working_pick.team)}
+       <span class="tag ${c.working_pick.status}">${c.working_pick.status}</span>
+       (${c.working_pick.backers.join(", ")})
+       ${warnings ? `<div style="margin-top:8px">${warnings}</div>` : ""}
+       <br><button class="action" id="lock-pick">Lock ${c.working_pick.team} as ${state.me}</button></div>` : "");
+  box.querySelectorAll("[data-vote]").forEach(btn => btn.onclick = async () => {
+    try {
+      await api("/api/survivor/vote", {method:"POST", body: JSON.stringify(
+        {leg: state.leg, member: state.me, team: btn.dataset.vote})});
+      loadConsensus();
+    } catch (e) { alert(e.message); }
+  });
+  const lockBtn = $("#lock-pick");
+  if (lockBtn) lockBtn.onclick = async () => {
+    const fatal = c.working_pick_warnings.filter(w => w.severity === "fatal");
+    const warnText = c.working_pick_warnings.map(w => `[${w.severity}] ${w.message}`).join("\n");
+    if (!confirm(`Lock ${c.working_pick.team} for ${state.board.label}? No changes after (Rule 18).` +
+      (warnText ? `\n\n${warnText}` : "") +
+      (fatal.length ? "\n\nTHIS LOCK GUARANTEES A FUTURE ELIMINATION. Are you sure?" : ""))) return;
+    try {
+      await api("/api/survivor/pick", {method:"POST", body: JSON.stringify(
+        {leg: state.leg, member: state.me, team: c.working_pick.team})});
+      showTab("pick"); loadPick(); refresh();
+    } catch (e) { alert(e.message); }
+  };
+}
+
+async function loadPick() {
+  const box = $("#pick-body");
+  let p;
+  try { p = await api(`/api/survivor/pick?leg=${encodeURIComponent(state.leg)}`); }
+  catch (e) { box.innerHTML = `<div class="msg dim">No pick locked for ${state.board?.label ?? "this leg"} yet — build one on the Consensus tab.</div>`; return; }
+  const resultCls = p.result === "win" ? "good" : p.result === "loss" ? "bad" : "dim";
+  box.innerHTML = `<div class="card-box">
+    <b>${state.board?.label ?? p.leg_id} pick: ${p.team}</b>${badges(p.team)} · ${p.game_id}<br>
+    locked by ${p.locked_by} at ${new Date(p.locked_at).toLocaleString()}<br>
+    ${p.effective_deadline ? `due at Circa by: ${new Date(p.effective_deadline).toLocaleString()}<br>` : ""}
+    result: <span class="${resultCls}">${p.result ?? "pending"}</span><br><br>
+    <button class="action" id="auto-grade">Auto-grade from final score</button>
+    <button class="side" data-result="win">mark win</button>
+    <button class="side" data-result="loss">mark loss (or tie)</button><br><br>
+    ETSN: <input id="etsn" value="${p.etsn ?? ""}" placeholder="12-digit ticket serial" size="16">
+    <button class="side" id="save-etsn">save</button>
+    ${p.etsn ? '<span class="tag unanimous">✓ submitted at Circa</span>'
+             : '<span class="tag contested">no ETSN — submit at Circa & record it</span>'}
+  </div>`;
+  box.querySelectorAll("[data-result]").forEach(btn => btn.onclick = async () => {
+    try {
+      await api("/api/survivor/result", {method:"POST", body: JSON.stringify(
+        {leg: state.leg, result: btn.dataset.result})});
+      loadPick(); loadStatus();
+    } catch (e) { alert(e.message); }
+  });
+  $("#auto-grade").onclick = async () => {
+    try {
+      const out = await api(`/api/survivor/result/auto?leg=${encodeURIComponent(state.leg)}`, {method:"POST"});
+      alert(out.result ? `graded: ${out.result}` : `skipped: ${out.skipped_reason}`);
+      loadPick(); loadStatus();
+    } catch (e) { alert(e.message); }
+  };
+  $("#save-etsn").onclick = async () => {
+    try {
+      await api("/api/survivor/pick", {method:"PATCH", body: JSON.stringify(
+        {leg: state.leg, etsn: $("#etsn").value})});
+      loadPick();
+    } catch (e) { alert(e.message); }
+  };
+}
+
+function loadPlan() {
+  const s = state.status;
+  if (!s) return;
+  const used = s.used;
+  const legRow = l => {
+    const glyph = !l.pick ? '<span class="dim">–</span>'
+      : l.pick.result === "win" ? '<span class="good">✓ ' + l.pick.team + "</span>"
+      : l.pick.result === "loss" ? '<span class="bad">✗ ' + l.pick.team + "</span>"
+      : `<b>${l.pick.team}</b> <span class="dim">pending</span>`;
+    const cur = l.leg_id === s.current_leg;
+    return `<tr${cur ? ' style="outline:1px solid var(--accent)"' : ""}>
+      <td>${cur ? "▶ " : ""}${l.label}</td>
+      <td class="dim">${new Date(l.opens).toLocaleDateString("en-US",{month:"numeric",day:"numeric"})}</td>
+      <td class="dim">${new Date(l.deadline).toLocaleString("en-US",{weekday:"short",month:"numeric",day:"numeric",hour:"numeric"})}</td>
+      <td>${l.holiday_slate.length ? `<span class="tag contested">${l.holiday_slate.length}-team slate</span>` : ""}</td>
+      <td>${glyph}</td>
+      <td class="dim">${l.pick?.etsn ? "✓ ETSN" : l.pick ? "no ETSN" : ""}</td>
+    </tr>`;
+  };
+  const outlookBox = o => `<div class="stat outlook ${o.danger}">
+    <div class="v">${o.picked ? "✓ done" : o.remaining.length + " left"}</div>
+    <div class="k">${o.label} slate ${o.picked ? "(pick locked)" : "(" + (o.leg_id === "TG" ? 10 : 8) + " teams)"}</div>
+    <div style="margin-top:6px">${o.remaining.map(t => `<span class="teamchip">${t}${badges(t)}</span>`).join("")}</div>
+  </div>`;
+  const burned = Object.entries(used).sort((a, b) => a[1].localeCompare(b[1], undefined, {numeric:true}));
+  $("#plan-body").innerHTML = `
+    <div class="grid">
+      <div class="stat"><div class="v ${s.entry.alive ? "good" : "bad"}">${s.entry.alive ? "ALIVE" : "DEAD"}</div>
+        <div class="k">${s.entry.alive ? s.entry.survived + " legs survived" : s.entry.reason + " (leg " + s.entry.at_leg + ")"}</div></div>
+      <div class="stat"><div class="v">${burned.length}/32</div><div class="k">teams burned</div></div>
+      ${s.holiday_outlook.map(outlookBox).join("")}
+    </div>
+    <h2>Burned teams</h2>
+    <div>${burned.length ? burned.map(([t, lg]) =>
+      `<span class="teamchip burned" title="leg ${lg}">${t} · ${lg}</span>`).join("") : '<span class="dim">none yet</span>'}</div>
+    <h2>Still available (${s.remaining_teams.length})</h2>
+    <div>${s.remaining_teams.map(t => `<span class="teamchip">${t}${badges(t)}</span>`).join("")}</div>
+    <h2>All 20 legs</h2>
+    <table><thead><tr><th>leg</th><th>opens</th><th>deadline (PT)</th><th></th><th>pick</th><th></th></tr></thead>
+    <tbody>${s.legs.map(legRow).join("")}</tbody></table>
+    <div class="msg dim">🦃 Thanksgiving-eligible · 🎄 Christmas-eligible. PHI, GB, CHI, BUF, DEN, LAR
+      count for both holiday slates — they carry double option value.</div>`;
+}
+
+function showTab(name) {
+  document.querySelectorAll("#tabs button").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === name));
+  ["board","propose","consensus","pick","plan","glossary"].forEach(t =>
+    $("#tab-" + t).hidden = t !== name);
+}
+$("#tabs").onclick = e => {
+  const tab = e.target.dataset?.tab;
+  if (!tab) return;
+  showTab(tab);
+  if (tab === "consensus") loadConsensus();
+  if (tab === "pick") loadPick();
+  if (tab === "plan") loadPlan();
+};
+
+function setLeg(legId) {
+  state.leg = legId;
+  state.proposal = null;
+  refresh();
+  const active = document.querySelector("#tabs button.active")?.dataset.tab;
+  if (active === "consensus") loadConsensus();
+  if (active === "pick") loadPick();
+}
+
+async function refresh() {
+  await loadStatus();
+  await loadBoard();
+  refreshProposeStatus();
+  if (document.querySelector("#tabs button.active")?.dataset.tab === "plan") loadPlan();
+}
+(async () => { await loadMembers(); await refresh(); })();
+</script>
+</body>
+</html>

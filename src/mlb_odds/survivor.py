@@ -27,7 +27,7 @@ import math
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -92,20 +92,15 @@ def _build_legs() -> tuple[Leg, ...]:
     """
     from mlb_odds.contest import week_window
 
-    def normal(week: int, *, start: datetime | None = None, end: datetime | None = None) -> Leg:
+    def normal(week: int, *, end: datetime | None = None) -> Leg:
         w_start, w_end = week_window(week)
-        w_start, w_end = start or w_start, end or w_end
         return Leg(
             leg_id=str(week),
             label=f"Week {week}",
             start=w_start,
-            end=w_end,
+            end=end or w_end,
             opens=datetime.combine(w_start.date(), time(10, 0), tzinfo=PACIFIC),
-            deadline=datetime.combine(
-                week_window(week)[0].date(), time(16, 0), tzinfo=PACIFIC
-            ).replace(day=week_window(week)[0].day)
-            if False
-            else _saturday_deadline(week_window(week)[0]),
+            deadline=_saturday_deadline(w_start),
         )
 
     legs: list[Leg] = [normal(w) for w in range(1, 11)]
@@ -165,8 +160,6 @@ def _build_legs() -> tuple[Leg, ...]:
 
 
 def _saturday_deadline(week_start: datetime) -> datetime:
-    from datetime import timedelta
-
     return datetime.combine(
         week_start.date() + timedelta(days=3), time(16, 0), tzinfo=PACIFIC
     )

@@ -203,3 +203,57 @@ them early can strand an entry with no legal holiday pick.
 - [2026 contests hub](https://www.circasports.com/contests)
 - [VegasInsider: Circa Survivor pool history](https://www.vegasinsider.com/nfl/circa-survivor-pool/)
 - [Circa Sports football contest FAQs](https://www.circasports.com/blog/circa-sports-football-contest-faqs) (2025-season page; dates there are stale)
+
+---
+
+# Survivor Entry Manager — the app
+
+A three-person consensus tool for our single Circa Survivor entry, built into
+this repo's contest app (same server, same identity layer as the Circa
+Million tool; UI at `/survivor.html`). Landed as milestones S1–S3 (D-028).
+
+## What it does
+
+One pick per leg, agreed by three people, with the season-long constraints in
+view at every step:
+
+1. **Board** — the leg's slate with market consensus spread, the power-rating
+   model line, and implied straight-up win probability (ties folded into the
+   loss side, matching Rule 6a). Burned teams are struck out; 🦃/🎄 badges
+   mark holiday-slate membership so option value is visible before proposing.
+2. **Propose** — each member privately backs ONE team (blind, one-shot,
+   immutable), same anchoring defence as the Million tool.
+3. **Consensus** — reveal, stance voting (a vote moves your one backing),
+   per-leg captain rotation for deadlocks. The working pick shows its
+   **burn warnings** — what locking this team does to the Thanksgiving and
+   Christmas slates — escalating from info to fatal ("this lock guarantees
+   elimination at the holiday leg").
+4. **Pick** — the locked selection of record (one per leg, no changes —
+   Rule 18), effective deadline (leg deadline, or the picked team's kickoff
+   if earlier), ETSN confirmation, manual or ESPN auto grading.
+5. **Plan** — the season view: entry ALIVE/ELIMINATED, teams burned (n/32),
+   remaining teams, holiday-slate danger meters (remaining eligible teams for
+   each trap leg), and the full 20-leg schedule with every window/deadline.
+
+## Rule enforcement vs. warnings
+
+Hard (blocked by the API, mirrored by a SQL UNIQUE constraint as the
+Rule-15a backstop): re-using a team, second pick for a leg, picking past the
+effective deadline, picking a team with no stored game in the leg window.
+
+Soft (returned as warnings, confirmed in the UI, never blocked): burning
+holiday-slate teams early. PHI, GB, CHI, BUF, DEN, LAR sit on **both**
+holiday slates — the app counts down both pools on every candidate.
+
+Elimination is derived, not entered: a graded loss (enter ties as losses) or
+a leg whose deadline passed with no locked pick flips the entry to
+ELIMINATED, matching Rules 6a/12.
+
+## The calendar (the part worth being paranoid about)
+
+The 20 legs are transcribed from Rules 7/11/12/13, not derived: Weeks 1–18
+plus the Thanksgiving leg (window opens Tue Nov 24 10 AM, deadline **Wed
+Nov 25 4 PM PT**) and the Christmas leg (deadline **Thu Dec 24 4 PM PT**).
+Weeks 11 and 15 truncate where the holiday Contest Weeks begin; Weeks 12 and
+16 are short Saturday fragments (window opens 12:00 AM, deadline 4 PM the
+same day). All timestamps Pacific, matching the rules.
