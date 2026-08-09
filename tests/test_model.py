@@ -43,7 +43,6 @@ class TestNflDashboardModel:
     def nfl_client(self, tmp_path, monkeypatch):
         db = tmp_path / "nfl-odds.sqlite"
         storage = Storage(db)
-        teams = ["KC", "BUF", "SF", "DET"]
         fetch = datetime(2026, 8, 1, 17, 0, tzinfo=UTC)
         start = datetime(2026, 8, 2, 17, 0, tzinfo=UTC)
         # Round-robin spreads + moneylines: enough for both fits.
