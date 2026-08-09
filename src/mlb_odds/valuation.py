@@ -188,3 +188,83 @@ def best_prices(
         if away is None or a.ev > away.ev:
             away = a
     return home, away
+
+
+# --- Statcast blend (D-032) --------------------------------------------------
+# The market term embeds everything the market knows; the Statcast term adds
+# luck-stripped true-talent regression. Constants are literature anchors, not
+# fits — calibrate against accumulated results once enough are stored:
+#   RUNS_PER_XWOBA: linear-weights runs per point of wOBA per PA (~1/1.15)
+#   PA_PER_GAME:    one team's plate appearances per game (~38)
+#   LOGIT_PER_RUN:  d(logit win)/d(run differential) from the Pythagorean
+#                   curve at league scoring (~0.42)
+#   STARTER_SHARE:  innings share a probable starter typically covers (~0.6);
+#                   the bullpen is assumed league-average
+#   STATCAST_WEIGHT: blend prior — market keeps the majority voice until a
+#                    backtest says otherwise
+RUNS_PER_XWOBA = 1.0 / 1.15
+PA_PER_GAME = 38.0
+LOGIT_PER_RUN = 0.42
+STARTER_SHARE = 0.6
+STATCAST_WEIGHT = 0.3
+
+
+def league_xwoba(team_rows: list[tuple[int, float | None]]) -> float | None:
+    """PA-weighted league mean from (pa, xwoba) team rows."""
+    weighted = [(pa, x) for pa, x in team_rows if x is not None and pa > 0]
+    if not weighted:
+        return None
+    total = sum(pa for pa, _ in weighted)
+    return round(sum(pa * x for pa, x in weighted) / total, 4)
+
+
+def statcast_home_logit(
+    *,
+    home_batting: float | None,
+    away_batting: float | None,
+    home_starter_against: float | None,
+    away_starter_against: float | None,
+    league: float,
+    hfa_logit: float,
+) -> float | None:
+    """Home-win logit implied by Statcast expected stats alone.
+
+    Each side's expected offense = its batting xwOBA deviation from league
+    plus STARTER_SHARE of the opposing starter's xwOBA-against deviation
+    (a missing probable contributes league average, i.e. zero). Requires
+    both batting lines; starters are optional refinements.
+    """
+    if home_batting is None or away_batting is None:
+        return None
+    home_off = (home_batting - league) + STARTER_SHARE * (
+        (away_starter_against - league) if away_starter_against is not None else 0.0
+    )
+    away_off = (away_batting - league) + STARTER_SHARE * (
+        (home_starter_against - league) if home_starter_against is not None else 0.0
+    )
+    run_diff = (home_off - away_off) * RUNS_PER_XWOBA * PA_PER_GAME
+    return LOGIT_PER_RUN * run_diff + hfa_logit
+
+
+def blend_probs(
+    market_prob: float | None,
+    statcast_logit: float | None,
+    *,
+    weight: float = STATCAST_WEIGHT,
+) -> float | None:
+    """Combine the two opinions in logit space; graceful when one is absent."""
+    market_logit = (
+        math.log(market_prob / (1 - market_prob))
+        if market_prob is not None and 0 < market_prob < 1
+        else None
+    )
+    if market_logit is None and statcast_logit is None:
+        return None
+    if market_logit is None:
+        combined = statcast_logit
+    elif statcast_logit is None:
+        combined = market_logit
+    else:
+        combined = (1 - weight) * market_logit + weight * statcast_logit
+    assert combined is not None
+    return round(1.0 / (1.0 + math.exp(-combined)), 4)

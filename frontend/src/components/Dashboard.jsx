@@ -113,7 +113,9 @@ function Dashboard({ sport, onSelectGame }) {
                     <td>{evBadge(ml.best_away)}</td>
                     <td>{evBadge(ml.best_home)}</td>
                     <td>{pct(ml.consensus_prob)}</td>
-                    <td>{pct(ml.model_prob)}</td>
+                    <td title={`market model ${pct(ml.market_model_prob)} · statcast ${pct(ml.statcast_prob)}`}>
+                      {pct(ml.model_prob)}
+                    </td>
                     <td className={edgeCls}>{pp(ml.model_edge)}</td>
                     <td className={ml.drift > 0.01 ? 'ev-pos' : ml.drift < -0.01 ? 'ev-neg' : ''}>
                       {pp(ml.drift)}
@@ -130,7 +132,8 @@ function Dashboard({ sport, onSelectGame }) {
 
       <div className="dash-legend">
         Home-win probabilities, de-vigged. <b>Cons</b> = market median · <b>Model</b> = market-implied
-        team strengths{data.hfa != null && ` (HFA ${data.hfa > 0 ? '+' : ''}${data.hfa} log-odds)`} ·
+        team strengths blended 70/30 with Statcast (team xwOBA + probable starters; hover for
+        components){data.hfa != null && ` — HFA ${data.hfa > 0 ? '+' : ''}${data.hfa} log-odds`} ·
         <b> Edge</b> = model − consensus · <b>Drift</b> = consensus now vs first snapshot ·
         EV% next to each price is vs the consensus fair line. Click a game for full line movement.
       </div>

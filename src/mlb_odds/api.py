@@ -4,6 +4,7 @@ Every data endpoint takes `?sport=mlb|nfl` (default mlb) and reads that
 sport's own database (D-019: one file per sport)."""
 
 import logging
+import math
 import os
 import sqlite3
 from datetime import date, datetime, time, timedelta, tzinfo
@@ -234,6 +235,15 @@ def _fmt_total(quotes: list[Quote]) -> str:
     return f"{over.line:.1f} (o{over.price:+d})"
 
 
+def _scout_xwoba(scout_data: dict[str, object], key: str) -> float | None:
+    section = scout_data.get(key)
+    if isinstance(section, dict):
+        value = section.get("xwoba")
+        if isinstance(value, int | float):
+            return float(value)
+    return None
+
+
 class BestPriceOut(BaseModel):
     book: str
     price: int
@@ -244,7 +254,9 @@ class MoneylineOut(BaseModel):
     consensus_prob: float | None  # devigged median home win probability
     open_prob: float | None  # consensus at the first stored snapshot
     drift: float | None  # consensus_prob - open_prob
-    model_prob: float | None  # market-implied strength model (D-030)
+    market_model_prob: float | None  # market-implied strength model (D-030)
+    statcast_prob: float | None  # Statcast-only term (D-032)
+    model_prob: float | None  # the blend: 70% market model, 30% Statcast
     model_edge: float | None  # model_prob - consensus_prob
     best_home: BestPriceOut | None
     best_away: BestPriceOut | None
@@ -301,6 +313,8 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
         games = storage.games(window=window)
         fitted = valuation.implied_strengths(storage)
         strengths, hfa = fitted if fitted else ({}, None)
+        season = (target or datetime.now(tz).date()).year
+        statcast_league = valuation.league_xwoba(storage.statcast_team_rows(season))
         # latest_odds returns one GameOdds per (game, provider); merge quotes.
         merged: dict[str, list[Quote]] = {}
         for go in storage.latest_odds(window=window):
@@ -318,11 +332,26 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                 if ticks
                 else None
             )
-            model_prob = (
+            market_model_prob = (
                 valuation.model_home_prob(strengths, hfa, game.home_team, game.away_team)
                 if hfa is not None
                 else None
             )
+            statcast_prob = None
+            sc_logit = None
+            if statcast_league is not None:
+                scout_data = storage.scout(game.game_id) or {}
+                sc_logit = valuation.statcast_home_logit(
+                    home_batting=_scout_xwoba(scout_data, "home_batting"),
+                    away_batting=_scout_xwoba(scout_data, "away_batting"),
+                    home_starter_against=_scout_xwoba(scout_data, "home_pitcher_line"),
+                    away_starter_against=_scout_xwoba(scout_data, "away_pitcher_line"),
+                    league=statcast_league,
+                    hfa_logit=hfa if hfa is not None else 0.07,
+                )
+                if sc_logit is not None:
+                    statcast_prob = round(1.0 / (1.0 + math.exp(-sc_logit)), 4)
+            model_prob = valuation.blend_probs(market_model_prob, sc_logit)
             best_home = best_away = None
             if fair is not None:
                 bh, ba = valuation.best_prices(pairs, fair)
@@ -357,6 +386,8 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                     moneyline=MoneylineOut(
                         consensus_prob=fair,
                         open_prob=open_prob,
+                        market_model_prob=market_model_prob,
+                        statcast_prob=statcast_prob,
                         drift=(
                             round(fair - open_prob, 4)
                             if fair is not None and open_prob is not None

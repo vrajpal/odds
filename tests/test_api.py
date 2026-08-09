@@ -2,6 +2,7 @@
 so these lean on the boundary: what a request may not reach, and what the
 local-day board must include."""
 
+import os
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
@@ -408,6 +409,9 @@ class TestDashboard:
         ml = game["moneyline"]
         assert 0.5 < ml["consensus_prob"] < 0.62  # home favorite, devigged
         assert ml["model_prob"] is not None
+        # No statcast data seeded: the blend degrades to the market model.
+        assert ml["statcast_prob"] is None
+        assert ml["model_prob"] == pytest.approx(ml["market_model_prob"], abs=1e-3)
         assert ml["model_edge"] == pytest.approx(
             ml["model_prob"] - ml["consensus_prob"], abs=1e-3
         )
@@ -427,6 +431,34 @@ class TestDashboard:
         assert len(body["games"]) >= 1
         # Past games have moneyline data but no run line stored.
         assert body["games"][0]["moneyline"]["consensus_prob"] is not None
+
+    def test_dashboard_blends_statcast_when_present(self, dash_client, seeded):
+        # Seed statcast: home team (NYY) much stronger by xwOBA with an ace
+        # starter -> blend should move the model ABOVE the market-only prob.
+        db = Storage(os.environ["MLB_ODDS_DB"])
+        now = datetime.now(UTC)
+        season = datetime.now().year
+        rows = [("NYY", season, 4000, 0.260, 0.450, 0.345),
+                ("BOS", season, 4000, 0.240, 0.380, 0.300)]
+        for team in ("TB", "BAL"):
+            rows.append((team, season, 4000, 0.245, 0.400, 0.315))
+        db.upsert_statcast_team(rows, fetched_at=now)
+        db.upsert_statcast_pitcher(
+            [("Gerrit Cole", season, 500, 0.210, 0.350, 0.270, 3.0)], fetched_at=now
+        )
+        (game,) = [g for g in dash_client.get("/api/dashboard").json()["games"]
+                   if g["home_team"] == "NYY"]
+        gid = game["game_id"]
+        db.upsert_probables(gid, "Somebody Average", "Gerrit Cole", fetched_at=now)
+        db.close()
+
+        (game,) = [g for g in dash_client.get("/api/dashboard").json()["games"]
+                   if g["game_id"] == gid]
+        ml = game["moneyline"]
+        assert ml["statcast_prob"] is not None
+        assert ml["statcast_prob"] > 0.55  # strong bats + ace + home field
+        assert ml["model_prob"] > ml["market_model_prob"]  # pulled up by statcast
+        assert ml["model_prob"] < ml["statcast_prob"]  # but not all the way
 
     def test_dashboard_empty_day_and_bad_date(self, dash_client):
         assert dash_client.get(
