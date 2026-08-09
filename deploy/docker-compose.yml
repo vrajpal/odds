@@ -90,6 +90,15 @@ services:
     volumes:
       - ./data:/data
 
+  mlb-collect:
+    build: ..
+    profiles: [collect]
+    # Free ESPN provider (one book): keeps the baseball Today board alive
+    # without touching the metered credit budget.
+    command: mlb-odds collect --once --sport mlb --provider espn
+    volumes:
+      - ./data:/data
+
   # Public access for non-tailnet friends (D-026): Cloudflare Tunnel with a
   # Cloudflare Access policy in front (email OTP allowlist). Outbound-only —
   # still no published ports anywhere. Opt-in AFTER the Access policy exists:
