@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mlb_odds import matchup, valuation
+from mlb_odds import contest, matchup, model, valuation
 from mlb_odds.client import OddsClient
 from mlb_odds.models import Quote, Sport
 from mlb_odds.providers.base import ProviderError
@@ -282,15 +282,17 @@ class BestPriceOut(BaseModel):
     book: str
     price: int
     ev: float  # vs the consensus fair probability; positive = value
+    model_ev: float | None = None  # vs the MODEL's probability (D-035)
 
 
 class MoneylineOut(BaseModel):
     consensus_prob: float | None  # devigged median home win probability
     open_prob: float | None  # consensus at the first stored snapshot
     drift: float | None  # consensus_prob - open_prob
-    market_model_prob: float | None  # market-implied strength model (D-030)
-    statcast_prob: float | None  # Statcast-only term (D-032)
-    model_prob: float | None  # the blend: 70% market model, 30% Statcast
+    market_model_prob: float | None  # moneyline-implied strength model (D-030)
+    statcast_prob: float | None  # Statcast-only term (D-032, MLB)
+    spread_model_prob: float | None  # spread-ratings lens (D-035, NFL)
+    model_prob: float | None  # the sport's blend (D-032 MLB / D-035 NFL)
     model_edge: float | None  # model_prob - consensus_prob
     best_home: BestPriceOut | None
     best_away: BestPriceOut | None
@@ -310,6 +312,7 @@ class DashboardGameOut(BaseModel):
     away_team: str
     home_team: str
     start_time: str
+    predicted_margin: float | None = None  # NFL: model home margin in points (D-035)
     moneyline: MoneylineOut
     run_line: dict[str, MarketQuoteOut]  # per book
     total: dict[str, MarketQuoteOut]
@@ -349,6 +352,7 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
         strengths, hfa = fitted if fitted else ({}, None)
         season = (target or datetime.now(tz).date()).year
         statcast_league = valuation.league_xwoba(storage.statcast_team_rows(season))
+        spread_fit = contest.power_ratings(storage) if sport == "nfl" else None
         # latest_odds returns one GameOdds per (game, provider); merge quotes.
         merged: dict[str, list[Quote]] = {}
         for go in storage.latest_odds(window=window):
@@ -385,14 +389,40 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                 )
                 if sc_logit is not None:
                     statcast_prob = round(1.0 / (1.0 + math.exp(-sc_logit)), 4)
-            model_prob = valuation.blend_probs(market_model_prob, sc_logit)
+            spread_model_prob = None
+            predicted_margin = None
+            if sport == "nfl":
+                predicted = None
+                if spread_fit is not None:
+                    predicted = contest.predicted_home_spread(
+                        spread_fit[0], spread_fit[1], game.home_team, game.away_team
+                    )
+                if predicted is not None:
+                    predicted_margin = round(-predicted, 1)
+                model_prob, spread_model_prob = model.nfl_model_prob(
+                    market_model_prob, predicted
+                )
+            else:
+                model_prob = valuation.blend_probs(market_model_prob, sc_logit)
             best_home = best_away = None
             if fair is not None:
                 bh, ba = valuation.best_prices(pairs, fair)
                 if bh:
-                    best_home = BestPriceOut(book=bh.book, price=bh.price, ev=bh.ev)
+                    best_home = BestPriceOut(
+                        book=bh.book, price=bh.price, ev=bh.ev,
+                        model_ev=(
+                            valuation.expected_value(model_prob, bh.price)
+                            if model_prob is not None else None
+                        ),
+                    )
                 if ba:
-                    best_away = BestPriceOut(book=ba.book, price=ba.price, ev=ba.ev)
+                    best_away = BestPriceOut(
+                        book=ba.book, price=ba.price, ev=ba.ev,
+                        model_ev=(
+                            valuation.expected_value(1.0 - model_prob, ba.price)
+                            if model_prob is not None else None
+                        ),
+                    )
 
             run_line: dict[str, MarketQuoteOut] = {}
             total: dict[str, MarketQuoteOut] = {}
@@ -417,11 +447,13 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                     away_team=game.away_team,
                     home_team=game.home_team,
                     start_time=game.start_time.astimezone(tz).isoformat(),
+                    predicted_margin=predicted_margin,
                     moneyline=MoneylineOut(
                         consensus_prob=fair,
                         open_prob=open_prob,
                         market_model_prob=market_model_prob,
                         statcast_prob=statcast_prob,
+                        spread_model_prob=spread_model_prob,
                         drift=(
                             round(fair - open_prob, 4)
                             if fair is not None and open_prob is not None

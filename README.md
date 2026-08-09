@@ -161,8 +161,9 @@ python run_api.py
 
 API runs on `http://localhost:8000` with endpoints:
 - `GET /api/dashboard?sport=&on=YYYY-MM-DD` — betting dashboard for any day:
-  de-vigged consensus + model win probs, best-EV prices, run line/total per
-  book (D-030)
+  de-vigged consensus, per-sport model win probs (MLB: strengths+Statcast;
+  NFL: moneyline+spread lenses with predicted margin — D-035), best prices
+  with consensus AND model EV, run line/total per book (D-030)
 - `GET /api/games/{id}/matchup?sport=` — head-to-head ESPN team-stat lens
   (records, standings, direction-aware better-side rows — D-034)
 - `GET /api/games/{id}/scout?sport=mlb` — Statcast matchup card: probable
