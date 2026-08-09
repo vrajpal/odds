@@ -67,7 +67,14 @@ services:
   nfl-collect:
     build: ..
     profiles: [collect]
-    command: mlb-odds collect --once --sport nfl
+    # Curated 10-book list = same 3-credit cost as the us region, but with
+    # pinnacle (the sharp reference) included (D-027).
+    command: >
+      mlb-odds collect --once --sport nfl
+      --bookmaker pinnacle --bookmaker draftkings --bookmaker fanduel
+      --bookmaker betmgm --bookmaker williamhill_us --bookmaker betrivers
+      --bookmaker betonlineag --bookmaker lowvig --bookmaker bovada
+      --bookmaker mybookieag
     environment:
       THE_ODDS_API_KEY: ${THE_ODDS_API_KEY:?needed for metered NFL collection}
     volumes:

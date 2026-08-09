@@ -59,14 +59,18 @@ class SportChoice(StrEnum):
     nfl = "nfl"
 
 
-def _build_providers(choice: ProviderChoice, sport: SportChoice) -> list[OddsProvider]:
+def _build_providers(
+    choice: ProviderChoice, sport: SportChoice, bookmakers: list[str] | None = None
+) -> list[OddsProvider]:
     """Construct the chosen providers. TheOddsAPI() raises ProviderError without
-    a key; ESPN needs none, so `--provider espn` collects on a bare machine."""
+    a key; ESPN needs none, so `--provider espn` collects on a bare machine.
+    `bookmakers` selects named books on The Odds API (D-027); ESPN is a single
+    book and ignores it."""
     if choice is ProviderChoice.espn:
         return [ESPN(sport=sport.value)]
     if choice is ProviderChoice.the_odds_api:
-        return [TheOddsAPI(sport=sport.value)]
-    return [TheOddsAPI(sport=sport.value), ESPN(sport=sport.value)]
+        return [TheOddsAPI(sport=sport.value, bookmakers=bookmakers)]
+    return [TheOddsAPI(sport=sport.value, bookmakers=bookmakers), ESPN(sport=sport.value)]
 
 
 # One database per sport: MLB KC and NFL KC would otherwise collide on the
@@ -124,6 +128,14 @@ def collect(
         SportChoice,
         typer.Option("--sport", help="League: mlb (default) or nfl."),
     ] = SportChoice.mlb,
+    bookmaker: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--bookmaker",
+            help="Poll named books instead of the us region (repeatable, max 10 "
+            "for unchanged cost — D-027). e.g. --bookmaker pinnacle",
+        ),
+    ] = None,
     db: DbOption = None,
 ) -> None:
     """Poll providers and append odds snapshots to the database."""
@@ -134,7 +146,7 @@ def collect(
         typer.echo("error: --once and --live are mutually exclusive", err=True)
         raise typer.Exit(2)
     try:
-        providers = _build_providers(provider, sport)
+        providers = _build_providers(provider, sport, bookmaker)
     except ProviderError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
