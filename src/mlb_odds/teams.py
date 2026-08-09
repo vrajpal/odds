@@ -103,6 +103,8 @@ _PROVIDER_MAPPINGS: dict[tuple[str, str], dict[str, str]] = {
     ("mlb", "the_odds_api"): _THE_ODDS_API,
     # ESPN's team.displayName uses the same full club names.
     ("mlb", "espn"): _THE_ODDS_API,
+    # MLB Stats API (statsapi.mlb.com) uses the same full club names.
+    ("mlb", "statsapi"): _THE_ODDS_API,
     ("nfl", "the_odds_api"): _NFL_FULL_NAMES,
     ("nfl", "espn"): _NFL_FULL_NAMES,
 }

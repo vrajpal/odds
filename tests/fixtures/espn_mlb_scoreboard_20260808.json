@@ -1,0 +1,125 @@
+{
+ "_comment": "EDITED FIXTURE (D-031): four 2026-08-08 events mirroring the real statsapi_schedule.json fixture, shaped like a real scoreboard response.",
+ "events": [
+  {
+   "id": "401711900",
+   "date": "2026-08-08T19:05Z",
+   "status": {
+    "type": {
+     "completed": true,
+     "name": "STATUS_FINAL"
+    }
+   },
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "New York Yankees"
+       },
+       "score": "5"
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "Atlanta Braves"
+       },
+       "score": "3"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401711901",
+   "date": "2026-08-08T20:10Z",
+   "status": {
+    "type": {
+     "completed": true,
+     "name": "STATUS_FINAL"
+    }
+   },
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "Boston Red Sox"
+       },
+       "score": "5"
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "Athletics"
+       },
+       "score": "3"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401711902",
+   "date": "2026-08-08T20:10Z",
+   "status": {
+    "type": {
+     "completed": true,
+     "name": "STATUS_FINAL"
+    }
+   },
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "Miami Marlins"
+       },
+       "score": "5"
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "Los Angeles Angels"
+       },
+       "score": "3"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401711903",
+   "date": "2026-08-08T22:05Z",
+   "status": {
+    "type": {
+     "completed": true,
+     "name": "STATUS_FINAL"
+    }
+   },
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "homeAway": "home",
+       "team": {
+        "displayName": "Philadelphia Phillies"
+       },
+       "score": "5"
+      },
+      {
+       "homeAway": "away",
+       "team": {
+        "displayName": "Toronto Blue Jays"
+       },
+       "score": "3"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

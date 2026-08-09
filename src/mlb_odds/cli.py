@@ -7,6 +7,7 @@ display layer only.
 import logging
 import os
 from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import time as dt_time
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -15,8 +16,9 @@ import typer
 from dotenv import load_dotenv
 
 from mlb_odds import collector
+from mlb_odds import statcast as statcast_mod
 from mlb_odds.client import OddsClient
-from mlb_odds.models import PROP_MARKETS_BY_SPORT, GameOdds, Market, Quote
+from mlb_odds.models import PROP_MARKETS_BY_SPORT, Game, GameOdds, Market, Quote
 from mlb_odds.providers import ESPN, OddsProvider, ProviderError, TheOddsAPI
 
 app = typer.Typer(
@@ -270,6 +272,76 @@ def results(
         typer.echo(f"{recorded} final score(s) recorded; {still_missing} still missing.")
     finally:
         client.close()
+
+
+@app.command()
+def statcast(
+    on: Annotated[
+        str | None,
+        typer.Option("--date", help="Schedule date YYYY-MM-DD (default: today local)."),
+    ] = None,
+    db: DbOption = None,
+) -> None:
+    """Fetch the scouting layer (D-031): schedule (ESPN), probable starters
+    (MLB Stats API), and Savant expected stats. All free; MLB only.
+
+    Cron-able daily; re-runs upsert (probables firm up as game day nears).
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    from mlb_odds.providers.espn import SCOREBOARD_DAY_TZ
+    from mlb_odds.storage import SAME_GAME_START_TOLERANCE, Storage
+
+    target = date.fromisoformat(on) if on else datetime.now(_local_tz()).date()
+    storage = Storage(_resolve_db(db, SportChoice.mlb))
+    try:
+        espn = ESPN(sport="mlb")
+        stored_games = storage.store_games(espn.fetch_schedule(target))
+
+        source = statcast_mod.StatcastSource()
+        day_start = datetime.combine(target, dt_time(0, 0), tzinfo=SCOREBOARD_DAY_TZ)
+        window = (day_start, day_start + timedelta(days=1))
+        by_matchup: dict[tuple[str, str], list[Game]] = {}
+        for g in storage.games(window=window):
+            by_matchup.setdefault((g.away_team, g.home_team), []).append(g)
+        now = datetime.now(UTC)
+        matched = 0
+        probables = source.probables(target)
+        for pg in probables:
+            candidates = [
+                g for g in by_matchup.get((pg.away_team, pg.home_team), [])
+                if abs(g.start_time - pg.start_time) <= SAME_GAME_START_TOLERANCE
+            ]
+            if not candidates:
+                continue
+            game = min(candidates, key=lambda g: abs(g.start_time - pg.start_time))
+            storage.upsert_probables(
+                game.game_id, pg.away_pitcher, pg.home_pitcher, fetched_at=now
+            )
+            matched += 1
+
+        season = target.year
+        team_rows = source.team_expected(season)
+        storage.upsert_statcast_team(
+            [(t.team, t.season, t.pa, t.xba, t.xslg, t.xwoba) for t in team_rows],
+            fetched_at=now,
+        )
+        pitcher_rows = source.pitcher_expected(season)
+        storage.upsert_statcast_pitcher(
+            [(p.name, p.season, p.pa, p.xba, p.xslg, p.xwoba, p.xera) for p in pitcher_rows],
+            fetched_at=now,
+        )
+        typer.echo(
+            f"{target}: {stored_games} schedule rows stored, "
+            f"{matched}/{len(probables)} probables matched, "
+            f"{len(team_rows)} team + {len(pitcher_rows)} pitcher statcast lines."
+        )
+    except ProviderError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    finally:
+        storage.close()
 
 
 @app.command()

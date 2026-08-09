@@ -98,3 +98,13 @@
     color: #2ecc71;
   }
 }
+
+.matchup-card { background: #101a2e; border: 1px solid #1e293b; border-radius: 8px;
+  padding: 14px 16px; margin: 14px 0; }
+.scout-side { margin-bottom: 10px; }
+.scout-team { font-weight: 700; margin-bottom: 4px; }
+.scout-label { color: #64748b; font-size: 12px; font-weight: 400; }
+.scout-table { border-collapse: collapse; font-size: 13px; }
+.scout-table td { padding: 2px 14px 2px 0; color: #cbd5e1; }
+.scout-table td:first-child { color: #64748b; }
+.scout-note { color: #64748b; font-size: 12px; margin-top: 6px; }

@@ -166,6 +166,24 @@ def get_game_history(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> dict
         client.close()
 
 
+@app.get("/api/games/{game_id}/scout")
+def get_scout(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> dict[str, object]:
+    """Statcast matchup card (D-031): probable starters with expected-stats
+    lines plus team batting expected stats. Fields are null until the daily
+    statcast pull has run for that slate."""
+    try:
+        storage = Storage(_resolve_db(sport), read_only=True)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(status_code=503, detail="odds database unavailable") from exc
+    try:
+        data = storage.scout(game_id)
+    finally:
+        storage.close()
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"unknown game {game_id}")
+    return {"game_id": game_id, **data}
+
+
 @app.get("/api/export")
 def export_odds(fmt: str = "csv", sport: Literal["mlb", "nfl"] = "mlb") -> dict[str, object]:
     """Export all stored odds for one sport to CSV or JSON."""

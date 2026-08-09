@@ -518,3 +518,22 @@ EV-highlighted best prices, and click-through to the existing LineMovement
 charts; market-implied strengths table collapsible below. Works for NFL too
 (the math is sport-agnostic) — spread-based tools remain the primary NFL
 surface.
+
+## D-031 — Statcast scouting layer: probables + expected stats (2026-08-09)
+What Statcast buys a game model, and what we deliberately fetch: probable
+starters (the single biggest MLB odds-mover) from the free MLB Stats API,
+and Baseball Savant's expected-stats leaderboards (team batting + pitcher
+xBA/xSLG/xwOBA/xERA) — expected stats strip batted-ball luck from results,
+and the expected-vs-actual gap is what markets price slowly. Deliberately
+skipped: pitch-level Statcast (gigabytes, no extra signal at game level)
+and defense/OAA (marginal, awkward source).
+
+Plumbing: `mlb-odds statcast [--date]` (all free) stores the day's schedule
+via ESPN's scoreboard (`fetch_schedule` — schedule-only games reuse the
+same identity reconciliation as odds writes, so a later line poll converges
+onto the same game_id), matches statsapi probables by matchup +
+SAME_GAME_START_TOLERANCE, and upserts Savant aggregates (migration 5:
+probables/statcast_team/statcast_pitcher; Savant's AZ maps to ARI, names
+flip from "Last, First"). GET /api/games/{id}/scout joins it all; the UI
+renders a matchup card above the movement charts. statsapi full names reuse
+the existing MLB name map ("statsapi" provider key in teams.py).
