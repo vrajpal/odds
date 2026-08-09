@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from mlb_odds import contest, matchup
+from mlb_odds import contest, matchup, model, valuation
 from mlb_odds.providers.base import ProviderError
 from mlb_odds.providers.espn import ESPN
 from mlb_odds.storage import Storage
@@ -164,6 +164,9 @@ class BoardGameOut(BaseModel):
     key_numbers: list[float]
     movement_since_entry: float | None
     predicted_line: float | None  # market-implied power-rating model (C4.4)
+    model_win_prob: float | None  # D-035 two-lens blend, home side
+    ml_lens_prob: float | None
+    spread_lens_prob: float | None
     home_rest: int | None  # days since each team's previous stored game (C4.5)
     away_rest: int | None
     rest_differential: int | None  # home_rest - away_rest; positive = home fresher
@@ -213,6 +216,7 @@ def get_board(week: int | None = None) -> BoardOut:
         card = store.card(week)
         all_games = odds.games()
         fitted = contest.power_ratings(odds)
+        fitted_ml = valuation.implied_strengths(odds)
         contexts = {
             row.game_id: contest.game_context(all_games, game)
             for row in rows
@@ -222,6 +226,20 @@ def get_board(week: int | None = None) -> BoardOut:
         store.close()
         odds.close()
     ratings, hfa = fitted if fitted else ({}, 0.0)
+    ml_strengths, ml_hfa = fitted_ml if fitted_ml else ({}, None)
+
+    def _row_model(home: str, away: str) -> tuple[float | None, float | None, float | None]:
+        """(blended win prob, ml lens, spread lens) for one matchup (D-035)."""
+        ml = (
+            valuation.model_home_prob(ml_strengths, ml_hfa, home, away)
+            if ml_hfa is not None
+            else None
+        )
+        line = contest.predicted_home_spread(ratings, hfa, home, away)
+        blended, spread_lens = model.nfl_model_prob(ml, line)
+        return blended, ml, spread_lens
+
+    row_models = {row.game_id: _row_model(row.home_team, row.away_team) for row in rows}
 
     start, end = contest.week_window(week)
     deadline = contest.pick_deadline(week)
@@ -258,6 +276,9 @@ def get_board(week: int | None = None) -> BoardOut:
                 predicted_line=contest.predicted_home_spread(
                     ratings, hfa, row.home_team, row.away_team
                 ),
+                model_win_prob=row_models[row.game_id][0],
+                ml_lens_prob=row_models[row.game_id][1],
+                spread_lens_prob=row_models[row.game_id][2],
                 home_rest=(
                     contexts[row.game_id].home_rest if row.game_id in contexts else None
                 ),

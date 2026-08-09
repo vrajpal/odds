@@ -115,7 +115,7 @@
     <div class="msg warn" id="board-slate"></div>
     <table id="board-table"><thead><tr>
       <th>game</th><th>kickoff (PT)</th><th></th><th class="num">market</th>
-      <th class="num">model</th><th>win % (home)</th><th>availability</th>
+      <th class="num">model</th><th>mkt win %</th><th>model win %</th><th>availability</th>
     </tr></thead><tbody></tbody></table>
   </div>
 
@@ -287,7 +287,7 @@ function renderBoard() {
       "An entry that has burned them all is eliminated here."
     : "";
   if (!b.games.length) {
-    tb.innerHTML = `<tr><td colspan="7" class="dim">No stored NFL games in the ${b.label} window yet —
+    tb.innerHTML = `<tr><td colspan="8" class="dim">No stored NFL games in the ${b.label} window yet —
       run the collector (mlb-odds collect --once --sport nfl) once this leg's odds are up.</td></tr>`;
     return;
   }
@@ -303,6 +303,7 @@ function renderBoard() {
       <td class="num">${fmtSpread(g.consensus)}</td>
       <td class="num dim">${fmtSpread(g.predicted_line)}</td>
       <td class="num">${pct(g.home_win_prob)}</td>
+      <td class="num" title="two-lens model (moneyline ${g.ml_lens_prob != null ? (g.ml_lens_prob*100).toFixed(1)+'%' : '–'} / spread ${g.spread_lens_prob != null ? (g.spread_lens_prob*100).toFixed(1)+'%' : '–'})">${pct(g.model_win_prob)}</td>
       <td class="dim">${g.away_used || g.home_used ? "partially burned" : "open"}</td>
     </tr>`;
   }).join("");
