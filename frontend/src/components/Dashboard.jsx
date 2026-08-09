@@ -8,10 +8,12 @@ const signed = (v) => (v > 0 ? `+${v}` : `${v}`)
 function evBadge(side) {
   if (!side) return '–'
   const cls = side.ev > 0.005 ? 'ev-pos' : side.ev < -0.03 ? 'ev-neg' : 'ev-flat'
+  const star = side.model_ev != null && side.model_ev > 0.02
   return (
-    <span>
+    <span title={side.model_ev != null ? `model EV ${(side.model_ev * 100).toFixed(1)}%` : undefined}>
       <b>{signed(side.price)}</b> <span className="book">{side.book}</span>{' '}
       <span className={`ev ${cls}`}>{(side.ev * 100).toFixed(1)}%</span>
+      {star && <span className="model-star" title={`model EV +${(side.model_ev * 100).toFixed(1)}% — model likes this price`}>★</span>}
     </span>
   )
 }
@@ -95,7 +97,7 @@ function Dashboard({ sport, onSelectGame }) {
               <tr>
                 <th>Time</th><th>Matchup</th>
                 <th>Away ML (best)</th><th>Home ML (best)</th>
-                <th>Cons %</th><th>Model %</th><th>Edge</th><th>Drift</th>
+                <th>Cons %</th><th>Model %</th>{sport === 'nfl' && <th>Margin</th>}<th>Edge</th><th>Drift</th>
                 <th>{sport === 'nfl' ? 'Spread' : 'Run line'}</th><th>Total</th>
               </tr>
             </thead>
@@ -113,9 +115,19 @@ function Dashboard({ sport, onSelectGame }) {
                     <td>{evBadge(ml.best_away)}</td>
                     <td>{evBadge(ml.best_home)}</td>
                     <td>{pct(ml.consensus_prob)}</td>
-                    <td title={`market model ${pct(ml.market_model_prob)} · statcast ${pct(ml.statcast_prob)}`}>
+                    <td title={sport === 'nfl'
+                        ? `moneyline lens ${pct(ml.market_model_prob)} · spread lens ${pct(ml.spread_model_prob)}`
+                        : `market model ${pct(ml.market_model_prob)} · statcast ${pct(ml.statcast_prob)}`}>
                       {pct(ml.model_prob)}
                     </td>
+                    {sport === 'nfl' && (
+                      <td className="num">
+                        {g.predicted_margin == null ? '–'
+                          : g.predicted_margin > 0
+                            ? `${g.home_team} by ${g.predicted_margin.toFixed(1)}`
+                            : `${g.away_team} by ${(-g.predicted_margin).toFixed(1)}`}
+                      </td>
+                    )}
                     <td className={edgeCls}>{pp(ml.model_edge)}</td>
                     <td className={ml.drift > 0.01 ? 'ev-pos' : ml.drift < -0.01 ? 'ev-neg' : ''}>
                       {pp(ml.drift)}
@@ -135,7 +147,9 @@ function Dashboard({ sport, onSelectGame }) {
         team strengths blended 70/30 with Statcast (team xwOBA + probable starters; hover for
         components){data.hfa != null && ` — HFA ${data.hfa > 0 ? '+' : ''}${data.hfa} log-odds`} ·
         <b> Edge</b> = model − consensus · <b>Drift</b> = consensus now vs first snapshot ·
-        EV% next to each price is vs the consensus fair line. Click a game for full line movement.
+        EV% next to each price is vs the consensus fair line; a <span className="model-star">★</span> marks
+        prices the model itself rates +2% EV or better{sport === 'nfl' && ' · Margin = spread-ratings predicted result'}.
+        Click a game for full line movement.
       </div>
 
       {data.strengths.length > 0 && (
