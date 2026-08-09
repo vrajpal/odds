@@ -26,10 +26,13 @@ docker compose run --rm nfl-collect     # seed NFL lines (3 credits)
 Existing databases can be seeded by copying them into `deploy/data/` before
 first start (`odds.sqlite`, `nfl-odds.sqlite`).
 
-**Updating a running deployment:** `git pull && docker compose build &&
-docker compose --profile public up -d`. The explicit `build` matters —
-`up -d --build` rebuilds only the services it starts, so the profile-gated
-one-shots (nfl-collect, nfl-results) otherwise keep running the old image.
+**Updating a running deployment:**
+`git pull && docker compose --profile collect --profile public build &&
+docker compose --profile public up -d`. The profile flags on `build` matter:
+bare `docker compose build` (and `up -d --build`) skip profile-gated
+services entirely, so the collect one-shots silently keep an old image —
+this bit twice (D-027 deploy; D-037's migration never applying because
+nfl-results ran pre-migration code).
 
 Season cadence (host crontab). Thu–Sat line polls ≈ 27 credits/week; the
 Sunday 9:55 AM PT poll captures true closing lines for CLV (D-024); results
@@ -118,7 +121,7 @@ ever changes, upgrade to verifying Cloudflare's signed JWT
 # All commands from ~/containers/odds/deploy on apps.
 docker compose --profile public ps                 # what's running
 docker compose --profile public up -d              # start/refresh everything
-git pull && docker compose build && docker compose --profile public up -d   # deploy an update
+git pull && docker compose --profile collect --profile public build && docker compose --profile public up -d   # deploy an update
 docker compose run --rm nfl-collect                # manual line poll (3 credits)
 docker compose run --rm nfl-results                # manual finals sweep (free)
 docker compose run --rm statcast                   # daily MLB scouting pull (free, D-031)
@@ -165,9 +168,12 @@ running or can't reach Cloudflare. The Access 302 comes from the edge, so a
 working login wall does NOT prove the tunnel is up.
 
 **A one-shot service errors with an option/feature that just shipped.**
-`up -d --build` rebuilds only services it starts; profile-gated one-shots
-(nfl-collect, nfl-results) keep their old image. Run `docker compose build`
-explicitly after every pull.
+`up -d --build` AND bare `docker compose build` both skip profile-gated
+services; the one-shots keep their old image. Always build with
+`--profile collect --profile public`. Related: a newly deployed schema
+migration stays unapplied until something write-opens the database — the
+APIs are read-only by design (D-012) and 500 with "no such table" until a
+one-shot (`docker compose run --rm nfl-results`) touches it.
 
 **Host suddenly cannot resolve any hostname (git pull, API calls fail); SSH
 still works.** /etc/resolv.conf points solely at Tailscale MagicDNS
