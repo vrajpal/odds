@@ -45,6 +45,13 @@ function GameHistory({ sport, gameId }) {
       try {
         setLoading(true)
         const response = await fetch(`/api/games/${gameId}/history?sport=${sport}`)
+        if (response.status === 404) {
+          // Schedule-only game: no odds were ever collected. Not an error —
+          // the scout card still applies.
+          setHistory({ rows: [], count: 0 })
+          setError(null)
+          return
+        }
         if (!response.ok) throw new Error('Failed to fetch game history')
         const data = await response.json()
         setHistory(data)
@@ -78,11 +85,21 @@ function GameHistory({ sport, gameId }) {
   return (
     <div className="game-history">
       <h2>{gameId}</h2>
-      <div className="history-meta">{history.count} records</div>
+      <div className="history-meta">
+        {history.count > 0 ? `${history.count} records` : 'no odds collected for this game'}
+      </div>
 
       <MatchupCard scout={scout} />
 
-      <LineMovement rows={history.rows} />
+      {history.count > 0 ? (
+        <LineMovement rows={history.rows} />
+      ) : (
+        <div className="empty">
+          No line movement stored — this slate was never line-polled (odds
+          collection started later, or the games finished before a poll ran).
+          The scouting card above still applies.
+        </div>
+      )}
 
       <div className="history-table-container">
         <table className="history-table">
