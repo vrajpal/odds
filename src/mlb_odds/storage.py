@@ -98,6 +98,40 @@ MIGRATIONS: list[str] = [
         fetched_at  TEXT NOT NULL
     );
     """,
+    # Statcast scouting layer (D-031): probable starters per game and
+    # expected-stats aggregates. Upserts everywhere — Savant re-fetches
+    # supersede, probables change until first pitch.
+    """
+    CREATE TABLE probables (
+        game_id      TEXT PRIMARY KEY REFERENCES games(game_id),
+        away_pitcher TEXT,
+        home_pitcher TEXT,
+        fetched_at   TEXT NOT NULL
+    );
+
+    CREATE TABLE statcast_team (
+        team       TEXT NOT NULL,
+        season     INTEGER NOT NULL,
+        pa         INTEGER NOT NULL,
+        xba        REAL,
+        xslg       REAL,
+        xwoba      REAL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (team, season)
+    );
+
+    CREATE TABLE statcast_pitcher (
+        name       TEXT NOT NULL,
+        season     INTEGER NOT NULL,
+        pa         INTEGER NOT NULL,
+        xba        REAL,
+        xslg       REAL,
+        xwoba      REAL,
+        xera       REAL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (name, season)
+    );
+    """,
 ]
 
 
@@ -520,6 +554,133 @@ class Storage:
             )
             for (game_id, provider), quotes in quotes_by_key.items()
         ]
+
+    def store_games(self, games: list[Game]) -> int:
+        """Persist schedule-only games (no odds yet): same identity
+        reconciliation as store(), games and provider ids only (D-031)."""
+        stored = 0
+        with self._conn:
+            for game in games:
+                game.game_id = self._resolve_game_id(game)
+                cur = self._conn.execute(
+                    """
+                    INSERT INTO games (game_id, start_time, home_team, away_team, season)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT (game_id) DO UPDATE SET start_time = excluded.start_time
+                    """,
+                    (game.game_id, game.start_time.isoformat(), game.home_team,
+                     game.away_team, game.season),
+                )
+                stored += cur.rowcount
+                self._conn.executemany(
+                    "INSERT OR IGNORE INTO provider_game_ids (game_id, provider, native_id)"
+                    " VALUES (?, ?, ?)",
+                    [(game.game_id, p, n) for p, n in game.provider_ids.items()],
+                )
+        return stored
+
+    def upsert_probables(
+        self, game_id: str, away_pitcher: str | None, home_pitcher: str | None,
+        *, fetched_at: datetime,
+    ) -> None:
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO probables (game_id, away_pitcher, home_pitcher, fetched_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (game_id) DO UPDATE SET
+                    away_pitcher = excluded.away_pitcher,
+                    home_pitcher = excluded.home_pitcher,
+                    fetched_at = excluded.fetched_at
+                """,
+                (game_id, away_pitcher, home_pitcher, _utc_key(fetched_at)),
+            )
+
+    def upsert_statcast_team(
+        self, rows: list[tuple[str, int, int, float | None, float | None, float | None]],
+        *, fetched_at: datetime,
+    ) -> None:
+        """(team, season, pa, xba, xslg, xwoba) rows."""
+        with self._conn:
+            self._conn.executemany(
+                """
+                INSERT INTO statcast_team (team, season, pa, xba, xslg, xwoba, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (team, season) DO UPDATE SET
+                    pa = excluded.pa, xba = excluded.xba, xslg = excluded.xslg,
+                    xwoba = excluded.xwoba, fetched_at = excluded.fetched_at
+                """,
+                [(t, s2, pa, xba, xslg, xwoba, _utc_key(fetched_at))
+                 for t, s2, pa, xba, xslg, xwoba in rows],
+            )
+
+    def upsert_statcast_pitcher(
+        self,
+        rows: list[
+            tuple[str, int, int, float | None, float | None, float | None, float | None]
+        ],
+        *, fetched_at: datetime,
+    ) -> None:
+        """(name, season, pa, xba, xslg, xwoba, xera) rows."""
+        with self._conn:
+            self._conn.executemany(
+                """
+                INSERT INTO statcast_pitcher
+                    (name, season, pa, xba, xslg, xwoba, xera, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (name, season) DO UPDATE SET
+                    pa = excluded.pa, xba = excluded.xba, xslg = excluded.xslg,
+                    xwoba = excluded.xwoba, xera = excluded.xera,
+                    fetched_at = excluded.fetched_at
+                """,
+                [(n, s2, pa, xba, xslg, xwoba, xera, _utc_key(fetched_at))
+                 for n, s2, pa, xba, xslg, xwoba, xera in rows],
+            )
+
+    def scout(self, game_id: str) -> dict[str, object] | None:
+        """Everything the matchup card needs, or None if the game is unknown."""
+        game_row = self._conn.execute(
+            "SELECT away_team, home_team, season FROM games WHERE game_id = ?", (game_id,)
+        ).fetchone()
+        if game_row is None:
+            return None
+        away, home, season = game_row
+        prob = self._conn.execute(
+            "SELECT away_pitcher, home_pitcher FROM probables WHERE game_id = ?", (game_id,)
+        ).fetchone()
+
+        def team_line(team: str) -> dict[str, object] | None:
+            row = self._conn.execute(
+                "SELECT pa, xba, xslg, xwoba FROM statcast_team"
+                " WHERE team = ? AND season = ?",
+                (team, season),
+            ).fetchone()
+            return dict(zip(("pa", "xba", "xslg", "xwoba"), row, strict=True)) if row else None
+
+        def pitcher_line(name: str | None) -> dict[str, object] | None:
+            if not name:
+                return None
+            row = self._conn.execute(
+                "SELECT pa, xba, xslg, xwoba, xera FROM statcast_pitcher"
+                " WHERE name = ? AND season = ?",
+                (name, season),
+            ).fetchone()
+            return (
+                dict(zip(("pa", "xba", "xslg", "xwoba", "xera"), row, strict=True))
+                if row
+                else None
+            )
+
+        return {
+            "away_team": away,
+            "home_team": home,
+            "away_batting": team_line(away),
+            "home_batting": team_line(home),
+            "away_pitcher": prob[0] if prob else None,
+            "home_pitcher": prob[1] if prob else None,
+            "away_pitcher_line": pitcher_line(prob[0] if prob else None),
+            "home_pitcher_line": pitcher_line(prob[1] if prob else None),
+        }
 
     def record_result(
         self, game_id: str, home_score: int, away_score: int, *, fetched_at: datetime

@@ -93,6 +93,51 @@ class ESPN:
             return events
         raise ProviderError(f"request failed after retry: {last_error}") from last_error
 
+    def fetch_schedule(self, on: date) -> list[Game]:
+        """The day's games as schedule-only Game models (no odds required) —
+        used to persist slates that were never line-polled (D-031). Provisional
+        doubleheader numbering by start time; storage reconciles on write."""
+        games: list[Game] = []
+        for event in self._request({"dates": on.strftime("%Y%m%d")}):
+            try:
+                competition = event["competitions"][0]
+                by_side = {c["homeAway"]: c for c in competition["competitors"]}
+                raw_home = by_side["home"]["team"]["displayName"]
+                raw_away = by_side["away"]["team"]["displayName"]
+                start_time = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
+            except (KeyError, IndexError, ValueError) as exc:
+                logger.warning("skipping malformed event %s: %s", event.get("id"), exc)
+                continue
+            try:
+                home = teams.normalize(self._sport, self.name, raw_home)
+                away = teams.normalize(self._sport, self.name, raw_away)
+            except teams.TeamLookupError as exc:
+                if self._strict:
+                    raise
+                logger.warning("skipping event %s: %s", event.get("id"), exc)
+                continue
+            games.append(
+                Game(
+                    game_id=make_game_id(start_time.date().isoformat(), away, home),
+                    start_time=start_time,
+                    home_team=home,
+                    away_team=away,
+                    provider_ids={self.name: str(event["id"])},
+                )
+            )
+        # Number same-matchup same-day games by start (doubleheaders).
+        by_matchup: dict[str, list[Game]] = {}
+        for g in games:
+            by_matchup.setdefault(g.game_id, []).append(g)
+        for group in by_matchup.values():
+            if len(group) > 1:
+                group.sort(key=lambda g: g.start_time)
+                for number, g in enumerate(group, start=1):
+                    g.game_id = make_game_id(
+                        g.start_time.date().isoformat(), g.away_team, g.home_team, number
+                    )
+        return games
+
     def fetch_final_scores(self, on: date) -> list[FinalScore]:
         """Scores for one scoreboard day (ESPN groups days in US/Eastern).
 

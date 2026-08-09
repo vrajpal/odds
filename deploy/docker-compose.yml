@@ -99,6 +99,14 @@ services:
     volumes:
       - ./data:/data
 
+  statcast:
+    build: ..
+    profiles: [collect]
+    # Free scouting pull (D-031): schedule, probables, Savant expected stats.
+    command: mlb-odds statcast
+    volumes:
+      - ./data:/data
+
   # Public access for non-tailnet friends (D-026): Cloudflare Tunnel with a
   # Cloudflare Access policy in front (email OTP allowlist). Outbound-only —
   # still no published ports anywhere. Opt-in AFTER the Access policy exists:

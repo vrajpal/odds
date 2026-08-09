@@ -121,6 +121,7 @@ docker compose --profile public up -d              # start/refresh everything
 git pull && docker compose build && docker compose --profile public up -d   # deploy an update
 docker compose run --rm nfl-collect                # manual line poll (3 credits)
 docker compose run --rm nfl-results                # manual finals sweep (free)
+docker compose run --rm statcast                   # daily MLB scouting pull (free, D-031)
 docker compose logs -f contest-api                 # follow app logs
 tail -f ~/containers/odds/collect.log              # cron output
 ```

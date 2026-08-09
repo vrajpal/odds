@@ -163,6 +163,9 @@ API runs on `http://localhost:8000` with endpoints:
 - `GET /api/dashboard?sport=&on=YYYY-MM-DD` — betting dashboard for any day:
   de-vigged consensus + model win probs, best-EV prices, run line/total per
   book (D-030)
+- `GET /api/games/{id}/scout?sport=mlb` — Statcast matchup card: probable
+  starters with xERA/xwOBA-against + team batting expected stats (D-031;
+  populate via `mlb-odds statcast`, free)
 - `GET /api/today` — today's games with latest odds per book (JSON)
 - `GET /api/games/{game_id}/history` — line movement history
 - `GET /api/export?fmt=csv|json` — export all stored odds
