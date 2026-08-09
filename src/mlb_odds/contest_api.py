@@ -164,7 +164,7 @@ class BoardGameOut(BaseModel):
     key_numbers: list[float]
     movement_since_entry: float | None
     predicted_line: float | None  # market-implied power-rating model (C4.4)
-    model_win_prob: float | None  # D-035 two-lens blend, home side
+    model_win_prob: float | None  # D-036 two-lens blend, home side
     ml_lens_prob: float | None
     spread_lens_prob: float | None
     home_rest: int | None  # days since each team's previous stored game (C4.5)
@@ -229,7 +229,7 @@ def get_board(week: int | None = None) -> BoardOut:
     ml_strengths, ml_hfa = fitted_ml if fitted_ml else ({}, None)
 
     def _row_model(home: str, away: str) -> tuple[float | None, float | None, float | None]:
-        """(blended win prob, ml lens, spread lens) for one matchup (D-035)."""
+        """(blended win prob, ml lens, spread lens) for one matchup (D-036)."""
         ml = (
             valuation.model_home_prob(ml_strengths, ml_hfa, home, away)
             if ml_hfa is not None

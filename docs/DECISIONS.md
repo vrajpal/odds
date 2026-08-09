@@ -605,3 +605,35 @@ otherwise the OS preference applies and live-tracks its changes. The header
 gets a ☀️/🌙 toggle that saves the override. A time-of-day scheme (dark
 19:00–07:00) was considered and dropped: it fights the OS setting during the
 day and surprises users; the OS already encodes the person's actual intent.
+
+## D-036 — The odds page's betting model, both sports (2026-08-09)
+(Originally drafted as D-035; renumbered — a concurrent theme decision took
+that number, and this entry initially missed its commit.)
+
+model.py composes the fitted pieces into one model surface per sport:
+
+**NFL** gets two independent market lenses on the same question — what the
+moneylines imply (valuation.implied_strengths) and what the spreads imply
+(contest.power_ratings). Spread points convert to win probability through
+the classical NFL margin distribution (sigma 13.45; a 3-point favorite wins
+~59%, pinned in tests), then the lenses blend equal-weight in logit space,
+renormalizing when one is absent. The dashboard also shows the model's
+predicted margin in points.
+
+**MLB** keeps its D-032 blend (moneyline strengths + Statcast), reached
+through the same interface.
+
+**Model EV** joins consensus EV on every best price: expected value at the
+MODEL's probability rather than the market's fair — consensus EV is price
+shopping, model EV is "does the model think this is a bet". The UI stars
+prices the model rates +2% or better.
+
+**Circa surfaces** (same day): the Survivor board's market win probability
+upgraded to the devigged moneyline consensus (direct straight-up market
+opinion; spread conversion as fallback) with a model-win% column and lens
+components; the Million board's expanded row gained a model strip. Model EV
+deliberately omitted on contest pages — contest picks are not priced bets.
+
+Honest framing, same as D-032: both NFL lenses are market-implied (the
+model detects internal inconsistency, not private information), blend
+weights are priors, and calibration waits on the nightly-accruing results.

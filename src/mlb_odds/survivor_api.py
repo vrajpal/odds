@@ -194,7 +194,7 @@ class SurvivorGameOut(BaseModel):
     predicted_line: float | None  # power-rating model home spread
     home_win_prob: float | None  # market: devigged ML consensus, else spread-implied
     away_win_prob: float | None
-    model_win_prob: float | None  # D-035 two-lens blend (home side)
+    model_win_prob: float | None  # D-036 two-lens blend (home side)
     ml_lens_prob: float | None  # moneyline-implied strengths lens
     spread_lens_prob: float | None  # spread-ratings lens
     home_used: str | None  # leg the team was burned in, if any
@@ -259,7 +259,7 @@ def get_board(leg: str | None = None) -> SurvivorBoardOut:
         market = contest.consensus(contest.book_spreads(histories[g.game_id]))
         model_line = contest.predicted_home_spread(ratings, hfa, g.home_team, g.away_team)
         # Market straight-up probability: devigged moneyline consensus when
-        # books quote it, else the spread-implied conversion (D-035).
+        # books quote it, else the spread-implied conversion (D-036).
         ml_consensus = valuation.consensus_prob(ml_pairs[g.game_id])
         reference = market if market is not None else model_line
         home_wp = (

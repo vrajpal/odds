@@ -282,7 +282,7 @@ class BestPriceOut(BaseModel):
     book: str
     price: int
     ev: float  # vs the consensus fair probability; positive = value
-    model_ev: float | None = None  # vs the MODEL's probability (D-035)
+    model_ev: float | None = None  # vs the MODEL's probability (D-036)
 
 
 class MoneylineOut(BaseModel):
@@ -291,8 +291,8 @@ class MoneylineOut(BaseModel):
     drift: float | None  # consensus_prob - open_prob
     market_model_prob: float | None  # moneyline-implied strength model (D-030)
     statcast_prob: float | None  # Statcast-only term (D-032, MLB)
-    spread_model_prob: float | None  # spread-ratings lens (D-035, NFL)
-    model_prob: float | None  # the sport's blend (D-032 MLB / D-035 NFL)
+    spread_model_prob: float | None  # spread-ratings lens (D-036, NFL)
+    model_prob: float | None  # the sport's blend (D-032 MLB / D-036 NFL)
     model_edge: float | None  # model_prob - consensus_prob
     best_home: BestPriceOut | None
     best_away: BestPriceOut | None
@@ -312,7 +312,7 @@ class DashboardGameOut(BaseModel):
     away_team: str
     home_team: str
     start_time: str
-    predicted_margin: float | None = None  # NFL: model home margin in points (D-035)
+    predicted_margin: float | None = None  # NFL: model home margin in points (D-036)
     moneyline: MoneylineOut
     run_line: dict[str, MarketQuoteOut]  # per book
     total: dict[str, MarketQuoteOut]
