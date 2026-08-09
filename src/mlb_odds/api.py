@@ -233,10 +233,12 @@ def get_matchup(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> dict[str,
 
     from mlb_odds.providers.espn import MATCHUP_STATS
 
+    away_stats = away["stats"] if isinstance(away["stats"], dict) else {}
+    home_stats = home["stats"] if isinstance(home["stats"], dict) else {}
     rows = []
     for _cat, _name, label, higher in MATCHUP_STATS[sport]:
-        a = away["stats"].get(label, {})  # type: ignore[union-attr]
-        h = home["stats"].get(label, {})  # type: ignore[union-attr]
+        a = away_stats.get(label, {})
+        h = home_stats.get(label, {})
         better = None
         av, hv = a.get("value"), h.get("value")
         if isinstance(av, int | float) and isinstance(hv, int | float) and av != hv:
