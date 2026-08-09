@@ -6,11 +6,9 @@
   overflow-x: auto;
 }
 
-@media (prefers-color-scheme: dark) {
-  .game-history {
-    background-color: #2a2a2a;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  }
+[data-theme='dark'] .game-history {
+  background-color: #2a2a2a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 .game-history h2 {
@@ -18,10 +16,8 @@
   color: #2c3e50;
 }
 
-@media (prefers-color-scheme: dark) {
-  .game-history h2 {
-    color: #e0e0e0;
-  }
+[data-theme='dark'] .game-history h2 {
+  color: #e0e0e0;
 }
 
 .history-meta {
@@ -45,10 +41,8 @@
   background-color: #ecf0f1;
 }
 
-@media (prefers-color-scheme: dark) {
-  .history-table thead {
-    background-color: #333;
-  }
+[data-theme='dark'] .history-table thead {
+  background-color: #333;
 }
 
 .history-table th {
@@ -59,10 +53,8 @@
   white-space: nowrap;
 }
 
-@media (prefers-color-scheme: dark) {
-  .history-table th {
-    color: #aaa;
-  }
+[data-theme='dark'] .history-table th {
+  color: #aaa;
 }
 
 .history-table td {
@@ -71,20 +63,16 @@
   white-space: nowrap;
 }
 
-@media (prefers-color-scheme: dark) {
-  .history-table td {
-    border-bottom-color: #444;
-  }
+[data-theme='dark'] .history-table td {
+  border-bottom-color: #444;
 }
 
 .history-table tbody tr:hover {
   background-color: #f9f9f9;
 }
 
-@media (prefers-color-scheme: dark) {
-  .history-table tbody tr:hover {
-    background-color: #333;
-  }
+[data-theme='dark'] .history-table tbody tr:hover {
+  background-color: #333;
 }
 
 .price {
@@ -93,10 +81,8 @@
   font-weight: 500;
 }
 
-@media (prefers-color-scheme: dark) {
-  .price {
-    color: #2ecc71;
-  }
+[data-theme='dark'] .price {
+  color: #2ecc71;
 }
 
 .matchup-card { background: #101a2e; border: 1px solid #1e293b; border-radius: 8px;
@@ -108,3 +94,17 @@
 .scout-table td { padding: 2px 14px 2px 0; color: #cbd5e1; }
 .scout-table td:first-child { color: #64748b; }
 .scout-note { color: #64748b; font-size: 12px; margin-top: 6px; }
+
+.team-lens { background: #101a2e; border: 1px solid #1e293b; border-radius: 8px;
+  padding: 14px 16px; margin: 14px 0; }
+.lens-header { display: flex; justify-content: center; align-items: baseline;
+  gap: 18px; margin-bottom: 10px; text-align: center; }
+.lens-team b { font-size: 17px; }
+.lens-rec { display: block; color: #64748b; font-size: 12px; }
+.lens-vs { color: #64748b; }
+.lens-table { width: 100%; max-width: 460px; margin: 0 auto; border-collapse: collapse; }
+.lens-table td { padding: 4px 10px; font-size: 14px; text-align: center;
+  border-bottom: 1px solid #16213a; color: #cbd5e1; }
+.lens-label { color: #64748b; font-size: 12px; text-transform: uppercase; width: 34%; }
+.lens-win { color: #34d399; font-weight: 700; }
+.lens-note { color: #64748b; font-size: 12px; margin-top: 8px; text-align: center; }

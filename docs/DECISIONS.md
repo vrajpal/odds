@@ -575,3 +575,18 @@ points (A=3, B=2, C=1; a vote replaces a member's whole ranking) and sort by
 points — a team that is everyone's B can outrank a team that is one member's
 A, which is exactly the alignment case ranked choices exist for. Reveal
 shows per-member rank letters and points.
+
+## D-034 — Matchup page: ESPN team-stats lens (2026-08-09)
+Clicking a game now lands on a Matchup page (the History tab, renamed):
+records + standings and a curated head-to-head season-stat comparison from
+ESPN's free site API, with the better side highlighted per row —
+direction-aware (ERA/WHIP lower-better; OPS/K9 higher-better), encoded in
+MATCHUP_STATS in the ESPN provider so the API and UI can't disagree about
+which way is up. Team identity maps by displayName through the existing
+name registry (ESPN abbreviations disagree with ours: CHW, AZ...).
+
+Live-fetched, not stored: season aggregates change daily and nothing
+downstream models on them (the modeled inputs are Statcast/market — this
+lens is for human eyes). In-process TTL caches (1h stats, 24h team ids)
+keep a busy page to a few ESPN calls per hour. Works for both sports; the
+page keeps the Statcast scout card (MLB) and the LineMovement charts below.

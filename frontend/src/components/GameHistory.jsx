@@ -4,6 +4,37 @@ import '../styles/GameHistory.css'
 
 const statFmt = (v, d = 3) => (v == null ? '–' : v.toFixed(d))
 
+function TeamLens({ matchup }) {
+  if (!matchup) return null
+  return (
+    <div className="team-lens">
+      <div className="lens-header">
+        <div className="lens-team">
+          <b>{matchup.away_team}</b>
+          <span className="lens-rec">{matchup.away_record} · {matchup.away_standing}</span>
+        </div>
+        <span className="lens-vs">@</span>
+        <div className="lens-team">
+          <b>{matchup.home_team}</b>
+          <span className="lens-rec">{matchup.home_record} · {matchup.home_standing}</span>
+        </div>
+      </div>
+      <table className="lens-table">
+        <tbody>
+          {matchup.rows.map((r) => (
+            <tr key={r.label}>
+              <td className={r.better === 'away' ? 'lens-win' : ''}>{r.away ?? '–'}</td>
+              <td className="lens-label">{r.label}</td>
+              <td className={r.better === 'home' ? 'lens-win' : ''}>{r.home ?? '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="lens-note">Season stats via ESPN — greener side leads the category.</div>
+    </div>
+  )
+}
+
 function MatchupCard({ scout }) {
   if (!scout) return null
   const side = (label, team, batting, pitcher, line) => (
@@ -35,6 +66,7 @@ function MatchupCard({ scout }) {
 function GameHistory({ sport, gameId }) {
   const [history, setHistory] = useState(null)
   const [scout, setScout] = useState(null)
+  const [matchup, setMatchup] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -66,6 +98,11 @@ function GameHistory({ sport, gameId }) {
 
     fetchHistory()
     setScout(null)
+    setMatchup(null)
+    fetch(`/api/games/${gameId}/matchup?sport=${sport}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setMatchup)
+      .catch(() => setMatchup(null))
     if (sport === 'mlb') {
       fetch(`/api/games/${gameId}/scout?sport=mlb`)
         .then((r) => (r.ok ? r.json() : null))
@@ -88,6 +125,8 @@ function GameHistory({ sport, gameId }) {
       <div className="history-meta">
         {history.count > 0 ? `${history.count} records` : 'no odds collected for this game'}
       </div>
+
+      <TeamLens matchup={matchup} />
 
       <MatchupCard scout={scout} />
 

@@ -1,0 +1,204 @@
+{
+ "sports": [
+  {
+   "leagues": [
+    {
+     "teams": [
+      {
+       "team": {
+        "id": "22",
+        "displayName": "Arizona Cardinals"
+       }
+      },
+      {
+       "team": {
+        "id": "1",
+        "displayName": "Atlanta Falcons"
+       }
+      },
+      {
+       "team": {
+        "id": "33",
+        "displayName": "Baltimore Ravens"
+       }
+      },
+      {
+       "team": {
+        "id": "2",
+        "displayName": "Buffalo Bills"
+       }
+      },
+      {
+       "team": {
+        "id": "29",
+        "displayName": "Carolina Panthers"
+       }
+      },
+      {
+       "team": {
+        "id": "3",
+        "displayName": "Chicago Bears"
+       }
+      },
+      {
+       "team": {
+        "id": "4",
+        "displayName": "Cincinnati Bengals"
+       }
+      },
+      {
+       "team": {
+        "id": "5",
+        "displayName": "Cleveland Browns"
+       }
+      },
+      {
+       "team": {
+        "id": "6",
+        "displayName": "Dallas Cowboys"
+       }
+      },
+      {
+       "team": {
+        "id": "7",
+        "displayName": "Denver Broncos"
+       }
+      },
+      {
+       "team": {
+        "id": "8",
+        "displayName": "Detroit Lions"
+       }
+      },
+      {
+       "team": {
+        "id": "9",
+        "displayName": "Green Bay Packers"
+       }
+      },
+      {
+       "team": {
+        "id": "34",
+        "displayName": "Houston Texans"
+       }
+      },
+      {
+       "team": {
+        "id": "11",
+        "displayName": "Indianapolis Colts"
+       }
+      },
+      {
+       "team": {
+        "id": "30",
+        "displayName": "Jacksonville Jaguars"
+       }
+      },
+      {
+       "team": {
+        "id": "12",
+        "displayName": "Kansas City Chiefs"
+       }
+      },
+      {
+       "team": {
+        "id": "13",
+        "displayName": "Las Vegas Raiders"
+       }
+      },
+      {
+       "team": {
+        "id": "24",
+        "displayName": "Los Angeles Chargers"
+       }
+      },
+      {
+       "team": {
+        "id": "14",
+        "displayName": "Los Angeles Rams"
+       }
+      },
+      {
+       "team": {
+        "id": "15",
+        "displayName": "Miami Dolphins"
+       }
+      },
+      {
+       "team": {
+        "id": "16",
+        "displayName": "Minnesota Vikings"
+       }
+      },
+      {
+       "team": {
+        "id": "17",
+        "displayName": "New England Patriots"
+       }
+      },
+      {
+       "team": {
+        "id": "18",
+        "displayName": "New Orleans Saints"
+       }
+      },
+      {
+       "team": {
+        "id": "19",
+        "displayName": "New York Giants"
+       }
+      },
+      {
+       "team": {
+        "id": "20",
+        "displayName": "New York Jets"
+       }
+      },
+      {
+       "team": {
+        "id": "21",
+        "displayName": "Philadelphia Eagles"
+       }
+      },
+      {
+       "team": {
+        "id": "23",
+        "displayName": "Pittsburgh Steelers"
+       }
+      },
+      {
+       "team": {
+        "id": "25",
+        "displayName": "San Francisco 49ers"
+       }
+      },
+      {
+       "team": {
+        "id": "26",
+        "displayName": "Seattle Seahawks"
+       }
+      },
+      {
+       "team": {
+        "id": "27",
+        "displayName": "Tampa Bay Buccaneers"
+       }
+      },
+      {
+       "team": {
+        "id": "10",
+        "displayName": "Tennessee Titans"
+       }
+      },
+      {
+       "team": {
+        "id": "28",
+        "displayName": "Washington Commanders"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

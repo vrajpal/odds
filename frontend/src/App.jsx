@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import TodayBoard from './components/TodayBoard'
 import Dashboard from './components/Dashboard'
 import GameHistory from './components/GameHistory'
+import { watchTheme } from './theme'
 import './App.css'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [selectedGame, setSelectedGame] = useState(null)
   const [sport, setSport] = useState('mlb')
+
+  useEffect(() => watchTheme(), [])
 
   const switchSport = (next) => {
     setSport(next)
@@ -47,7 +50,7 @@ function App() {
             className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`}
             onClick={() => setActiveTab('history')}
           >
-            History
+            Matchup
           </button>
         </nav>
       </header>

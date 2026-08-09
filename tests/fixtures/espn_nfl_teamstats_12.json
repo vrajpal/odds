@@ -1,0 +1,78 @@
+{
+ "results": {
+  "stats": {
+   "categories": [
+    {
+     "name": "passing",
+     "stats": [
+      {
+       "name": "completionPct",
+       "displayValue": "62.2",
+       "value": 62.158
+      },
+      {
+       "name": "interceptions",
+       "displayValue": "12",
+       "value": 12.0
+      },
+      {
+       "name": "netPassingYardsPerGame",
+       "displayValue": "214.1",
+       "value": 214.05882
+      },
+      {
+       "name": "passingTouchdowns",
+       "displayValue": "23",
+       "value": 23.0
+      }
+     ]
+    },
+    {
+     "name": "rushing",
+     "stats": [
+      {
+       "name": "rushingYardsPerGame",
+       "displayValue": "106.6",
+       "value": 106.588
+      }
+     ]
+    },
+    {
+     "name": "defensive",
+     "stats": [
+      {
+       "name": "sacks",
+       "displayValue": "35",
+       "value": 35.0
+      },
+      {
+       "name": "tacklesForLoss",
+       "displayValue": "74",
+       "value": 74.0
+      }
+     ]
+    },
+    {
+     "name": "defensiveInterceptions",
+     "stats": [
+      {
+       "name": "interceptions",
+       "displayValue": "10",
+       "value": 10.0
+      }
+     ]
+    },
+    {
+     "name": "scoring",
+     "stats": [
+      {
+       "name": "totalPointsPerGame",
+       "displayValue": "21.3",
+       "value": 21.294
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

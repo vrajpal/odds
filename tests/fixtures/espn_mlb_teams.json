@@ -1,0 +1,192 @@
+{
+ "sports": [
+  {
+   "leagues": [
+    {
+     "teams": [
+      {
+       "team": {
+        "id": "29",
+        "displayName": "Arizona Diamondbacks"
+       }
+      },
+      {
+       "team": {
+        "id": "11",
+        "displayName": "Athletics"
+       }
+      },
+      {
+       "team": {
+        "id": "15",
+        "displayName": "Atlanta Braves"
+       }
+      },
+      {
+       "team": {
+        "id": "1",
+        "displayName": "Baltimore Orioles"
+       }
+      },
+      {
+       "team": {
+        "id": "2",
+        "displayName": "Boston Red Sox"
+       }
+      },
+      {
+       "team": {
+        "id": "16",
+        "displayName": "Chicago Cubs"
+       }
+      },
+      {
+       "team": {
+        "id": "4",
+        "displayName": "Chicago White Sox"
+       }
+      },
+      {
+       "team": {
+        "id": "17",
+        "displayName": "Cincinnati Reds"
+       }
+      },
+      {
+       "team": {
+        "id": "5",
+        "displayName": "Cleveland Guardians"
+       }
+      },
+      {
+       "team": {
+        "id": "27",
+        "displayName": "Colorado Rockies"
+       }
+      },
+      {
+       "team": {
+        "id": "6",
+        "displayName": "Detroit Tigers"
+       }
+      },
+      {
+       "team": {
+        "id": "18",
+        "displayName": "Houston Astros"
+       }
+      },
+      {
+       "team": {
+        "id": "7",
+        "displayName": "Kansas City Royals"
+       }
+      },
+      {
+       "team": {
+        "id": "3",
+        "displayName": "Los Angeles Angels"
+       }
+      },
+      {
+       "team": {
+        "id": "19",
+        "displayName": "Los Angeles Dodgers"
+       }
+      },
+      {
+       "team": {
+        "id": "28",
+        "displayName": "Miami Marlins"
+       }
+      },
+      {
+       "team": {
+        "id": "8",
+        "displayName": "Milwaukee Brewers"
+       }
+      },
+      {
+       "team": {
+        "id": "9",
+        "displayName": "Minnesota Twins"
+       }
+      },
+      {
+       "team": {
+        "id": "21",
+        "displayName": "New York Mets"
+       }
+      },
+      {
+       "team": {
+        "id": "10",
+        "displayName": "New York Yankees"
+       }
+      },
+      {
+       "team": {
+        "id": "22",
+        "displayName": "Philadelphia Phillies"
+       }
+      },
+      {
+       "team": {
+        "id": "23",
+        "displayName": "Pittsburgh Pirates"
+       }
+      },
+      {
+       "team": {
+        "id": "25",
+        "displayName": "San Diego Padres"
+       }
+      },
+      {
+       "team": {
+        "id": "26",
+        "displayName": "San Francisco Giants"
+       }
+      },
+      {
+       "team": {
+        "id": "12",
+        "displayName": "Seattle Mariners"
+       }
+      },
+      {
+       "team": {
+        "id": "24",
+        "displayName": "St. Louis Cardinals"
+       }
+      },
+      {
+       "team": {
+        "id": "30",
+        "displayName": "Tampa Bay Rays"
+       }
+      },
+      {
+       "team": {
+        "id": "13",
+        "displayName": "Texas Rangers"
+       }
+      },
+      {
+       "team": {
+        "id": "14",
+        "displayName": "Toronto Blue Jays"
+       }
+      },
+      {
+       "team": {
+        "id": "20",
+        "displayName": "Washington Nationals"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

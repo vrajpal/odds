@@ -1,0 +1,14 @@
+{
+ "team": {
+  "id": "10",
+  "displayName": "New York Yankees",
+  "record": {
+   "items": [
+    {
+     "summary": "66-51"
+    }
+   ]
+  },
+  "standingSummary": "2nd in AL East"
+ }
+}

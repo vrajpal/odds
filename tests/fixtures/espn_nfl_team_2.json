@@ -1,0 +1,14 @@
+{
+ "team": {
+  "id": "2",
+  "displayName": "Buffalo Bills",
+  "record": {
+   "items": [
+    {
+     "summary": "0-0"
+    }
+   ]
+  },
+  "standingSummary": null
+ }
+}

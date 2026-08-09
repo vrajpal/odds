@@ -1,0 +1,83 @@
+{
+ "results": {
+  "stats": {
+   "categories": [
+    {
+     "name": "batting",
+     "stats": [
+      {
+       "name": "homeRuns",
+       "displayValue": "166",
+       "value": 166.0
+      },
+      {
+       "name": "stolenBases",
+       "displayValue": "111",
+       "value": 111.0
+      },
+      {
+       "name": "avg",
+       "displayValue": ".231",
+       "value": 0.23104693
+      },
+      {
+       "name": "runs",
+       "displayValue": "530",
+       "value": 530.0
+      },
+      {
+       "name": "onBasePct",
+       "displayValue": ".310",
+       "value": 0.31033692
+      },
+      {
+       "name": "slugAvg",
+       "displayValue": ".412",
+       "value": 0.41206807
+      },
+      {
+       "name": "OPS",
+       "displayValue": ".722",
+       "value": 0.72240496
+      }
+     ]
+    },
+    {
+     "name": "pitching",
+     "stats": [
+      {
+       "name": "qualityStarts",
+       "displayValue": "47",
+       "value": 47.0
+      },
+      {
+       "name": "strikeoutsPerNineInnings",
+       "displayValue": "9.1",
+       "value": 9.054563
+      },
+      {
+       "name": "WHIP",
+       "displayValue": "1.18",
+       "value": 1.1841098
+      },
+      {
+       "name": "ERA",
+       "displayValue": "3.33",
+       "value": 3.3254626
+      },
+      {
+       "name": "opponentAvg",
+       "displayValue": ".226",
+       "value": 0.22590594
+      },
+      {
+       "name": "strikeoutsPerNineInnings",
+       "displayValue": "9.1",
+       "value": 9.054563
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
