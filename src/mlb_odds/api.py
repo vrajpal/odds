@@ -6,7 +6,7 @@ sport's own database (D-019: one file per sport)."""
 import logging
 import os
 import sqlite3
-from datetime import datetime, time, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 from pathlib import Path
 from time import monotonic
 from typing import Literal
@@ -15,9 +15,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from mlb_odds import valuation
 from mlb_odds.client import OddsClient
 from mlb_odds.models import Quote, Sport
 from mlb_odds.providers.espn import ESPN
+from mlb_odds.storage import Storage
 
 logger = logging.getLogger(__name__)
 
@@ -48,15 +50,16 @@ def _local_tz() -> tzinfo:
     return tz
 
 
-def _local_day_window(tz: tzinfo) -> tuple[datetime, datetime]:
-    """Half-open UTC [start, end) instants bounding the current local day.
+def _local_day_window(tz: tzinfo, on: date | None = None) -> tuple[datetime, datetime]:
+    """Half-open UTC [start, end) instants bounding one local day (default
+    today).
 
     The board is a local-day view, but start_time is stored UTC, so a UTC
     calendar-date filter is the wrong question: a 10pm PDT first pitch is the
     next day in UTC and would drop out of the board entirely.
     """
-    today = datetime.now(tz).date()
-    start = datetime.combine(today, time.min, tzinfo=tz)
+    day = on or datetime.now(tz).date()
+    start = datetime.combine(day, time.min, tzinfo=tz)
     return start, start + timedelta(days=1)
 
 
@@ -211,6 +214,170 @@ def _fmt_total(quotes: list[Quote]) -> str:
     if over is None or over.line is None:
         return "-"
     return f"{over.line:.1f} (o{over.price:+d})"
+
+
+class BestPriceOut(BaseModel):
+    book: str
+    price: int
+    ev: float  # vs the consensus fair probability; positive = value
+
+
+class MoneylineOut(BaseModel):
+    consensus_prob: float | None  # devigged median home win probability
+    open_prob: float | None  # consensus at the first stored snapshot
+    drift: float | None  # consensus_prob - open_prob
+    model_prob: float | None  # market-implied strength model (D-030)
+    model_edge: float | None  # model_prob - consensus_prob
+    best_home: BestPriceOut | None
+    best_away: BestPriceOut | None
+    books: dict[str, dict[str, float | int]]  # book -> {home, away, prob}
+
+
+class MarketQuoteOut(BaseModel):
+    line: float | None
+    home: int | None = None
+    away: int | None = None
+    over: int | None = None
+    under: int | None = None
+
+
+class DashboardGameOut(BaseModel):
+    game_id: str
+    away_team: str
+    home_team: str
+    start_time: str
+    moneyline: MoneylineOut
+    run_line: dict[str, MarketQuoteOut]  # per book
+    total: dict[str, MarketQuoteOut]
+
+
+class StrengthOut(BaseModel):
+    team: str
+    strength: float  # log-odds vs league average; >0 = better than average
+
+
+class DashboardOut(BaseModel):
+    date: str
+    sport: str
+    hfa: float | None
+    strengths: list[StrengthOut]  # best first; empty until enough games
+    games: list[DashboardGameOut]
+
+
+@app.get("/api/dashboard", response_model=DashboardOut)
+def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> DashboardOut:
+    """The betting dashboard (D-030): one local day's games with core
+    markets per book, devigged consensus, the market-implied model, and the
+    best-EV price on each side. `on` = YYYY-MM-DD, default today."""
+    tz = _local_tz()
+    try:
+        target = date.fromisoformat(on) if on else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"bad date {on!r}") from exc
+    try:
+        storage = Storage(_resolve_db(sport), read_only=True)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(status_code=503, detail="odds database unavailable") from exc
+    try:
+        window = _local_day_window(tz, target)
+        games = storage.games(window=window)
+        fitted = valuation.implied_strengths(storage)
+        strengths, hfa = fitted if fitted else ({}, None)
+        # latest_odds returns one GameOdds per (game, provider); merge quotes.
+        merged: dict[str, list[Quote]] = {}
+        for go in storage.latest_odds(window=window):
+            merged.setdefault(go.game.game_id, []).extend(go.quotes)
+
+        out_games = []
+        for game in games:
+            ticks = valuation.moneyline_history(storage, game.game_id)
+            pairs = valuation.book_probs(ticks)
+            fair = valuation.consensus_prob(pairs)
+            open_prob = (
+                valuation.consensus_prob(
+                    valuation.book_probs(ticks, asof=ticks[0].fetched_at)
+                )
+                if ticks
+                else None
+            )
+            model_prob = (
+                valuation.model_home_prob(strengths, hfa, game.home_team, game.away_team)
+                if hfa is not None
+                else None
+            )
+            best_home = best_away = None
+            if fair is not None:
+                bh, ba = valuation.best_prices(pairs, fair)
+                if bh:
+                    best_home = BestPriceOut(book=bh.book, price=bh.price, ev=bh.ev)
+                if ba:
+                    best_away = BestPriceOut(book=ba.book, price=ba.price, ev=ba.ev)
+
+            run_line: dict[str, MarketQuoteOut] = {}
+            total: dict[str, MarketQuoteOut] = {}
+            for q in merged.get(game.game_id, []):
+                if q.market == "run_line" and q.line is not None:
+                    entry = run_line.setdefault(q.book, MarketQuoteOut(line=None))
+                    if q.outcome == "home":
+                        entry.line = q.line
+                        entry.home = q.price
+                    elif q.outcome == "away":
+                        entry.away = q.price
+                elif q.market == "total" and q.line is not None:
+                    entry = total.setdefault(q.book, MarketQuoteOut(line=q.line))
+                    if q.outcome == "over":
+                        entry.over = q.price
+                    elif q.outcome == "under":
+                        entry.under = q.price
+
+            out_games.append(
+                DashboardGameOut(
+                    game_id=game.game_id,
+                    away_team=game.away_team,
+                    home_team=game.home_team,
+                    start_time=game.start_time.astimezone(tz).isoformat(),
+                    moneyline=MoneylineOut(
+                        consensus_prob=fair,
+                        open_prob=open_prob,
+                        drift=(
+                            round(fair - open_prob, 4)
+                            if fair is not None and open_prob is not None
+                            else None
+                        ),
+                        model_prob=model_prob,
+                        model_edge=(
+                            round(model_prob - fair, 4)
+                            if model_prob is not None and fair is not None
+                            else None
+                        ),
+                        best_home=best_home,
+                        best_away=best_away,
+                        books={
+                            book: {
+                                "home": t.home_price,
+                                "away": t.away_price,
+                                "prob": round(t.home_prob, 4),
+                            }
+                            for book, t in sorted(pairs.items())
+                        },
+                    ),
+                    run_line=run_line,
+                    total=total,
+                )
+            )
+    finally:
+        storage.close()
+    day = target or datetime.now(tz).date()
+    return DashboardOut(
+        date=day.isoformat(),
+        sport=sport,
+        hfa=hfa,
+        strengths=[
+            StrengthOut(team=t, strength=v)
+            for t, v in sorted(strengths.items(), key=lambda kv: -kv[1])
+        ],
+        games=sorted(out_games, key=lambda g: (g.start_time, g.game_id)),
+    )
 
 
 # Manual refresh (D-029): the one deliberate exception to "the API never

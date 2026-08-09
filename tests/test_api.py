@@ -341,3 +341,97 @@ class TestManualRefresh:
 
     def test_refresh_rejects_unknown_sport(self, espn_stub):
         assert espn_stub.post("/api/refresh", params={"sport": "nhl"}).status_code == 422
+
+
+class TestDashboard:
+    """GET /api/dashboard (D-030): day board with devigged consensus, the
+    strength model, and best-EV prices."""
+
+    @pytest.fixture
+    def seeded(self, tmp_path, monkeypatch):
+        from mlb_odds.models import Quote as Q
+
+        def ml(book, h, a):
+            return [
+                Q(book=book, market="moneyline", outcome="home", price=h),
+                Q(book=book, market="moneyline", outcome="away", price=a),
+            ]
+
+        db = tmp_path / "odds.sqlite"
+        storage = Storage(db)
+        # Ten past games across four teams: enough for the strength fit.
+        teams = ["NYY", "BOS", "TB", "BAL"]
+        t = datetime(2026, 7, 20, 23, 0, tzinfo=UTC)
+        for i in range(10):
+            home, away = teams[i % 4], teams[(i + 1) % 4]
+            storage.store([make_game_odds(
+                away=away, home=home, start_time=t,
+                fetched_at=t - timedelta(hours=8),
+                quotes=ml("draftkings", -140, 120),
+            )])
+            t += timedelta(hours=27)
+        # Today's game: two books, one clearly better priced per side, plus
+        # run line and total.
+        local_noon = datetime.now().astimezone().replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
+        today_quotes = (
+            ml("draftkings", -150, 130)
+            + ml("fanduel", -140, 125)
+            + [
+                Q(book="draftkings", market="run_line", outcome="home", line=-1.5, price=105),
+                Q(book="draftkings", market="run_line", outcome="away", line=1.5, price=-125),
+                Q(book="draftkings", market="total", outcome="over", line=8.5, price=-110),
+                Q(book="draftkings", market="total", outcome="under", line=8.5, price=-110),
+            ]
+        )
+        go = make_game_odds(
+            away="BOS", home="NYY", start_time=local_noon.astimezone(UTC),
+            fetched_at=datetime.now(UTC) - timedelta(hours=2), quotes=today_quotes,
+        )
+        storage.store([go])
+        storage.close()
+        monkeypatch.setenv("MLB_ODDS_DB", str(db))
+        return {"game_id": go.game.game_id, "date": local_noon.date().isoformat()}
+
+    @pytest.fixture
+    def dash_client(self, seeded):
+        return TestClient(api.app, raise_server_exceptions=False)
+
+    def test_dashboard_today_valuation(self, dash_client, seeded):
+        body = dash_client.get("/api/dashboard").json()
+        assert body["date"] == seeded["date"]
+        assert body["hfa"] is not None
+        assert len(body["strengths"]) == 4
+        (game,) = [g for g in body["games"] if g["game_id"] == seeded["game_id"]]
+
+        ml = game["moneyline"]
+        assert 0.5 < ml["consensus_prob"] < 0.62  # home favorite, devigged
+        assert ml["model_prob"] is not None
+        assert ml["model_edge"] == pytest.approx(
+            ml["model_prob"] - ml["consensus_prob"], abs=1e-3
+        )
+        # fanduel offers the better price on both sides here.
+        assert ml["best_home"]["book"] == "fanduel"
+        assert ml["best_away"]["book"] == "draftkings"  # +130 beats +125
+        assert set(ml["books"]) == {"draftkings", "fanduel"}
+
+        assert game["run_line"]["draftkings"]["line"] == -1.5
+        assert game["run_line"]["draftkings"]["away"] == -125
+        assert game["total"]["draftkings"]["line"] == 8.5
+        assert game["total"]["draftkings"]["over"] == -110
+
+    def test_dashboard_specific_past_day(self, dash_client):
+        body = dash_client.get("/api/dashboard", params={"on": "2026-07-20"}).json()
+        assert body["date"] == "2026-07-20"
+        assert len(body["games"]) >= 1
+        # Past games have moneyline data but no run line stored.
+        assert body["games"][0]["moneyline"]["consensus_prob"] is not None
+
+    def test_dashboard_empty_day_and_bad_date(self, dash_client):
+        assert dash_client.get(
+            "/api/dashboard", params={"on": "2026-01-01"}
+        ).json()["games"] == []
+        assert dash_client.get(
+            "/api/dashboard", params={"on": "not-a-date"}
+        ).status_code == 422

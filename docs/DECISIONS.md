@@ -494,3 +494,27 @@ DB — survives intact:
    no-provider stance.
 The write-mode DB open (create/migrate allowed) is acceptable for the same
 reason as the CLI's: the path comes from server-side configuration only.
+
+## D-030 — MLB betting dashboard: probability-space valuation (2026-08-09)
+The MLB analog of the NFL edge machinery works in probability space because
+MLB's core market is the moneyline (run lines are ~always ±1.5; only prices
+move). valuation.py: American→prob, multiplicative pair devig (a book's two
+prices normalized to sum to 1 — half-quoted pairs are dropped, they devig to
+garbage), consensus = median devigged home prob across books with the same
+carry-forward semantics as the spread math (D-020), and per-price EV =
+p_fair × decimal − 1 against that consensus.
+
+Team strengths are the log-odds twin of D-025's point ratings: one equation
+per stored game, logit(p_home) = s_home − s_away + hfa, ridge least squares,
+mean-centered; model_edge on the dashboard = model prob − consensus prob.
+Recovered exactly (ordering, HFA within 0.06) from a synthetic vigged league
+in tests.
+
+GET /api/dashboard?sport&on=YYYY-MM-DD serves any local day (the "today"
+window generalized to a date param): per-book ML pairs with devigged probs,
+best-EV price per side, consensus/model/edge/drift, and latest run line +
+total per book. UI: a Dashboard tab (now the default) with a date navigator,
+EV-highlighted best prices, and click-through to the existing LineMovement
+charts; market-implied strengths table collapsible below. Works for NFL too
+(the math is sport-agnostic) — spread-based tools remain the primary NFL
+surface.

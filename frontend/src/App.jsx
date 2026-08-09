@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import TodayBoard from './components/TodayBoard'
+import Dashboard from './components/Dashboard'
 import GameHistory from './components/GameHistory'
 import './App.css'
 
 function App() {
-  const [activeTab, setActiveTab] = useState('today')
+  const [activeTab, setActiveTab] = useState('dashboard')
   const [selectedGame, setSelectedGame] = useState(null)
   const [sport, setSport] = useState('mlb')
 
@@ -31,6 +32,12 @@ function App() {
         </nav>
         <nav className="nav">
           <button
+            className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('dashboard'); setSelectedGame(null) }}
+          >
+            Dashboard
+          </button>
+          <button
             className={`nav-btn ${activeTab === 'today' ? 'active' : ''}`}
             onClick={() => { setActiveTab('today'); setSelectedGame(null) }}
           >
@@ -46,6 +53,12 @@ function App() {
       </header>
 
       <main className="main">
+        {activeTab === 'dashboard' && (
+          <Dashboard sport={sport} onSelectGame={(gameId) => {
+            setSelectedGame(gameId)
+            setActiveTab('history')
+          }} />
+        )}
         {activeTab === 'today' && (
           <TodayBoard sport={sport} onSelectGame={(gameId) => {
             setSelectedGame(gameId)
