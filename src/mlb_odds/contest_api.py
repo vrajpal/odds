@@ -857,6 +857,8 @@ class SpreadHistoryOut(BaseModel):
     deadline: str | None
     contest_line: float | None
     line_entered_at: str | None
+    model_line: float | None  # current power-rating prediction (C4.4) — a
+    # reference value, not a series: historical rating fits are not stored
     books: list[SpreadTickOut]  # every stored home-spread observation
     consensus: list[ConsensusPointOut]  # carry-forward median at each snapshot time
 
@@ -876,8 +878,14 @@ def get_spread_history(game_id: str) -> SpreadHistoryOut:
         if game is None:
             raise HTTPException(status_code=404, detail=f"unknown game {game_id}")
         ticks = contest.spread_history(odds, game_id)
+        fitted = contest.power_ratings(odds)
     finally:
         odds.close()
+    model_line = None
+    if fitted is not None:
+        model_line = contest.predicted_home_spread(
+            fitted[0], fitted[1], game.home_team, game.away_team
+        )
 
     week = contest.week_of(game.start_time)
     line = None
@@ -904,6 +912,7 @@ def get_spread_history(game_id: str) -> SpreadHistoryOut:
         deadline=_pt(contest.pick_deadline(week)) if week else None,
         contest_line=line.home_spread if line else None,
         line_entered_at=_pt(line.entered_at) if line else None,
+        model_line=model_line,
         books=[
             SpreadTickOut(t=_pt(t.fetched_at), book=t.book, spread=t.home_spread)
             for t in ticks

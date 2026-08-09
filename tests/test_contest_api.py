@@ -175,6 +175,7 @@ class TestSpreadHistory:
         h = client.get(f"/api/contest/games/{dbs['game_id']}/spread-history").json()
         assert h["week"] == 1
         assert h["contest_line"] is None
+        assert h["model_line"] is None  # one stored game: no rating fit
         assert [b["book"] for b in h["books"]].count("circa") == 2  # two snapshots
         # Consensus at T0: median(-2.5, -3.0); at T1: median(-3.5, -4.0).
         assert [p["spread"] for p in h["consensus"]] == [-2.75, -3.75]

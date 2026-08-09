@@ -317,6 +317,7 @@ function renderChart(h) {
   const x0 = Math.min(...times), x1 = Math.max(Math.max(...times), Math.min(now, +new Date(h.deadline || now)));
   const values = [...h.consensus.map(p => p.spread), ...h.books.map(b => b.spread)];
   if (h.contest_line != null) values.push(h.contest_line);
+  if (h.model_line != null) values.push(h.model_line);
   let y0 = Math.min(...values) - 0.5, y1 = Math.max(...values) + 0.5;
   const X = t => M.l + (x1 === x0 ? pw / 2 : (t - x0) / (x1 - x0) * pw);
   const Y = v => M.t + (y1 - v) / (y1 - y0) * ph;
@@ -339,6 +340,12 @@ function renderChart(h) {
   // book ticks
   const dots = h.books.map(b =>
     `<circle cx="${X(+new Date(b.t))}" cy="${Y(b.spread)}" r="3" fill="#5f6a86"/>`).join("");
+  // model reference: dotted cyan (validated vs the trio; identity also via
+  // dash pattern + label, never color alone)
+  const model = h.model_line == null ? "" :
+    `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(h.model_line)}" y2="${Y(h.model_line)}"
+       stroke="#4dd0e1" stroke-width="2" stroke-dasharray="2 5"/>
+     <text x="${M.l + 4}" y="${Y(h.model_line) - 5}" font-size="11" fill="#4dd0e1">model ${fmtSpread(h.model_line)}</text>`;
   // circa reference
   const circa = h.contest_line == null ? "" :
     `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(h.contest_line)}" y2="${Y(h.contest_line)}"
@@ -356,9 +363,10 @@ function renderChart(h) {
       <span><span class="swatch" style="border-color:#5b9dff"></span>market consensus (home spread)</span>
       <span><span class="dotswatch"></span>individual books</span>
       ${h.contest_line != null ? '<span><span class="swatch" style="border-color:#ffb454;border-bottom-style:dashed"></span>circa contest line</span>' : ''}
+      ${h.model_line != null ? '<span><span class="swatch" style="border-color:#4dd0e1;border-bottom-style:dotted"></span>model prediction</span>' : ''}
     </div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block">
-      ${grid}${dots}
+      ${grid}${model}${dots}
       <path d="${d}" fill="none" stroke="#5b9dff" stroke-width="2" stroke-linejoin="round"/>
       ${circa}${lastLabel}${xlabels}
       <line class="cursor" x1="0" x2="0" y1="${M.t}" y2="${H - M.b}" stroke="#39466b" stroke-width="1" visibility="hidden"/>
