@@ -45,6 +45,9 @@ services:
     environment:
       # Ordered: position defines the weekly captain rotation.
       CONTEST_MEMBERS: ${CONTEST_MEMBERS:-player1,player2,player3}
+      # Access email -> member identity map (D-026). Interpolated from .env —
+      # a variable in .env reaches the container ONLY via this declaration.
+      CONTEST_MEMBER_EMAILS: ${CONTEST_MEMBER_EMAILS:-}
     network_mode: service:tailscale
     depends_on:
       tailscale:
