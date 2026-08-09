@@ -92,7 +92,18 @@
     input.spread{width:64px; min-height:30px}
     .stat .v{font-size:18px}
   }
+
+  /* shared team lens (lens.js) */
+  .lens-box { background:#131a29; border:1px solid var(--line); border-radius:8px;
+              padding:12px 14px; margin:10px 0; }
+  .lens-head { display:flex; justify-content:center; gap:16px; margin-bottom:8px;
+               flex-wrap:wrap; text-align:center; font-size:14px; }
+  .lens-grid { margin:0 auto; border-collapse:collapse; }
+  .lens-grid td { padding:3px 12px; text-align:center; font-size:13px;
+                  border-bottom:1px solid #1b2438; }
+  .lens-mid { font-size:11px; text-transform:uppercase; }
 </style>
+<script src="/lens.js"></script>
 </head>
 <body>
 <header>
@@ -328,6 +339,12 @@ async function toggleChart(gid) {
   row.appendChild(cell);
   anchor.after(row);
   wireChartHover(cell, h);
+  // Team lens loads after the chart paints (D-034)
+  lensHtml(`/api/contest/games/${gid}/matchup`).then(html => {
+    const box = document.createElement("div");
+    box.innerHTML = html;
+    cell.insertBefore(box, cell.firstChild);
+  });
 }
 
 function renderChart(h) {

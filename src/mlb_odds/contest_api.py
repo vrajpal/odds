@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from mlb_odds import contest
+from mlb_odds import contest, matchup
 from mlb_odds.providers.base import ProviderError
 from mlb_odds.providers.espn import ESPN
 from mlb_odds.storage import Storage
@@ -1073,6 +1073,32 @@ def whoami(request: Request) -> WhoamiOut:
     if email:
         member = _member_emails().get(email.strip().lower())
     return WhoamiOut(email=email, member=member)
+
+
+@app.get("/api/contest/games/{game_id}/matchup")
+def get_matchup(game_id: str) -> dict[str, object]:
+    """Head-to-head ESPN team lens for a contest game (D-034) — the same
+    shared implementation as the odds app, NFL database."""
+    try:
+        game_date = date.fromisoformat(game_id[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"malformed game_id {game_id!r}") from exc
+    odds = _open_odds()
+    try:
+        game = next((g for g in odds.games(game_date) if g.game_id == game_id), None)
+    finally:
+        odds.close()
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"unknown game {game_id}")
+    try:
+        payload = matchup.matchup_payload(
+            ESPN(sport="nfl"), "nfl", game.away_team, game.home_team
+        )
+    except ProviderError as exc:
+        raise HTTPException(status_code=502, detail=f"ESPN fetch failed: {exc}") from exc
+    if payload is None:
+        raise HTTPException(status_code=502, detail="ESPN team id missing")
+    return {"game_id": game_id, **payload}
 
 
 @app.get("/api/contest/health")

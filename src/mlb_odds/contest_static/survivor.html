@@ -70,7 +70,18 @@
   .sev-warning { color:var(--warn); font-weight:600; }
   .sev-fatal { color:var(--bad); font-weight:700; }
   @media (max-width:720px){ main{padding:10px} th,td{padding:5px 6px} }
+
+  /* shared team lens (lens.js) */
+  .lens-box { background:#131a29; border:1px solid var(--line); border-radius:8px;
+              padding:12px 14px; margin:10px 0; }
+  .lens-head { display:flex; justify-content:center; gap:16px; margin-bottom:8px;
+               flex-wrap:wrap; text-align:center; font-size:14px; }
+  .lens-grid { margin:0 auto; border-collapse:collapse; }
+  .lens-grid td { padding:3px 12px; text-align:center; font-size:13px;
+                  border-bottom:1px solid #1b2438; }
+  .lens-mid { font-size:11px; text-transform:uppercase; }
 </style>
+<script src="/lens.js"></script>
 </head>
 <body>
 <header>
@@ -285,8 +296,8 @@ function renderBoard() {
       g.early_kickoff ? '<span class="tag early">⏱</span>' : "",
       g.divisional ? '<span class="tag majority">DIV</span>' : "",
     ].filter(Boolean).join(" ");
-    return `<tr>
-      <td>${teamCell(g.away_team, g.away_used, g.away_win_prob)} @ ${teamCell(g.home_team, g.home_used, g.home_win_prob)}</td>
+    return `<tr data-row="${g.game_id}">
+      <td><span class="matchup-link" data-lens="${g.game_id}" title="team stats">${teamCell(g.away_team, g.away_used, g.away_win_prob)} @ ${teamCell(g.home_team, g.home_used, g.home_win_prob)}</span></td>
       <td class="dim">${kickoff(g.start_time)}</td>
       <td>${tags}</td>
       <td class="num">${fmtSpread(g.consensus)}</td>
@@ -295,6 +306,23 @@ function renderBoard() {
       <td class="dim">${g.away_used || g.home_used ? "partially burned" : "open"}</td>
     </tr>`;
   }).join("");
+  tb.querySelectorAll("[data-lens]").forEach(el => el.onclick = () =>
+    toggleLens(el.dataset.lens, el.closest("tr")));
+}
+
+async function toggleLens(gid, anchor) {
+  const existing = document.querySelector(`tr.lens-row[data-lens-for="${gid}"]`);
+  if (existing) { existing.remove(); return; }
+  document.querySelectorAll("tr.lens-row").forEach(r => r.remove());
+  const row = document.createElement("tr");
+  row.className = "lens-row";
+  row.dataset.lensFor = gid;
+  const cell = document.createElement("td");
+  cell.colSpan = anchor.children.length;
+  cell.innerHTML = '<div class="msg dim">loading team stats…</div>';
+  row.appendChild(cell);
+  anchor.after(row);
+  cell.innerHTML = await lensHtml(`/api/contest/games/${gid}/matchup`);
 }
 
 function renderPropose() {

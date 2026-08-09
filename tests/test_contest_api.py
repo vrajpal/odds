@@ -2,6 +2,7 @@
 contest facts (deadline instants, week_of(now)), never the wall clock's side
 of them, so the suite passes before, during, and after the season."""
 
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -221,3 +222,66 @@ class TestStatsEndpoints:
         stats = client.get("/api/contest/stats/members").json()
         assert [s["member"] for s in stats] == ["player1", "player2", "player3"]
         assert all(s["proposal_record"] == "0-0-0" for s in stats)
+
+
+class TestContestMatchupLens:
+    """Shared team lens on the contest app (D-034)."""
+
+    @pytest.fixture
+    def lens_client(self, dbs, monkeypatch):
+        import json as _json
+
+        import httpx as _httpx
+
+        from conftest import FIXTURES
+        from mlb_odds import contest_api as capi
+        from mlb_odds import matchup as matchup_mod
+        from mlb_odds.providers.espn import ESPN
+
+        def handler(request: _httpx.Request) -> _httpx.Response:
+            path = request.url.path
+            if path.endswith("/nfl/teams"):
+                payload = _json.loads((FIXTURES / "espn_nfl_teams.json").read_text())
+            elif path.endswith("/statistics"):
+                tid = path.split("/")[-2]
+                payload = _json.loads(
+                    (FIXTURES / f"espn_nfl_teamstats_{tid}.json").read_text()
+                )
+            else:
+                tid = path.split("/")[-1]
+                payload = _json.loads((FIXTURES / f"espn_nfl_team_{tid}.json").read_text())
+            return _httpx.Response(200, json=payload)
+
+        monkeypatch.setattr(
+            capi, "ESPN",
+            lambda sport="nfl": ESPN(sport=sport, transport=_httpx.MockTransport(handler)),
+        )
+        monkeypatch.setattr(matchup_mod, "_lens_cache", {})
+        monkeypatch.setattr(matchup_mod, "_ids_cache", {})
+
+        # Seed BUF @ KC (both teams have recorded stat fixtures: ids 2, 12).
+        db = os.environ["NFL_ODDS_DB"]
+        storage = Storage(db)
+        go = make_nfl_spread_odds(
+            {"circa": -3.0}, datetime(2026, 8, 1, tzinfo=UTC),
+            away="BUF", home="KC",
+            start_time=datetime(2026, 9, 13, 17, 0, tzinfo=UTC),
+        )
+        storage.store([go])
+        storage.close()
+        return TestClient(contest_api.app, raise_server_exceptions=False), go.game.game_id
+
+    def test_contest_matchup_lens(self, lens_client):
+        client, gid = lens_client
+        body = client.get(f"/api/contest/games/{gid}/matchup").json()
+        assert body["away_team"] == "BUF" and body["home_team"] == "KC"
+        labels = [r["label"] for r in body["rows"]]
+        assert "Points/G" in labels and "Sacks" in labels
+        for r in body["rows"]:
+            assert r["better"] in ("away", "home", None)
+
+    def test_contest_matchup_unknown_game_404(self, lens_client):
+        client, _ = lens_client
+        assert client.get(
+            "/api/contest/games/2026-09-13-XX-YY-1/matchup"
+        ).status_code == 404
