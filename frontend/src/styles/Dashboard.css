@@ -1,5 +1,6 @@
 .dashboard { max-width: 1200px; }
-.dash-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.dash-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+  flex-wrap: wrap; }
 .dash-controls button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
   border-radius: 6px; padding: 7px 12px; cursor: pointer; font-size: 14px; }
 .dash-controls input[type="date"] { background: #0f172a; color: #e2e8f0;
@@ -30,7 +31,26 @@
 .strengths { margin-top: 18px; }
 .strengths summary { cursor: pointer; color: #93c5fd; font-size: 14px; }
 
+/* Sticky matchup anchor: metrics scroll under it, context never leaves.
+   (Same pattern as the contest board.) */
+.dash-table th:nth-child(2), .dash-table td:nth-child(2) {
+  position: sticky; left: 0; background: #0b1120; z-index: 2; }
+.dash-table tbody tr:hover td:nth-child(2) { background: #16213a; }
+
 @media (max-width: 720px) {
   .dash-table { font-size: 13px; }
   .dash-table th, .dash-table td { padding: 6px 6px; }
+  .dash-controls input[type="date"] { flex: 1 1 120px; min-width: 0; }
+  .dash-controls .pull-btn { margin-left: 0; }
+  .dash-controls button { padding: 8px 10px; min-height: 36px; }
+  /* On a phone the first look should be matchup -> best prices -> model.
+     TIME compresses; matchup stays pinned while the rest scrolls. */
+  .dash-table th:first-child, .dash-table td:first-child {
+    font-size: 11px; padding-left: 4px; padding-right: 4px; }
+  .dash-legend { font-size: 12px; }
+}
+@media (max-width: 400px) {
+  .dash-table { font-size: 12px; }
+  .book { font-size: 10px; }
+  .ev { font-size: 10px; }
 }

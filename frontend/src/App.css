@@ -76,3 +76,10 @@
 .empty {
   color: #95a5a6;
 }
+
+@media (max-width: 720px) {
+  .header { padding: 12px 14px; }
+  .header h1 { font-size: 20px; margin-bottom: 8px; }
+  .nav-btn { padding: 8px 12px; min-height: 36px; }
+  .main { padding: 12px 10px; }
+}
