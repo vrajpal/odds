@@ -495,12 +495,14 @@ class TestMatchupLens:
                 payload = _json.loads((FIXTURES / f"espn_mlb_team_{tid}.json").read_text())
             return _httpx.Response(200, json=payload)
 
+        from mlb_odds import matchup as matchup_mod
+
         monkeypatch.setattr(
             api, "ESPN",
             lambda sport="mlb": ESPN(sport=sport, transport=_httpx.MockTransport(handler)),
         )
-        monkeypatch.setattr(api, "_matchup_cache", {})
-        monkeypatch.setattr(api, "_team_ids_ttl", {})
+        monkeypatch.setattr(matchup_mod, "_lens_cache", {})
+        monkeypatch.setattr(matchup_mod, "_ids_cache", {})
 
         # Seed a game whose teams match the recorded fixtures (BOS @ NYY).
         db = os.environ["MLB_ODDS_DB"]

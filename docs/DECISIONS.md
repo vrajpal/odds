@@ -591,6 +591,11 @@ lens is for human eyes). In-process TTL caches (1h stats, 24h team ids)
 keep a busy page to a few ESPN calls per hour. Works for both sports; the
 page keeps the Statcast scout card (MLB) and the LineMovement charts below.
 
+Amended same day: the lens moved to a shared module (matchup.py) so the
+contest app serves it too — GET /api/contest/games/{id}/matchup, rendered
+by a shared lens.js on both Circa pages: inside the Million board's
+expanded chart row, and via click-to-expand on the Survivor board.
+
 ## D-035 — Theme: OS preference + manual toggle via data-theme (2026-08-09)
 Dark mode was previously scattered `@media (prefers-color-scheme: dark)`
 blocks — correct default, but impossible to override from the page. All dark

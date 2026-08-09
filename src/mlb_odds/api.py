@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mlb_odds import valuation
+from mlb_odds import matchup, valuation
 from mlb_odds.client import OddsClient
 from mlb_odds.models import Quote, Sport
 from mlb_odds.providers.base import ProviderError
@@ -168,40 +168,11 @@ def get_game_history(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> dict
         client.close()
 
 
-# Matchup lens (D-034): live ESPN team stats, cached in-process so a busy
-# matchup page costs ESPN at most a few calls per hour, not per click.
-_MATCHUP_TTL = 3600.0
-_matchup_cache: dict[tuple[str, str], tuple[float, dict[str, object]]] = {}
-
-
-def _team_lens(espn: ESPN, sport: str, code: str, team_id: str) -> dict[str, object]:
-    from mlb_odds.providers.espn import MATCHUP_STATS
-
-    key = (sport, code)
-    hit = _matchup_cache.get(key)
-    if hit and monotonic() - hit[0] < _MATCHUP_TTL:
-        return hit[1]
-    stats = espn.fetch_team_statistics(team_id)
-    profile = espn.fetch_team_profile(team_id)
-    rows = {}
-    for category, name, label, higher in MATCHUP_STATS[sport]:
-        entry = stats.get((category, name))
-        rows[label] = {
-            "value": entry.get("value") if entry else None,
-            "display": entry.get("display") if entry else None,
-            "higher_is_better": higher,
-        }
-    lens: dict[str, object] = {"record": profile.get("record"),
-                               "standing": profile.get("standing"), "stats": rows}
-    _matchup_cache[key] = (monotonic(), lens)
-    return lens
-
-
 @app.get("/api/games/{game_id}/matchup")
 def get_matchup(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> dict[str, object]:
     """Head-to-head team lens for the matchup page (D-034): records,
     standings, and curated season stats for both teams from ESPN's free API,
-    with per-row better-side comparison."""
+    with per-row better-side comparison. Shared implementation: matchup.py."""
     try:
         game_date = date.fromisoformat(game_id[:10])
     except ValueError as exc:
@@ -216,61 +187,18 @@ def get_matchup(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> dict[str,
         storage.close()
     if game is None:
         raise HTTPException(status_code=404, detail=f"unknown game {game_id}")
-
-    espn = ESPN(sport=sport)
     try:
-        ids = _team_ids_cached(espn, sport)
-        away_id, home_id = ids.get(game.away_team), ids.get(game.home_team)
-        if away_id is None or home_id is None:
-            raise HTTPException(
-                status_code=502,
-                detail=f"ESPN id missing for {game.away_team} or {game.home_team}",
-            )
-        away = _team_lens(espn, sport, game.away_team, away_id)
-        home = _team_lens(espn, sport, game.home_team, home_id)
+        payload = matchup.matchup_payload(
+            ESPN(sport=sport), sport, game.away_team, game.home_team
+        )
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=f"ESPN fetch failed: {exc}") from exc
-
-    from mlb_odds.providers.espn import MATCHUP_STATS
-
-    away_stats = away["stats"] if isinstance(away["stats"], dict) else {}
-    home_stats = home["stats"] if isinstance(home["stats"], dict) else {}
-    rows = []
-    for _cat, _name, label, higher in MATCHUP_STATS[sport]:
-        a = away_stats.get(label, {})
-        h = home_stats.get(label, {})
-        better = None
-        av, hv = a.get("value"), h.get("value")
-        if isinstance(av, int | float) and isinstance(hv, int | float) and av != hv:
-            better = ("away" if av > hv else "home") if higher else ("away" if av < hv else "home")
-        rows.append({
-            "label": label,
-            "away": a.get("display"),
-            "home": h.get("display"),
-            "better": better,
-        })
-    return {
-        "game_id": game_id,
-        "away_team": game.away_team,
-        "home_team": game.home_team,
-        "away_record": away["record"],
-        "home_record": home["record"],
-        "away_standing": away["standing"],
-        "home_standing": home["standing"],
-        "rows": rows,
-    }
-
-
-_team_ids_ttl: dict[str, tuple[float, dict[str, str]]] = {}
-
-
-def _team_ids_cached(espn: ESPN, sport: str) -> dict[str, str]:
-    hit = _team_ids_ttl.get(sport)
-    if hit and monotonic() - hit[0] < 86400:
-        return hit[1]
-    ids = espn.fetch_team_ids()
-    _team_ids_ttl[sport] = (monotonic(), ids)
-    return ids
+    if payload is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"ESPN id missing for {game.away_team} or {game.home_team}",
+        )
+    return {"game_id": game_id, **payload}
 
 
 @app.get("/api/games/{game_id}/scout")
