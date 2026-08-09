@@ -26,6 +26,11 @@ docker compose run --rm nfl-collect     # seed NFL lines (3 credits)
 Existing databases can be seeded by copying them into `deploy/data/` before
 first start (`odds.sqlite`, `nfl-odds.sqlite`).
 
+**Updating a running deployment:** `git pull && docker compose build &&
+docker compose --profile public up -d`. The explicit `build` matters —
+`up -d --build` rebuilds only the services it starts, so the profile-gated
+one-shots (nfl-collect, nfl-results) otherwise keep running the old image.
+
 Season cadence (host crontab). Thu–Sat line polls ≈ 27 credits/week; the
 Sunday 9:55 AM PT poll captures true closing lines for CLV (D-024); results
 runs are free:
