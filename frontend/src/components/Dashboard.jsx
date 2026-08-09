@@ -115,9 +115,10 @@ function Dashboard({ sport, onSelectGame }) {
                     <td>{evBadge(ml.best_away)}</td>
                     <td>{evBadge(ml.best_home)}</td>
                     <td>{pct(ml.consensus_prob)}</td>
-                    <td title={sport === 'nfl'
+                    <td title={(sport === 'nfl'
                         ? `moneyline lens ${pct(ml.market_model_prob)} · spread lens ${pct(ml.spread_model_prob)}`
-                        : `market model ${pct(ml.market_model_prob)} · statcast ${pct(ml.statcast_prob)}`}>
+                        : `market model ${pct(ml.market_model_prob)} · statcast ${pct(ml.statcast_prob)}`)
+                        + (ml.projection_prob != null ? ` · projection ${pct(ml.projection_prob)} (${ml.projection_source})` : '')}>
                       {pct(ml.model_prob)}
                     </td>
                     {sport === 'nfl' && (

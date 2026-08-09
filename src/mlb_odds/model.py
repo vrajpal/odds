@@ -21,6 +21,12 @@ from __future__ import annotations
 import math
 
 NFL_MARGIN_SIGMA = 13.45  # empirical stdev of NFL margins vs the spread
+MLB_MARGIN_SIGMA = 3.9  # empirical stdev of MLB run margins
+
+# Blend priors (D-036/D-037) — renormalized over present lenses; the
+# projections accuracy ledger is the path to fitting these from evidence.
+NFL_WEIGHTS = {"moneyline": 0.35, "spread": 0.35, "projection": 0.30}
+MLB_WEIGHTS = {"market": 0.49, "statcast": 0.21, "projection": 0.30}
 
 
 def margin_to_prob(margin: float, sigma: float = NFL_MARGIN_SIGMA) -> float:
@@ -49,12 +55,15 @@ def blend_logits(components: list[float | None], weights: list[float]) -> float 
 
 
 def nfl_model_prob(
-    ml_prob: float | None, predicted_home_spread: float | None
+    ml_prob: float | None,
+    predicted_home_spread: float | None,
+    projection_prob: float | None = None,
 ) -> tuple[float | None, float | None]:
     """(blended home win prob, spread-lens prob) for an NFL game.
 
     predicted_home_spread uses the package convention (negative = home
-    favored); the margin is its negation.
+    favored); the margin is its negation. The projection lens (D-037) is the
+    first non-market input — weights renormalize when it is absent.
     """
     spread_prob = (
         margin_to_prob(-predicted_home_spread)
@@ -62,6 +71,23 @@ def nfl_model_prob(
         else None
     )
     blended = blend_logits(
-        [prob_to_logit(ml_prob), prob_to_logit(spread_prob)], [0.5, 0.5]
+        [prob_to_logit(ml_prob), prob_to_logit(spread_prob),
+         prob_to_logit(projection_prob)],
+        [NFL_WEIGHTS["moneyline"], NFL_WEIGHTS["spread"], NFL_WEIGHTS["projection"]],
     )
     return (logit_to_prob(blended) if blended is not None else None), spread_prob
+
+
+def mlb_model_prob(
+    market_prob: float | None,
+    statcast_logit: float | None,
+    projection_prob: float | None = None,
+) -> float | None:
+    """MLB blend (D-032 lenses + the D-037 projection lens), renormalized
+    over present components. Without a projection this reproduces the D-032
+    70/30 market/statcast split exactly (0.5/0.2 renormalized)."""
+    blended = blend_logits(
+        [prob_to_logit(market_prob), statcast_logit, prob_to_logit(projection_prob)],
+        [MLB_WEIGHTS["market"], MLB_WEIGHTS["statcast"], MLB_WEIGHTS["projection"]],
+    )
+    return logit_to_prob(blended) if blended is not None else None

@@ -151,6 +151,11 @@ environment, so keep the key in a `.env` next to the project and `cd` there firs
 0 10,13,16,19,22 * * *  cd /home/me/odds && /home/me/.local/bin/uv run mlb-odds collect --once >> collect.log 2>&1
 ```
 
+**Projections** (D-037): export a FanDuel Research CSV, then
+`mlb-odds projections file.csv --sport nfl`. Imports append timestamped
+snapshots; `GET /api/projections/report` scores sources against results
+(Brier/hit rate). The latest snapshot joins the dashboard model blend.
+
 ## Web API & UI
 
 Run the FastAPI server:

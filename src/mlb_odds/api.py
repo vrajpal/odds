@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mlb_odds import contest, matchup, model, valuation
+from mlb_odds import contest, matchup, model, projections, valuation
 from mlb_odds.client import OddsClient
 from mlb_odds.models import Quote, Sport
 from mlb_odds.providers.base import ProviderError
@@ -292,6 +292,8 @@ class MoneylineOut(BaseModel):
     market_model_prob: float | None  # moneyline-implied strength model (D-030)
     statcast_prob: float | None  # Statcast-only term (D-032, MLB)
     spread_model_prob: float | None  # spread-ratings lens (D-036, NFL)
+    projection_prob: float | None  # third-party projection lens (D-037)
+    projection_source: str | None
     model_prob: float | None  # the sport's blend (D-032 MLB / D-036 NFL)
     model_edge: float | None  # model_prob - consensus_prob
     best_home: BestPriceOut | None
@@ -389,6 +391,14 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                 )
                 if sc_logit is not None:
                     statcast_prob = round(1.0 / (1.0 + math.exp(-sc_logit)), 4)
+            proj = storage.latest_projection(game.game_id)
+            proj_prob = None
+            proj_source = None
+            if proj is not None:
+                proj_source = proj[0]
+                proj_prob = projections.projection_prob(
+                    proj[2], proj[3], proj[4], sport
+                )
             spread_model_prob = None
             predicted_margin = None
             if sport == "nfl":
@@ -400,10 +410,12 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                 if predicted is not None:
                     predicted_margin = round(-predicted, 1)
                 model_prob, spread_model_prob = model.nfl_model_prob(
-                    market_model_prob, predicted
+                    market_model_prob, predicted, proj_prob
                 )
             else:
-                model_prob = valuation.blend_probs(market_model_prob, sc_logit)
+                model_prob = model.mlb_model_prob(
+                    market_model_prob, sc_logit, proj_prob
+                )
             best_home = best_away = None
             if fair is not None:
                 bh, ba = valuation.best_prices(pairs, fair)
@@ -454,6 +466,8 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                         market_model_prob=market_model_prob,
                         statcast_prob=statcast_prob,
                         spread_model_prob=spread_model_prob,
+                        projection_prob=proj_prob,
+                        projection_source=proj_source,
                         drift=(
                             round(fair - open_prob, 4)
                             if fair is not None and open_prob is not None
@@ -525,6 +539,41 @@ def refresh(sport: Literal["mlb", "nfl"] = "mlb") -> dict[str, object]:
     rows = sum(len(go.quotes) for go in results)
     logger.info("manual refresh (%s): %d games, %d rows", sport, len(results), rows)
     return {"sport": sport, "games": len(results), "rows": rows, "errors": errors}
+
+
+@app.get("/api/projections/report")
+def projections_report(
+    sport: Literal["mlb", "nfl"] = "mlb", source: str | None = None
+) -> dict[str, object]:
+    """The accuracy ledger (D-037): Brier score and hit rate of the latest
+    pre-kickoff projection per finished game, against stored results. This is
+    the evidence that will eventually set the projection lens's blend weight."""
+    try:
+        storage = Storage(_resolve_db(sport), read_only=True)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(status_code=503, detail="odds database unavailable") from exc
+    try:
+        raw = storage.projection_outcomes(source=source)
+    finally:
+        storage.close()
+    scored: list[tuple[float, int]] = []
+    hits = 0
+    for _gid, prob, p_away, p_home, home_score, away_score in raw:
+        p = projections.projection_prob(prob, p_away, p_home, sport)
+        if p is None:
+            continue
+        home_won = 1 if home_score > away_score else 0
+        scored.append((p, home_won))
+        if (p >= 0.5) == (home_won == 1):
+            hits += 1
+    return {
+        "sport": sport,
+        "source": source,
+        "n": len(scored),
+        "brier": projections.brier(scored),
+        "hit_rate": round(hits / len(scored), 3) if scored else None,
+        "note": "brier 0.25 = coin flip; lower is better",
+    }
 
 
 @app.get("/api/health")
