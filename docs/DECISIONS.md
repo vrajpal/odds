@@ -537,3 +537,21 @@ probables/statcast_team/statcast_pitcher; Savant's AZ maps to ARI, names
 flip from "Last, First"). GET /api/games/{id}/scout joins it all; the UI
 renders a matchup card above the movement charts. statsapi full names reuse
 the existing MLB name map ("statsapi" provider key in teams.py).
+
+## D-032 — Statcast blended into the MLB model (2026-08-09)
+The dashboard's model probability is now a logit-space blend: 70% the
+market-implied strength model (D-030), 30% an independent Statcast term.
+The Statcast term converts matchup quality to a home-win logit through
+literature anchors, not fitted constants: each side's offense = team xwOBA
+deviation from the PA-weighted league mean + 0.6 (a starter's typical
+innings share) x the opposing probable's xwOBA-against deviation (missing
+probable = league-average, i.e. zero); xwOBA gap -> runs via linear weights
+(/1.15 x ~38 PA); runs -> logit via the Pythagorean slope (~0.42/run);
+market-fitted HFA reused. Degrades gracefully: no probables -> batting-only,
+no Statcast -> pure market, no market -> pure Statcast.
+
+The 70/30 weight is an explicit PRIOR, not a fit — documented as such in
+the constants. The calibration path ships alongside: a daily free MLB
+finals sweep (mlb-results service + cron) accumulates outcomes so the
+weight and anchors can be backtested once a real sample exists. UI shows
+the blend as the Model column with components on hover.

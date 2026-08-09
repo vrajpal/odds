@@ -107,6 +107,15 @@ services:
     volumes:
       - ./data:/data
 
+  mlb-results:
+    build: ..
+    profiles: [collect]
+    # Free finals sweep: accumulates the outcomes that will calibrate the
+    # Statcast blend weight (D-032).
+    command: mlb-odds results --sport mlb
+    volumes:
+      - ./data:/data
+
   # Public access for non-tailnet friends (D-026): Cloudflare Tunnel with a
   # Cloudflare Access policy in front (email OTP allowlist). Outbound-only —
   # still no published ports anywhere. Opt-in AFTER the Access policy exists:

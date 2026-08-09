@@ -158,3 +158,84 @@ def test_implied_strengths_recover_synthetic_league(tmp_path):
 def test_implied_strengths_need_enough_games(odds_db):
     odds_db.store([ml_odds({"draftkings": (-150, 130)}, T0)])
     assert implied_strengths(odds_db) is None
+
+
+# --- Statcast blend (D-032) ---
+
+
+def test_league_xwoba_pa_weighted():
+    from mlb_odds.valuation import league_xwoba
+
+    assert league_xwoba([(4000, 0.320), (4000, 0.300)]) == pytest.approx(0.310)
+    assert league_xwoba([(6000, 0.330), (2000, 0.290)]) == pytest.approx(0.320)
+    assert league_xwoba([]) is None
+    assert league_xwoba([(0, 0.5), (100, None)]) is None
+
+
+def test_statcast_logit_directional_and_symmetric():
+    from mlb_odds.valuation import statcast_home_logit
+
+    base = dict(league=0.315, hfa_logit=0.07)
+    # Perfectly average everything: only home field remains.
+    even = statcast_home_logit(
+        home_batting=0.315, away_batting=0.315,
+        home_starter_against=0.315, away_starter_against=0.315, **base,
+    )
+    assert even == pytest.approx(0.07)
+    # Better home batting -> higher logit.
+    strong_home = statcast_home_logit(
+        home_batting=0.335, away_batting=0.315,
+        home_starter_against=0.315, away_starter_against=0.315, **base,
+    )
+    assert strong_home > even
+    # Home ACE (low xwOBA against) suppresses AWAY offense -> higher home logit.
+    home_ace = statcast_home_logit(
+        home_batting=0.315, away_batting=0.315,
+        home_starter_against=0.270, away_starter_against=0.315, **base,
+    )
+    assert home_ace > even
+    # Missing starters degrade to batting-only, not None.
+    no_starters = statcast_home_logit(
+        home_batting=0.335, away_batting=0.315,
+        home_starter_against=None, away_starter_against=None, **base,
+    )
+    assert no_starters is not None and no_starters > even
+    # Missing batting -> no statcast opinion at all.
+    assert statcast_home_logit(
+        home_batting=None, away_batting=0.315,
+        home_starter_against=None, away_starter_against=None, **base,
+    ) is None
+
+
+def test_statcast_logit_magnitude_sane():
+    import math as m
+
+    from mlb_odds.valuation import statcast_home_logit
+
+    # A 30-point team xwOBA edge (huge) with average starters: strong but not
+    # absurd favorite once converted to probability.
+    logit = statcast_home_logit(
+        home_batting=0.345, away_batting=0.315,
+        home_starter_against=0.315, away_starter_against=0.315,
+        league=0.315, hfa_logit=0.07,
+    )
+    prob = 1 / (1 + m.exp(-logit))
+    assert 0.56 < prob < 0.68
+
+
+def test_blend_probs_weights_and_fallbacks():
+    import math as m
+
+    from mlb_odds.valuation import blend_probs
+
+    market = 0.60
+    sc_logit = 0.0  # statcast says even
+    blended = blend_probs(market, sc_logit, weight=0.3)
+    market_logit = m.log(0.6 / 0.4)
+    expected = 1 / (1 + m.exp(-0.7 * market_logit))
+    assert blended == pytest.approx(expected, abs=1e-4)
+    assert blend_probs(market, sc_logit, weight=0.3) < market  # pulled toward even
+    # Fallbacks.
+    assert blend_probs(None, sc_logit) == pytest.approx(0.5)
+    assert blend_probs(market, None) == pytest.approx(market, abs=1e-4)
+    assert blend_probs(None, None) is None

@@ -637,6 +637,15 @@ class Storage:
                  for n, s2, pa, xba, xslg, xwoba, xera in rows],
             )
 
+    def statcast_team_rows(self, season: int) -> list[tuple[int, float | None]]:
+        """(pa, xwoba) per team — the league-average input (D-032)."""
+        return [
+            (row[0], row[1])
+            for row in self._conn.execute(
+                "SELECT pa, xwoba FROM statcast_team WHERE season = ?", (season,)
+            )
+        ]
+
     def scout(self, game_id: str) -> dict[str, object] | None:
         """Everything the matchup card needs, or None if the game is unknown."""
         game_row = self._conn.execute(
