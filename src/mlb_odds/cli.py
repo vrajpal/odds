@@ -310,12 +310,21 @@ def projections(
         for g in storage.games():
             if g.start_time >= now - timedelta(days=2):
                 candidates.setdefault((g.away_team, g.home_team), []).append(g)
-        matched = 0
+        matched = started = unknown = 0
         for row in rows:
             games_for = candidates.get((row.away_team, row.home_team), [])
             upcoming = [g for g in games_for
                         if g.start_time >= now - SAME_GAME_START_TOLERANCE]
             if not upcoming:
+                label = f"{row.away_team} @ {row.home_team}"
+                if games_for:
+                    started += 1
+                    typer.echo(f"  skipped {label}: game already underway "
+                               "(a post-start snapshot could never score)")
+                else:
+                    unknown += 1
+                    typer.echo(f"  skipped {label}: no stored game "
+                               "(has the odds poll run?)")
                 continue
             game = min(upcoming, key=lambda g: g.start_time)
             storage.add_projection(
@@ -328,6 +337,9 @@ def projections(
             f"{matched}/{len(rows)} projections matched to stored games "
             f"(source: {source})."
         )
+        if started or unknown:
+            typer.echo(f"  ({started} already underway, {unknown} not stored "
+                       "— import before first pitch to feed the ledger)")
     finally:
         storage.close()
 
