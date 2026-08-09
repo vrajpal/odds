@@ -185,6 +185,7 @@ def test_projections_cli_import(tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert "1/2 projections matched" in result.output  # MIA game not stored
+    assert "skipped NYJ @ MIA: no stored game" in result.output
 
     storage = Storage(db)
     latest = storage.latest_projection(go.game.game_id)
