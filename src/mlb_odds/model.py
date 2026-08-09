@@ -1,4 +1,4 @@
-"""The odds page's betting model (D-035): one uniform composition per sport.
+"""The odds page's betting model (D-036): one uniform composition per sport.
 
 Everything here is composition and unit conversion — the fitted inputs come
 from valuation.implied_strengths (moneyline-implied, both sports),

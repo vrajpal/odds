@@ -1,4 +1,4 @@
-"""Betting-model composition tests (D-035): margin->prob conversion, the NFL
+"""Betting-model composition tests (D-036): margin->prob conversion, the NFL
 two-lens blend, model EV on the dashboard, and MLB behavior unchanged."""
 
 from datetime import UTC, datetime, timedelta
@@ -107,7 +107,7 @@ class TestNflDashboardModel:
 
 
 class TestCircaModelSurfaces:
-    """D-035 on the contest pages: two-lens win probs on both boards."""
+    """D-036 on the contest pages: two-lens win probs on both boards."""
 
     @pytest.fixture
     def circa_env(self, tmp_path, monkeypatch):

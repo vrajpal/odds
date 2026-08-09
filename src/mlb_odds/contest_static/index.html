@@ -339,7 +339,7 @@ async function toggleChart(gid) {
   row.appendChild(cell);
   anchor.after(row);
   wireChartHover(cell, h);
-  // D-035 model strip: the two-lens win probability for this matchup
+  // D-036 model strip: the two-lens win probability for this matchup
   const bg = state.board.games.find(x => x.game_id === gid);
   if (bg && bg.model_win_prob != null) {
     const fav = bg.model_win_prob >= 0.5 ? bg.home_team : bg.away_team;
