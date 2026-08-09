@@ -555,3 +555,23 @@ the constants. The calibration path ships alongside: a daily free MLB
 finals sweep (mlb-results service + cron) accumulates outcomes so the
 weight and anchors can be backtested once a real sample exists. UI shows
 the blend as the Model column with components on hover.
+
+## D-033 — Mike's process feedback: unlimited stances + pass; Survivor A/B/C (2026-08-09)
+Two changes to the consensus workflows, both aimed at the same problem:
+maximizing expressed preference so the group aligns faster.
+
+**Million**: proposals lose the 5-pick cap (1-20 stances; a full slate is 16)
+and gain an explicit **pass** side — "reviewed, no lean" is information the
+captain needs, distinct from silence. Passes back no candidate (excluded from
+tallies) but surface in the reveal per game; a vote can withdraw a lean to a
+pass. The card is unchanged: exactly five, home/away only. Contest DB
+migration 3 rebuilds proposals/votes (SQLite CHECKs are immutable).
+
+**Survivor**: blind proposals become ranked A/B/C (1-3 distinct teams,
+preference order; survivor DB migration 2, old single proposals carry over
+as A). The status ladder still runs on top choices (vote or A) so
+unanimous/majority semantics are unchanged, but candidates now carry Borda
+points (A=3, B=2, C=1; a vote replaces a member's whole ranking) and sort by
+points — a team that is everyone's B can outrank a team that is one member's
+A, which is exactly the alignment case ranked choices exist for. Reveal
+shows per-member rank letters and points.

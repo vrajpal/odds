@@ -170,6 +170,34 @@ CONTEST_MIGRATIONS: list[str] = [
         PRIMARY KEY (week, game_id)
     );
     """,
+    # D-033 (Mike's process feedback): stances gain an explicit 'pass' —
+    # "reviewed, no lean" is information the captain needs, distinct from
+    # "not reviewed". SQLite CHECKs are immutable, so rebuild both tables.
+    """
+    CREATE TABLE proposals_new (
+        week       INTEGER NOT NULL,
+        member     TEXT NOT NULL,
+        game_id    TEXT NOT NULL,
+        side       TEXT NOT NULL CHECK (side IN ('home', 'away', 'pass')),
+        note       TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (week, member, game_id)
+    );
+    INSERT INTO proposals_new SELECT week, member, game_id, side, note FROM proposals;
+    DROP TABLE proposals;
+    ALTER TABLE proposals_new RENAME TO proposals;
+
+    CREATE TABLE votes_new (
+        week     INTEGER NOT NULL,
+        member   TEXT NOT NULL,
+        game_id  TEXT NOT NULL,
+        side     TEXT NOT NULL CHECK (side IN ('home', 'away', 'pass')),
+        cast_at  TEXT NOT NULL,
+        PRIMARY KEY (week, member, game_id)
+    );
+    INSERT INTO votes_new SELECT week, member, game_id, side, cast_at FROM votes;
+    DROP TABLE votes;
+    ALTER TABLE votes_new RENAME TO votes;
+    """,
 ]
 
 
@@ -247,10 +275,16 @@ class ContestStore:
         *,
         submitted_at: datetime,
     ) -> None:
-        """One blind submission per member per week, 1-5 picks, immutable once
-        in — the blind phase only works if nobody can edit after peeking."""
-        if not 1 <= len(picks) <= 5:
-            raise ValueError(f"propose 1-5 picks, got {len(picks)}")
+        """One blind submission per member per week, immutable once in — the
+        blind phase only works if nobody can edit after peeking.
+
+        D-033: as many stances as you like (a full slate is 16), and 'pass'
+        is a legal side — an explicit no-lean beats silence for alignment."""
+        if not 1 <= len(picks) <= 20:
+            raise ValueError(f"propose 1-20 stances, got {len(picks)}")
+        bad_sides = {s for _g, s, _n in picks if s not in ("home", "away", "pass")}
+        if bad_sides:
+            raise ValueError(f"sides must be home/away/pass, got {sorted(bad_sides)}")
         games = [g for g, _s, _n in picks]
         if len(set(games)) != len(games):
             raise ValueError("duplicate game in proposal set")
@@ -301,9 +335,10 @@ class ContestStore:
     def cast_vote(
         self, week: int, member: str, game_id: str, side: str, *, cast_at: datetime
     ) -> None:
-        """A member's latest stance on one game; re-voting replaces."""
-        if side not in ("home", "away"):
-            raise ValueError(f"side must be home/away, got {side!r}")
+        """A member's latest stance on one game; re-voting replaces. 'pass'
+        withdraws a lean without pretending the game was never reviewed."""
+        if side not in ("home", "away", "pass"):
+            raise ValueError(f"side must be home/away/pass, got {side!r}")
         with self._conn:
             self._conn.execute(
                 """
@@ -602,6 +637,22 @@ class Candidate:
     status: str
 
 
+def passes_by_game(
+    proposals: Sequence[Proposal], votes: Sequence[Vote]
+) -> dict[str, list[str]]:
+    """game_id -> members whose current stance is an explicit pass (D-033)."""
+    stance: dict[tuple[str, str], str] = {}
+    for p in proposals:
+        stance[(p.member, p.game_id)] = p.side
+    for v in votes:
+        stance[(v.member, v.game_id)] = v.side
+    out: dict[str, list[str]] = {}
+    for (member, game_id), side in stance.items():
+        if side == "pass":
+            out.setdefault(game_id, []).append(member)
+    return {g: sorted(ms) for g, ms in out.items()}
+
+
 def tally_candidates(
     proposals: Sequence[Proposal],
     votes: Sequence[Vote],
@@ -619,6 +670,8 @@ def tally_candidates(
 
     backers: dict[tuple[str, str], list[str]] = {}
     for (member, game_id), side in stance.items():
+        if side == "pass":  # explicit no-lean: reviewed, backs nothing (D-033)
+            continue
         backers.setdefault((game_id, side), []).append(member)
 
     candidates = []

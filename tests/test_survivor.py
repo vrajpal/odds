@@ -128,12 +128,25 @@ def store(tmp_path):
 
 
 def test_proposals_are_blind_one_shot(store):
-    store.submit_proposal("1", "vijai", "LAC", "big home number", submitted_at=T0)
+    # D-033: ranked A/B/C choices in one blind submission.
+    store.submit_proposal(
+        "1", "vijai", [("LAC", "big home number"), ("KC", "backup")], submitted_at=T0
+    )
     with pytest.raises(ValueError, match="already submitted"):
-        store.submit_proposal("1", "vijai", "KC", "", submitted_at=T0)
+        store.submit_proposal("1", "vijai", [("DEN", "")], submitted_at=T0)
     assert store.submitted_members("1") == ["vijai"]
-    (p,) = store.proposals("1")
-    assert (p.member, p.team, p.note) == ("vijai", "LAC", "big home number")
+    a, b = store.proposals("1")
+    assert (a.member, a.team, a.note, a.rank) == ("vijai", "LAC", "big home number", 1)
+    assert (b.team, b.rank) == ("KC", 2)
+
+
+def test_ranked_proposal_validation(store):
+    with pytest.raises(ValueError, match="1-3 ranked"):
+        store.submit_proposal("1", "vijai", [], submitted_at=T0)
+    with pytest.raises(ValueError, match="distinct"):
+        store.submit_proposal(
+            "1", "vijai", [("LAC", ""), ("LAC", "")], submitted_at=T0
+        )
 
 
 def test_vote_upserts_single_stance(store):
@@ -169,7 +182,7 @@ def test_result_and_etsn_round_trip(store):
 
 def test_store_rejects_unknown_leg_and_team(store):
     with pytest.raises(ValueError):
-        store.submit_proposal("99", "vijai", "LAC", "", submitted_at=T0)
+        store.submit_proposal("99", "vijai", [("LAC", "")], submitted_at=T0)
     with pytest.raises(ValueError):
         store.lock_pick("1", "LAX", "gid", locked_by="vijai", locked_at=T0)
 

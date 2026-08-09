@@ -132,8 +132,9 @@
   </div>
 
   <div id="tab-propose" hidden>
-    <div class="msg dim">Pick up to five, blind — nobody sees anyone else's until their own are in.
-      One submission, no edits.</div>
+    <div class="msg dim">Stance every game you've reviewed, blind — lean either way or
+      explicitly <b>pass</b> (no lean). More expressed stances = easier alignment on the
+      final five. One submission, no edits.</div>
     <table id="propose-table"><thead><tr>
       <th>game</th><th>kickoff</th><th class="num">circa line</th><th class="num">edge</th>
       <th>your pick</th><th>note</th>
@@ -441,6 +442,7 @@ function renderPropose() {
     <td class="num ${g.edge > 0 ? "good" : g.edge < 0 ? "bad" : "dim"}">${g.edge == null ? "–" : fmtSpread(g.edge)}</td>
     <td>
       <button class="side" data-pick="${g.game_id}" data-side="away">${g.away_team}</button>
+      <button class="side" data-pick="${g.game_id}" data-side="pass">pass</button>
       <button class="side" data-pick="${g.game_id}" data-side="home">${g.home_team}</button>
     </td>
     <td><input data-note="${g.game_id}" placeholder="why" size="18"></td>
@@ -448,11 +450,13 @@ function renderPropose() {
   tb.querySelectorAll("[data-pick]").forEach(btn => btn.onclick = () => {
     const gid = btn.dataset.pick, side = btn.dataset.side;
     if (state.proposal[gid] === side) delete state.proposal[gid];
-    else if (state.proposal[gid] || Object.keys(state.proposal).length < 5) state.proposal[gid] = side;
-    else return alert("five picks max");
+    else state.proposal[gid] = side;  // as many stances as you like (D-033)
     tb.querySelectorAll(`[data-pick="${gid}"]`).forEach(b =>
       b.classList.toggle("sel", state.proposal[gid] === b.dataset.side));
-    $("#propose-msg").textContent = Object.keys(state.proposal).length + "/5 selected";
+    const sides = Object.values(state.proposal);
+    const leans = sides.filter(s => s !== "pass").length;
+    const passes = sides.length - leans;
+    $("#propose-msg").textContent = `${leans} lean${leans === 1 ? "" : "s"} · ${passes} pass${passes === 1 ? "" : "es"}`;
   });
   refreshProposeStatus();
 }
@@ -494,7 +498,10 @@ async function loadConsensus() {
     `captain: <b>${c.captain}</b> · effective deadline: <b>${new Date(c.effective_deadline).toLocaleString()}</b>` +
     (pulled ? ` <span class="tag early">pulled forward by ${pulled} (Rule 8)</span>` : "") +
     (c.card_locked ? ' · <span class="tag unanimous">CARD LOCKED</span>' : "");
-  box.innerHTML = `<table><thead><tr><th>#</th><th>game</th><th>side</th><th>backers</th>
+  const passRows = Object.entries(c.passes || {});
+  box.innerHTML = (passRows.length ? `<div class="msg dim">passes: ` +
+    passRows.map(([g, ms]) => `${g} (${ms.join(", ")})`).join(" · ") + `</div>` : "") +
+    `<table><thead><tr><th>#</th><th>game</th><th>side</th><th>backers</th>
     <th>status</th><th>vote</th></tr></thead><tbody>` +
     c.candidates.map((cand, i) => `<tr>
       <td class="dim">${i < 5 ? "▶ " + (i+1) : ""}</td>
