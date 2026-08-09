@@ -5,6 +5,25 @@ function TodayBoard({ sport, onSelectGame }) {
   const [games, setGames] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [pulling, setPulling] = useState(false)
+  const [pullNote, setPullNote] = useState(null)
+
+  const pullNow = async () => {
+    setPulling(true)
+    setPullNote(null)
+    try {
+      const resp = await fetch(`/api/refresh?sport=${sport}`, { method: 'POST' })
+      const body = await resp.json()
+      if (!resp.ok) throw new Error(body.detail || 'refresh failed')
+      setPullNote(`pulled ${body.games} games (${body.rows} rows)`)
+      const r = await fetch(`/api/today?sport=${sport}`)
+      if (r.ok) setGames(await r.json())
+    } catch (err) {
+      setPullNote(err.message)
+    } finally {
+      setPulling(false)
+    }
+  }
 
   useEffect(() => {
     const fetchToday = async () => {
@@ -28,12 +47,27 @@ function TodayBoard({ sport, onSelectGame }) {
     return () => clearInterval(interval)
   }, [sport])
 
+  const pullButton = (
+    <div className="pull-bar">
+      <button className="pull-btn" onClick={pullNow} disabled={pulling}>
+        {pulling ? 'pulling…' : '↻ pull latest lines (free)'}
+      </button>
+      {pullNote && <span className="pull-note">{pullNote}</span>}
+    </div>
+  )
+
   if (loading) return <div className="loading">Loading today's odds...</div>
   if (error) return <div className="error">Error: {error}</div>
-  if (games.length === 0) return <div className="empty">No games today. Run `mlb-odds collect --once{sport === 'nfl' ? ' --sport nfl' : ''}` first.</div>
+  if (games.length === 0) return (
+    <div>
+      {pullButton}
+      <div className="empty">No games today — try pulling, or the daily cron will populate the next slate.</div>
+    </div>
+  )
 
   return (
     <div className="today-board">
+      {pullButton}
       {games.map(gameBoard => (
         <div key={gameBoard.game.game_id} className="game-card" onClick={() => onSelectGame(gameBoard.game.game_id)}>
           <div className="game-header">

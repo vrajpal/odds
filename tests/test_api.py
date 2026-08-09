@@ -294,3 +294,50 @@ class TestSportSwitcher:
         resp = c.get("/api/today", params={"sport": "nfl"})
         assert resp.status_code == 503
         assert "--sport nfl" in resp.json()["detail"]
+
+
+class TestManualRefresh:
+    """POST /api/refresh (D-029): the one sanctioned provider-reaching
+    endpoint — free ESPN only, debounced, no key ever needed."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_debounce(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(api, "_last_refresh", {})
+        monkeypatch.setenv("MLB_ODDS_DB", str(tmp_path / "odds.sqlite"))
+        monkeypatch.setenv("NFL_ODDS_DB", str(tmp_path / "nfl.sqlite"))
+        monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
+
+    @pytest.fixture
+    def espn_stub(self, monkeypatch):
+        from conftest import fixture_transport
+        from mlb_odds.providers.espn import ESPN
+
+        monkeypatch.setattr(
+            api, "ESPN",
+            lambda sport="mlb": ESPN(
+                sport=sport,
+                transport=fixture_transport(
+                    "espn_scoreboard_normal" if sport == "mlb"
+                    else "espn_nfl_scoreboard_normal"
+                ),
+            ),
+        )
+        return TestClient(api.app, raise_server_exceptions=False)
+
+    def test_refresh_pulls_and_stores_without_metered_key(self, espn_stub):
+        # THE_ODDS_API_KEY is unset: proves the endpoint cannot touch the
+        # metered provider even by accident.
+        body = espn_stub.post("/api/refresh").json()
+        assert body["games"] > 0 and body["rows"] > 0
+        assert body["errors"] == {}
+
+    def test_refresh_is_debounced_per_sport(self, espn_stub):
+        assert espn_stub.post("/api/refresh").status_code == 200
+        again = espn_stub.post("/api/refresh")
+        assert again.status_code == 429
+        assert "retry in" in again.json()["detail"]
+        # A different sport has its own debounce clock.
+        assert espn_stub.post("/api/refresh", params={"sport": "nfl"}).status_code == 200
+
+    def test_refresh_rejects_unknown_sport(self, espn_stub):
+        assert espn_stub.post("/api/refresh", params={"sport": "nhl"}).status_code == 422

@@ -477,3 +477,20 @@ Domain shape differs from the Million deliberately:
 - Straight-up win probability shown on the board comes from the market spread
   via a normal margin model (sigma 13.45); ties fold into the loss side to
   match Rule 6a grading. No new dependency — math.erf.
+
+## D-029 — Manual refresh endpoint: the sanctioned exception to D-012 (2026-08-09)
+POST /api/refresh pulls current lines on demand (the UI's "pull latest"
+button). It is the one endpoint allowed to reach a provider, constrained
+three ways so D-012's real goal — HTTP can never spend money or trash the
+DB — survives intact:
+1. **Free provider only.** It constructs ESPN and nothing else; TheOddsAPI
+   is not imported by the endpoint path, and the test suite exercises
+   refresh with THE_ODDS_API_KEY unset to prove the metered book can't be
+   reached even accidentally.
+2. **Debounced** per sport (5 min, HTTP 429) so a stuck finger can't hammer
+   ESPN.
+3. **Tailnet-only surface.** It lives on the odds-api app, which the public
+   tunnel does not route to — the Access-exposed contest app keeps its pure
+   no-provider stance.
+The write-mode DB open (create/migrate allowed) is acceptable for the same
+reason as the CLI's: the path comes from server-side configuration only.

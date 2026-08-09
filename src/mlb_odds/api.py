@@ -8,6 +8,7 @@ import os
 import sqlite3
 from datetime import datetime, time, timedelta, tzinfo
 from pathlib import Path
+from time import monotonic
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 
 from mlb_odds.client import OddsClient
 from mlb_odds.models import Quote, Sport
+from mlb_odds.providers.espn import ESPN
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +211,38 @@ def _fmt_total(quotes: list[Quote]) -> str:
     if over is None or over.line is None:
         return "-"
     return f"{over.line:.1f} (o{over.price:+d})"
+
+
+# Manual refresh (D-029): the one deliberate exception to "the API never
+# reaches a provider" (D-012). Constrained three ways: ESPN only (free,
+# unmetered — constructing TheOddsAPI here would let HTTP spend credits),
+# debounced per sport, and served only on this app, which is not exposed
+# through the public tunnel.
+_REFRESH_MIN_INTERVAL = 300.0  # seconds
+_last_refresh: dict[str, float] = {}
+
+
+@app.post("/api/refresh")
+def refresh(sport: Literal["mlb", "nfl"] = "mlb") -> dict[str, object]:
+    """Pull current lines from the free ESPN provider into the sport's DB."""
+    now = monotonic()
+    last = _last_refresh.get(sport)
+    if last is not None and (elapsed := now - last) < _REFRESH_MIN_INTERVAL:
+        raise HTTPException(
+            status_code=429,
+            detail=f"refreshed {int(elapsed)}s ago; retry in "
+            f"{int(_REFRESH_MIN_INTERVAL - elapsed)}s",
+        )
+    client = OddsClient(providers=[ESPN(sport=sport)], db=_resolve_db(sport))
+    try:
+        results = client.fetch_and_store()
+        errors = {name: str(exc) for name, exc in client.last_errors.items()}
+    finally:
+        client.close()
+    _last_refresh[sport] = now
+    rows = sum(len(go.quotes) for go in results)
+    logger.info("manual refresh (%s): %d games, %d rows", sport, len(results), rows)
+    return {"sport": sport, "games": len(results), "rows": rows, "errors": errors}
 
 
 @app.get("/api/health")
