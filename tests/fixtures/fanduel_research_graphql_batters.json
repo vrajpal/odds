@@ -1,0 +1,805 @@
+{
+ "_note": "Trimmed from a live recording (2026-08-10): 7 batters per team for three games of the full 270-row slate; structure unedited.",
+ "data": {
+  "getProjections": [
+   {
+    "player": {
+     "name": "Mike Trout"
+    },
+    "team": {
+     "abbreviation": "LAA"
+    },
+    "plateAppearances": 4.55,
+    "runs": 0.57,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Adam Frazier"
+    },
+    "team": {
+     "abbreviation": "LAA"
+    },
+    "plateAppearances": 3.78,
+    "runs": 0.3,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Otto Lopez"
+    },
+    "team": {
+     "abbreviation": "MIA"
+    },
+    "plateAppearances": 4.44,
+    "runs": 0.67,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jose Siri"
+    },
+    "team": {
+     "abbreviation": "LAA"
+    },
+    "plateAppearances": 3.89,
+    "runs": 0.48,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Josh Lowe"
+    },
+    "team": {
+     "abbreviation": "LAA"
+    },
+    "plateAppearances": 4,
+    "runs": 0.48,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Kyle Stowers"
+    },
+    "team": {
+     "abbreviation": "MIA"
+    },
+    "plateAppearances": 4.66,
+    "runs": 0.72,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Zach Neto"
+    },
+    "team": {
+     "abbreviation": "LAA"
+    },
+    "plateAppearances": 4.33,
+    "runs": 0.41,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Xavier Edwards"
+    },
+    "team": {
+     "abbreviation": "MIA"
+    },
+    "plateAppearances": 4.55,
+    "runs": 0.76,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Wade Meckler"
+    },
+    "team": {
+     "abbreviation": "LAA"
+    },
+    "plateAppearances": 4.67,
+    "runs": 0.36,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Nolan Schanuel"
+    },
+    "team": {
+     "abbreviation": "LAA"
+    },
+    "plateAppearances": 4.44,
+    "runs": 0.51,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Griffin Conine"
+    },
+    "team": {
+     "abbreviation": "MIA"
+    },
+    "plateAppearances": 4.33,
+    "runs": 0.56,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Javier Sanoja"
+    },
+    "team": {
+     "abbreviation": "MIA"
+    },
+    "plateAppearances": 3.77,
+    "runs": 0.49,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Agustin Ramirez"
+    },
+    "team": {
+     "abbreviation": "MIA"
+    },
+    "plateAppearances": 3.99,
+    "runs": 0.5,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Heriberto Hernandez"
+    },
+    "team": {
+     "abbreviation": "MIA"
+    },
+    "plateAppearances": 4.22,
+    "runs": 0.57,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "LAA"
+     },
+     "homeTeam": {
+      "abbreviation": "MIA"
+     },
+     "gameTime": "2026-08-09T17:40:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jose Ramirez"
+    },
+    "team": {
+     "abbreviation": "CLE"
+    },
+    "plateAppearances": 4.5,
+    "runs": 0.57,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Randal Grichuk"
+    },
+    "team": {
+     "abbreviation": "CHW"
+    },
+    "plateAppearances": 4.21,
+    "runs": 0.55,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Nathaniel Lowe"
+    },
+    "team": {
+     "abbreviation": "CLE"
+    },
+    "plateAppearances": 4.39,
+    "runs": 0.47,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jo Adell"
+    },
+    "team": {
+     "abbreviation": "CLE"
+    },
+    "plateAppearances": 4.27,
+    "runs": 0.4,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Steven Kwan"
+    },
+    "team": {
+     "abbreviation": "CLE"
+    },
+    "plateAppearances": 4.72,
+    "runs": 0.61,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Miguel Vargas"
+    },
+    "team": {
+     "abbreviation": "CHW"
+    },
+    "plateAppearances": 4.32,
+    "runs": 0.61,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Brayan Rocchio"
+    },
+    "team": {
+     "abbreviation": "CLE"
+    },
+    "plateAppearances": 4.05,
+    "runs": 0.41,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Brenton Doyle"
+    },
+    "team": {
+     "abbreviation": "CHW"
+    },
+    "plateAppearances": 4.54,
+    "runs": 0.43,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Patrick Bailey"
+    },
+    "team": {
+     "abbreviation": "CLE"
+    },
+    "plateAppearances": 3.94,
+    "runs": 0.39,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Luisangel Acuna"
+    },
+    "team": {
+     "abbreviation": "CHW"
+    },
+    "plateAppearances": 3.65,
+    "runs": 0.45,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Edgar Quero"
+    },
+    "team": {
+     "abbreviation": "CHW"
+    },
+    "plateAppearances": 3.88,
+    "runs": 0.24,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Colson Montgomery"
+    },
+    "team": {
+     "abbreviation": "CHW"
+    },
+    "plateAppearances": 3.99,
+    "runs": 0.43,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Chase DeLauter"
+    },
+    "team": {
+     "abbreviation": "CLE"
+    },
+    "plateAppearances": 4.61,
+    "runs": 0.51,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Munetaka Murakami"
+    },
+    "team": {
+     "abbreviation": "CHW"
+    },
+    "plateAppearances": 4.43,
+    "runs": 0.47,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "CLE"
+     },
+     "homeTeam": {
+      "abbreviation": "CHW"
+     },
+     "gameTime": "2026-08-09T18:10:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Willson Contreras"
+    },
+    "team": {
+     "abbreviation": "BOS"
+    },
+    "plateAppearances": 4.29,
+    "runs": 0.61,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jeff McNeil"
+    },
+    "team": {
+     "abbreviation": "OAK"
+    },
+    "plateAppearances": 3.8,
+    "runs": 0.34,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jake Rogers"
+    },
+    "team": {
+     "abbreviation": "BOS"
+    },
+    "plateAppearances": 3.73,
+    "runs": 0.41,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jonah Heim"
+    },
+    "team": {
+     "abbreviation": "OAK"
+    },
+    "plateAppearances": 4.46,
+    "runs": 0.41,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Eli White"
+    },
+    "team": {
+     "abbreviation": "BOS"
+    },
+    "plateAppearances": 3.84,
+    "runs": 0.39,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jarren Duran"
+    },
+    "team": {
+     "abbreviation": "BOS"
+    },
+    "plateAppearances": 3.95,
+    "runs": 0.47,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Andruw Monasterio"
+    },
+    "team": {
+     "abbreviation": "BOS"
+    },
+    "plateAppearances": 4.17,
+    "runs": 0.79,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Tyler Soderstrom"
+    },
+    "team": {
+     "abbreviation": "OAK"
+    },
+    "plateAppearances": 4.35,
+    "runs": 0.56,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jonathan Ornelas"
+    },
+    "team": {
+     "abbreviation": "OAK"
+    },
+    "plateAppearances": 4.02,
+    "runs": 0.29,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Lawrence Butler"
+    },
+    "team": {
+     "abbreviation": "OAK"
+    },
+    "plateAppearances": 4.13,
+    "runs": 0.46,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Wilyer Abreu"
+    },
+    "team": {
+     "abbreviation": "BOS"
+    },
+    "plateAppearances": 4.4,
+    "runs": 0.66,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Ceddanne Rafaela"
+    },
+    "team": {
+     "abbreviation": "BOS"
+    },
+    "plateAppearances": 4.51,
+    "runs": 0.54,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Jacob Wilson"
+    },
+    "team": {
+     "abbreviation": "OAK"
+    },
+    "plateAppearances": 4.58,
+    "runs": 0.56,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   },
+   {
+    "player": {
+     "name": "Max P. Muncy"
+    },
+    "team": {
+     "abbreviation": "OAK"
+    },
+    "plateAppearances": 3.91,
+    "runs": 0.47,
+    "gameInfo": {
+     "awayTeam": {
+      "abbreviation": "OAK"
+     },
+     "homeTeam": {
+      "abbreviation": "BOS"
+     },
+     "gameTime": "2026-08-09T17:35:00Z"
+    }
+   }
+  ]
+ }
+}

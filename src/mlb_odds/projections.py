@@ -81,6 +81,18 @@ class ProjectionRow:
     home_score: float | None
 
 
+@dataclass(frozen=True)
+class PlayerProjection:
+    """One player's slice of a game, canonical codes throughout — the unit
+    both the CSV parser and the FanDuel Research provider aggregate from."""
+
+    team: str
+    away_team: str
+    home_team: str
+    runs: float
+    plate_appearances: float | None
+
+
 class ProjectionParseError(ValueError):
     """The CSV's headers couldn't be mapped; message lists what was found."""
 
@@ -213,14 +225,8 @@ def _parse_player_csv(
     pa_h: str | None,
     sport: str,
 ) -> list[ProjectionRow]:
-    """Aggregate a player-level export into one row per game.
-
-    Team score = sum of the lineup's projected runs, normalized to a
-    _LINEUP_PA-length game so an 8-hitter listing isn't undercounted relative
-    to a 10-hitter one. The margin is neutral-site (no home-field bump) —
-    a documented bias the accuracy ledger will quantify.
-    """
-    sums: dict[tuple[str, str], dict[str, list[float]]] = {}
+    """Resolve a player-level export's rows and aggregate them per game."""
+    players: list[PlayerProjection] = []
     for record in reader:
         team = resolve_team(sport, record.get(team_h) or "")
         info = (record.get(gi_h) or "").split("@")
@@ -239,10 +245,28 @@ def _parse_player_csv(
         runs = _score(record.get(runs_h))
         if runs is None:
             continue
-        pa = (_score(record.get(pa_h)) if pa_h else None) or 0.0
-        entry = sums.setdefault((away, home), {}).setdefault(team, [0.0, 0.0, 0.0])
-        entry[0] += runs
-        entry[1] += pa
+        players.append(PlayerProjection(
+            team=team, away_team=away, home_team=home, runs=runs,
+            plate_appearances=_score(record.get(pa_h)) if pa_h else None,
+        ))
+    return aggregate_players(players)
+
+
+def aggregate_players(players: list[PlayerProjection]) -> list[ProjectionRow]:
+    """Aggregate per-player projections into one row per game.
+
+    Team score = sum of the lineup's projected runs, normalized to a
+    _LINEUP_PA-length game so an 8-hitter listing isn't undercounted relative
+    to a 10-hitter one. The margin is neutral-site (no home-field bump) —
+    a documented bias the accuracy ledger will quantify.
+    """
+    sums: dict[tuple[str, str], dict[str, list[float]]] = {}
+    for p in players:
+        entry = sums.setdefault((p.away_team, p.home_team), {}).setdefault(
+            p.team, [0.0, 0.0, 0.0]
+        )
+        entry[0] += p.runs
+        entry[1] += p.plate_appearances or 0.0
         entry[2] += 1
     rows: list[ProjectionRow] = []
     for (away, home), by_team in sorted(sums.items()):
@@ -266,7 +290,7 @@ def _parse_player_csv(
         )
     if not rows:
         raise ProjectionParseError(
-            "no aggregatable games in the player-level CSV"
+            "no aggregatable games in the player-level projections"
         )
     return rows
 
