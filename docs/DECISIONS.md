@@ -674,3 +674,18 @@ unedited export is committed as
 `tests/fixtures/fanduel_research_mlb_daily.csv`. Player-level NFL exports
 are rejected with a pointer to game-level exports — fantasy-point sums don't
 decompose into team points the way runs do.
+
+**Addendum 2 (2026-08-10), automated pull:** the CSV button was a decoy —
+the pages are public. FanDuel Research is a Next.js app whose projections
+come from an open GraphQL endpoint (`/research/api/graphql`, plain query
+documents accepted, introspection enabled); daily slate ids live in the
+batters page's `__NEXT_DATA__` blob. `providers/fanduel_research.py` fetches
+the page, picks the "All Day" slate ("Main" fallback), queries batters, and
+feeds the same aggregation as the CSV path; `mlb-odds projections --fetch`
+runs it, and the `mlb-projections` compose one-shot crons it daily at
+10 AM ET — after the previous day's odds polls have stored today's games,
+before the earliest first pitch. Batters only, deliberately: FanDuel's
+per-batter runs are already opponent-and-park adjusted, so lineup sums are a
+complete team-scoring estimate and folding in pitcher projections would
+double-count opponent pitching. The unofficial-API risk is the usual one
+(D-016): breakage is loud (ProviderError in the cron log), never silent.

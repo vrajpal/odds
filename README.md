@@ -151,10 +151,13 @@ environment, so keep the key in a `.env` next to the project and `cd` there firs
 0 10,13,16,19,22 * * *  cd /home/me/odds && /home/me/.local/bin/uv run mlb-odds collect --once >> collect.log 2>&1
 ```
 
-**Projections** (D-037): export a FanDuel Research CSV, then
-`mlb-odds projections file.csv --sport nfl`. Imports append timestamped
-snapshots; `GET /api/projections/report` scores sources against results
-(Brier/hit rate). The latest snapshot joins the dashboard model blend.
+**Projections** (D-037): `mlb-odds projections --fetch` pulls today's MLB
+batter projections straight from FanDuel Research (free, no auth) and
+aggregates them to team-runs snapshots; `mlb-odds projections file.csv
+--sport nfl` imports a CSV export for sports without a live fetch. Imports
+append timestamped snapshots; `GET /api/projections/report` scores sources
+against results (Brier/hit rate). The latest snapshot joins the dashboard
+model blend. Import before first pitch — post-start snapshots are skipped.
 
 ## Web API & UI
 

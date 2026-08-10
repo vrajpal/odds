@@ -277,7 +277,17 @@ def results(
 
 @app.command()
 def projections(
-    csv_file: Annotated[Path, typer.Argument(help="Exported projections CSV.")],
+    csv_file: Annotated[
+        Path | None, typer.Argument(help="Exported projections CSV.")
+    ] = None,
+    fetch: Annotated[
+        bool,
+        typer.Option(
+            "--fetch",
+            help="Pull today's MLB batter projections live from FanDuel "
+            "Research instead of reading a CSV (no auth needed).",
+        ),
+    ] = False,
     sport: Annotated[
         SportChoice,
         typer.Option("--sport", help="League: mlb (default) or nfl."),
@@ -287,20 +297,41 @@ def projections(
     ] = projections_mod.DEFAULT_SOURCE,
     db: DbOption = None,
 ) -> None:
-    """Import a projections CSV (D-037): FanDuel Research exports and
-    similar. Every import appends a timestamped snapshot — history is the
-    accuracy ledger, so import daily rather than only on game day.
+    """Import projections (D-037): a FanDuel Research CSV export, or --fetch
+    to pull today's MLB slate live. Every import appends a timestamped
+    snapshot — history is the accuracy ledger, so import daily (before first
+    pitch) rather than only on game day.
     """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     from mlb_odds.storage import SAME_GAME_START_TOLERANCE, Storage
 
-    try:
-        rows = projections_mod.parse_csv(csv_file.read_text(), sport.value)
-    except (OSError, projections_mod.ProjectionParseError) as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(1) from None
+    if fetch == (csv_file is not None):
+        typer.echo("error: provide a CSV file or --fetch (exactly one)", err=True)
+        raise typer.Exit(2)
+    if fetch:
+        if sport is not SportChoice.mlb:
+            typer.echo("error: --fetch supports mlb only", err=True)
+            raise typer.Exit(2)
+        from mlb_odds.providers.base import ProviderError
+        from mlb_odds.providers.fanduel_research import FanDuelResearch
+
+        provider = FanDuelResearch()
+        try:
+            rows = projections_mod.aggregate_players(provider.fetch_mlb_batters())
+        except (ProviderError, projections_mod.ProjectionParseError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        finally:
+            provider.close()
+    else:
+        assert csv_file is not None
+        try:
+            rows = projections_mod.parse_csv(csv_file.read_text(), sport.value)
+        except (OSError, projections_mod.ProjectionParseError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
 
     storage = Storage(_resolve_db(db, sport))
     try:

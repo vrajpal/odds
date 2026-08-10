@@ -192,3 +192,14 @@ def test_projections_cli_import(tmp_path):
     assert latest is not None
     assert latest[0] == "fanduel_research" and latest[2] == pytest.approx(0.61)
     storage.close()
+
+
+def test_projections_cli_requires_csv_xor_fetch(tmp_path):
+    result = runner.invoke(app, ["projections"])
+    assert result.exit_code == 2
+    csv_path = tmp_path / "p.csv"
+    csv_path.write_text("away,home,home win%\n")
+    result = runner.invoke(app, ["projections", str(csv_path), "--fetch"])
+    assert result.exit_code == 2
+    result = runner.invoke(app, ["projections", "--fetch", "--sport", "nfl"])
+    assert result.exit_code == 2  # live fetch is MLB-only

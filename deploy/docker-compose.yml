@@ -116,6 +116,16 @@ services:
     volumes:
       - ./data:/data
 
+  mlb-projections:
+    build: ..
+    profiles: [collect]
+    # Free daily FanDuel Research pull (D-037): batter projections aggregate
+    # to team-runs snapshots. Must run before first pitch — post-start
+    # snapshots are skipped by design.
+    command: mlb-odds projections --fetch --sport mlb
+    volumes:
+      - ./data:/data
+
   # Public access for non-tailnet friends (D-026): Cloudflare Tunnel with a
   # Cloudflare Access policy in front (email OTP allowlist). Outbound-only —
   # still no published ports anywhere. Opt-in AFTER the Access policy exists:

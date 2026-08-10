@@ -42,6 +42,7 @@ runs are free:
 0 8,13,18 * * 4-6  cd /opt/odds/deploy && docker compose run --rm nfl-collect
 55 9 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-collect
 0 21 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-results
+0 7 * * *          cd /opt/odds/deploy && docker compose run --rm mlb-projections
 30 8 * * 2         cd /opt/odds/deploy && docker compose run --rm nfl-results
 # Survivor holiday legs (D-028): TG is decided Tue-Wed (deadline Wed Nov 25
 # 4 PM PT), XMAS on Wed (Thu polls exist via the 4-6 rule) — without these,
