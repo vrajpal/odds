@@ -120,8 +120,9 @@ services:
     build: ..
     profiles: [collect]
     # Free daily FanDuel Research pull (D-037): batter projections aggregate
-    # to team-runs snapshots. Must run before first pitch — post-start
-    # snapshots are skipped by design.
+    # to team-runs snapshots. Self-sufficient — it stores the ESPN schedule
+    # first, so it needs no odds poll before it; just run before first pitch
+    # (post-start snapshots are skipped by design).
     command: mlb-odds projections --fetch --sport mlb
     volumes:
       - ./data:/data

@@ -194,6 +194,41 @@ def test_projections_cli_import(tmp_path):
     storage.close()
 
 
+def test_projections_fetch_bootstraps_schedule(tmp_path, monkeypatch):
+    """--fetch must work BEFORE the day's odds polls: it stores the ESPN
+    schedule itself so pre-lines snapshots have games to attach to (the
+    2026-08-10 cron ran at 10 AM and matched 0/10 without this)."""
+    from mlb_odds.projections import PlayerProjection
+    from mlb_odds.providers.espn import ESPN
+    from mlb_odds.providers.fanduel_research import FanDuelResearch
+
+    start = datetime.now(UTC) + timedelta(hours=4)
+    go = make_game_odds(start_time=start)  # only for its Game shape
+    game = go.game
+    monkeypatch.setattr(ESPN, "fetch_schedule", lambda self, on: [game])
+    def lineup(team: str, runs: float) -> list[PlayerProjection]:
+        return [
+            PlayerProjection(team=team, away_team=game.away_team,
+                             home_team=game.home_team, runs=runs,
+                             plate_appearances=4.0)
+        ] * 6
+
+    monkeypatch.setattr(
+        FanDuelResearch, "fetch_mlb_batters",
+        lambda self: lineup(game.away_team, 0.5) + lineup(game.home_team, 0.4),
+    )
+    db = tmp_path / "mlb.sqlite"
+    result = runner.invoke(app, ["projections", "--fetch", "--db", str(db)])
+    assert result.exit_code == 0, result.output
+    assert "schedule rows stored (ESPN)" in result.output
+    assert "1/1 projections matched" in result.output
+
+    storage = Storage(db)
+    latest = storage.latest_projection(game.game_id)
+    assert latest is not None and latest[3] is not None  # away_score present
+    storage.close()
+
+
 def test_projections_cli_requires_csv_xor_fetch(tmp_path):
     result = runner.invoke(app, ["projections"])
     assert result.exit_code == 2

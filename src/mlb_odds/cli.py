@@ -335,6 +335,20 @@ def projections(
 
     storage = Storage(_resolve_db(db, sport))
     try:
+        if fetch:
+            # The Odds API only lists a game once books post lines (often
+            # mid-morning, pitcher-dependent), but ESPN's schedule is up at
+            # dawn — store it so a pre-lines fetch has games to attach to
+            # (same ids the odds poll will reuse). Best-effort: stored games
+            # still match if ESPN is down.
+            try:
+                stored = storage.store_games(
+                    ESPN(sport="mlb").fetch_schedule(datetime.now(_local_tz()).date())
+                )
+                typer.echo(f"{stored} schedule rows stored (ESPN)")
+            except ProviderError as exc:
+                typer.echo(f"warning: ESPN schedule fetch failed ({exc}); "
+                           "matching already-stored games only", err=True)
         now = datetime.now(UTC)
         # Candidate games: anything upcoming or recent enough to matter.
         candidates: dict[tuple[str, str], list[Game]] = {}
