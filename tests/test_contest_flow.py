@@ -284,3 +284,33 @@ def propose_as(client, member, game_id, headers=None):
         json={"week": 1, "member": member, "picks": [{"game_id": game_id, "side": "home"}]},
         headers=headers or {},
     )
+
+
+def test_resolver_in_consensus_response(client, env):
+    """C5: the consensus payload carries the resolver — edges from the board,
+    conflicts kept off the card, needs surfaced."""
+    kc, buf = env["KC@LAC"], env["BUF@MIA"]
+    det = env["DET@PHI"]
+    propose(client, "vijai", [(kc, "home"), (buf, "home"), (det, "home")])
+    propose(client, "sam", [(kc, "home"), (buf, "away")])
+    propose(client, "alex", [(kc, "pass")])
+    # Contest line 0.75 better than the -2.75 market consensus for home
+    # (contest spreads are half-point-quantized, D-021).
+    posted = client.post(
+        "/api/contest/lines",
+        json={"week": 1, "game_id": kc, "home_spread": -2.0},
+    )
+    assert posted.status_code == 201, posted.text
+    view = client.get(
+        "/api/contest/consensus", params={"week": 1, "member": "vijai"}
+    ).json()
+    res = view["resolution"]
+    assert [p["game_id"] for p in res["card"]] == [kc, det]
+    top = res["card"][0]
+    assert top["passed_by"] == ["alex"] and top["edge"] == 0.75
+    assert any("pass from alex" in r for r in top["reasons"])
+    assert {c["game_id"] for c in res["conflicts"]} == {buf}  # 1v1 split
+    assert len(res["unreviewed"]) == 3  # DAL, SF, GB untouched
+    assert any("split" in n for n in res["needs"])
+    # Legacy shape mirrors the resolver card (no split games seated).
+    assert [c["game_id"] for c in view["working_card"]] == [kc, det]

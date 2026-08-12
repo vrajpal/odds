@@ -689,3 +689,20 @@ per-batter runs are already opponent-and-park adjusted, so lineup sums are a
 complete team-scoring estimate and folding in pitcher projections would
 double-count opponent pitching. The unofficial-API risk is the usual one
 (D-016): breakage is loud (ProviderError in the cron log), never silent.
+
+## D-038 — Consensus resolver (2026-08-12)
+
+The consensus tab's "working card" was `candidates[:5]` — it could seat both
+sides of one game and broke ties alphabetically. Replaced by a resolver
+(`contest.resolve_card`) whose ranking is lexicographic and explainable,
+never an opaque score: net backing (backers minus active opposers), then raw
+backing (a clean 2-0 beats a 2-1), then signed market edge toward the pick
+(the board's contest-vs-consensus edge, oriented so positive always favors
+the pick; unknown ranks as zero), then game_id. One side per game by
+construction. A game with equal active backing on both sides is a *split*:
+the resolver seats neither and surfaces both — breaking a human tie is the
+captain's job, not the software's. The payload also carries the bubble (next
+picks up), unreviewed board games, and human-readable `needs` blockers. The
+legacy `working_card` field now mirrors the resolver card so older clients
+degrade gracefully. Voting gained a "pass" button in the consensus tab —
+D-033's third stance was previously only expressible at propose time.
