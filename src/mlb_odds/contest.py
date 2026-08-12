@@ -690,6 +690,154 @@ def tally_candidates(
     return candidates
 
 
+# --- C5: consensus resolver -------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResolvedPick:
+    """One side of one game, fully contextualized for the card decision."""
+
+    game_id: str
+    side: str
+    backers: tuple[str, ...]
+    status: str  # unanimous | majority | contested
+    opposed_by: tuple[str, ...]  # members actively on the other side
+    passed_by: tuple[str, ...]  # explicit no-lean (D-033)
+    silent: tuple[str, ...]  # members with no stance at all on this game
+    edge: float | None  # signed points toward this side; + = number favors us
+    reasons: tuple[str, ...]  # human-readable ranking rationale
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """The best card the current stances support, and why.
+
+    `card` is the recommendation (at most CARD_SIZE picks, best first);
+    `bubble` is what just missed; `conflicts` are games with equal active
+    backing on both sides — the resolver never breaks a tie between humans,
+    that is the captain's job. `needs` says what is blocking a full card.
+    """
+
+    card: tuple[ResolvedPick, ...]
+    bubble: tuple[ResolvedPick, ...]
+    conflicts: tuple[ResolvedPick, ...]
+    unreviewed: tuple[str, ...]  # board game_ids with no stance from anyone
+    needs: tuple[str, ...]
+
+
+CARD_SIZE = 5
+_BUBBLE_SIZE = 3
+
+
+def _signed_edge(board_game: BoardGame | None, side: str) -> float | None:
+    """Board edge (contest_line - market, + = value on home) oriented toward
+    the picked side: positive always means the number favors this pick."""
+    if board_game is None or board_game.edge is None:
+        return None
+    return board_game.edge if side == "home" else round(-board_game.edge, 2)
+
+
+def resolve_card(
+    candidates: Sequence[Candidate],
+    passes: dict[str, list[str]],
+    board: Sequence[BoardGame],
+    members: Sequence[str],
+) -> Resolution:
+    """Assemble the recommended card from stances plus the market's opinion.
+
+    Ranking is lexicographic and explainable, never an opaque score:
+    1. net backing (backers minus active opposers) — people first;
+    2. raw backer count — a clean 2-0 beats a 2-1;
+    3. signed market edge toward the pick (unknown edge ranks as 0);
+    4. game_id, for determinism.
+
+    A game whose two sides have equal active backing is a conflict: both
+    sides are excluded and surfaced for the captain. One pick per game by
+    construction — only a game's strictly-most-backed side is eligible.
+    """
+    by_board = {g.game_id: g for g in board}
+    by_game: dict[str, list[Candidate]] = {}
+    for c in candidates:
+        by_game.setdefault(c.game_id, []).append(c)
+
+    def build(c: Candidate, opposed: tuple[str, ...]) -> ResolvedPick:
+        passed = tuple(m for m in passes.get(c.game_id, []) if m in members)
+        stanced = set(c.backers) | set(opposed) | set(passed)
+        edge = _signed_edge(by_board.get(c.game_id), c.side)
+        reasons = [f"{len(c.backers)}/{len(members)} backing"]
+        if opposed:
+            reasons.append(f"opposed by {', '.join(opposed)}")
+        if passed:
+            reasons.append(f"pass from {', '.join(passed)}")
+        if edge is not None:
+            reasons.append(
+                f"{edge:+g} vs market" if edge else "at market"
+            )
+        else:
+            reasons.append("no line/market yet")
+        return ResolvedPick(
+            game_id=c.game_id, side=c.side, backers=c.backers, status=c.status,
+            opposed_by=opposed, passed_by=passed,
+            silent=tuple(m for m in members if m not in stanced),
+            edge=edge, reasons=tuple(reasons),
+        )
+
+    eligible: list[ResolvedPick] = []
+    conflicts: list[ResolvedPick] = []
+    for cands in by_game.values():
+        cands = sorted(cands, key=lambda c: -len(c.backers))
+        top = cands[0]
+        rest_backers = tuple(
+            m for c in cands[1:] for m in c.backers
+        )
+        if len(cands) > 1 and len(cands[1].backers) == len(top.backers):
+            # Equal active backing on both sides — humans must break this.
+            for c in cands:
+                other = tuple(
+                    m for cc in cands if cc is not c for m in cc.backers
+                )
+                conflicts.append(build(c, other))
+        else:
+            eligible.append(build(top, rest_backers))
+
+    eligible.sort(
+        key=lambda p: (
+            -(len(p.backers) - len(p.opposed_by)),
+            -len(p.backers),
+            -(p.edge if p.edge is not None else 0.0),
+            p.game_id,
+        )
+    )
+    card = tuple(eligible[:CARD_SIZE])
+    bubble = tuple(eligible[CARD_SIZE : CARD_SIZE + _BUBBLE_SIZE])
+
+    stanced_games = set(by_game) | set(passes)
+    unreviewed = tuple(
+        g.game_id for g in board if g.game_id not in stanced_games
+    )
+    needs: list[str] = []
+    if (short := CARD_SIZE - len(card)) > 0:
+        needs.append(f"{short} more pick(s) needed for a full card")
+    if conflicts:
+        games = sorted({c.game_id for c in conflicts})
+        needs.append(
+            f"captain must break {len(games)} split game(s): {', '.join(games)}"
+        )
+    thin = [p for p in card if len(p.backers) == 1]
+    if thin:
+        needs.append(
+            f"{len(thin)} card pick(s) have a single backer — a second "
+            "stance would firm them up"
+        )
+    if unreviewed:
+        needs.append(f"{len(unreviewed)} board game(s) have no stances yet")
+    conflicts.sort(key=lambda p: (p.game_id, p.side))
+    return Resolution(
+        card=card, bubble=bubble, conflicts=tuple(conflicts),
+        unreviewed=unreviewed, needs=tuple(needs),
+    )
+
+
 @dataclass(frozen=True)
 class CardPick:
     game_id: str

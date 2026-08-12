@@ -481,12 +481,35 @@ class CandidateOut(BaseModel):
     status: str  # unanimous | majority | contested
 
 
+class ResolvedPickOut(BaseModel):
+    game_id: str
+    side: str
+    backers: list[str]
+    status: str
+    opposed_by: list[str]
+    passed_by: list[str]
+    silent: list[str]
+    edge: float | None  # signed toward this side; + = the number favors us
+    reasons: list[str]
+
+
+class ResolutionOut(BaseModel):
+    """The resolver (C5): the best card current stances support, and why."""
+
+    card: list[ResolvedPickOut]
+    bubble: list[ResolvedPickOut]
+    conflicts: list[ResolvedPickOut]
+    unreviewed: list[str]
+    needs: list[str]
+
+
 class ConsensusOut(BaseModel):
     week: int
     captain: str
     passes: dict[str, list[str]]  # game_id -> members explicitly passing (D-033)
     candidates: list[CandidateOut]
-    working_card: list[CandidateOut]  # top 5 by backing — what would lock now
+    working_card: list[CandidateOut]  # resolver card, legacy shape
+    resolution: ResolutionOut
     effective_deadline: str  # Rule 8: pulled to earliest kickoff on the working card
     deadline_pulled_forward_by: str | None  # game_id responsible, if any
     card_locked: bool
@@ -525,19 +548,34 @@ def get_consensus(week: int, member: str, request: Request) -> ConsensusOut:
 
 
 def _consensus_view(store: contest.ContestStore, week: int) -> ConsensusOut:
-    candidates = contest.tally_candidates(
-        store.proposals(week), store.votes(week), _members()
-    )
-    working = candidates[:5]
-    kickoffs = _kickoffs(week, [c.game_id for c in working])
+    members = _members()
+    proposals, votes = store.proposals(week), store.votes(week)
+    candidates = contest.tally_candidates(proposals, votes, members)
+    passes = contest.passes_by_game(proposals, votes)
+    odds = _open_odds()
+    try:
+        board = contest.build_board(odds, store.lines(week), week)
+    finally:
+        odds.close()
+    resolution = contest.resolve_card(candidates, passes, board, members)
+
+    def out(p: contest.ResolvedPick) -> ResolvedPickOut:
+        return ResolvedPickOut(
+            game_id=p.game_id, side=p.side, backers=list(p.backers),
+            status=p.status, opposed_by=list(p.opposed_by),
+            passed_by=list(p.passed_by), silent=list(p.silent),
+            edge=p.edge, reasons=list(p.reasons),
+        )
+
+    kickoffs = _kickoffs(week, [p.game_id for p in resolution.card])
     deadline = contest.effective_deadline(week, kickoffs.values())
     pulled_by = None
     if deadline < contest.pick_deadline(week):
         pulled_by = min(kickoffs, key=lambda g: kickoffs[g])
     return ConsensusOut(
         week=week,
-        captain=contest.captain_for(week, _members()),
-        passes=contest.passes_by_game(store.proposals(week), store.votes(week)),
+        captain=contest.captain_for(week, members),
+        passes=passes,
         candidates=[
             CandidateOut(
                 game_id=c.game_id, side=c.side, backers=list(c.backers), status=c.status
@@ -546,10 +584,17 @@ def _consensus_view(store: contest.ContestStore, week: int) -> ConsensusOut:
         ],
         working_card=[
             CandidateOut(
-                game_id=c.game_id, side=c.side, backers=list(c.backers), status=c.status
+                game_id=p.game_id, side=p.side, backers=list(p.backers), status=p.status
             )
-            for c in working
+            for p in resolution.card
         ],
+        resolution=ResolutionOut(
+            card=[out(p) for p in resolution.card],
+            bubble=[out(p) for p in resolution.bubble],
+            conflicts=[out(p) for p in resolution.conflicts],
+            unreviewed=list(resolution.unreviewed),
+            needs=list(resolution.needs),
+        ),
         effective_deadline=_pt(deadline),
         deadline_pulled_forward_by=pulled_by,
         card_locked=store.card(week) is not None,

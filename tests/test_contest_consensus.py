@@ -299,3 +299,108 @@ def test_booby_guard_alert_fires_saturday_10am():
     assert not booby_guard_alert(1, card_locked=True, now=week1_sat_11am)
     # Not this contest week → never alerts.
     assert not booby_guard_alert(2, card_locked=False, now=week1_sat_11am)
+
+
+# --- C5: consensus resolver ---
+
+
+def board_game(game, edge=None):
+    from mlb_odds.contest import BoardGame
+
+    return BoardGame(
+        game_id=game, away_team="AAA", home_team="HHH", start_time=NOW,
+        books={}, consensus=-3.0 if edge is not None else None,
+        contest_line=(-3.0 + edge) if edge is not None else None,
+        line_entered_at=None, edge=edge,
+        value_side=("home" if (edge or 0) > 0 else "away" if (edge or 0) < 0 else None),
+        key_numbers=[], movement_since_entry=None,
+    )
+
+
+def resolve(props, board=(), votes=()):
+    from mlb_odds.contest import passes_by_game, resolve_card
+
+    cands = tally_candidates(props, list(votes), MEMBERS)
+    passes = passes_by_game(props, list(votes))
+    return resolve_card(cands, passes, list(board), MEMBERS)
+
+
+def test_resolver_one_pick_per_game_and_split_is_a_conflict():
+    props = [
+        prop("vijai", "g1", "home"), prop("sam", "g1", "away"),  # 1v1 split
+        prop("vijai", "g2", "home"), prop("sam", "g2", "home"),
+    ]
+    res = resolve(props)
+    assert [p.game_id for p in res.card] == ["g2"]
+    conflict_games = {p.game_id for p in res.conflicts}
+    assert conflict_games == {"g1"}  # both sides surfaced, neither seated
+    assert {p.side for p in res.conflicts} == {"home", "away"}
+    assert any("split" in n for n in res.needs)
+
+
+def test_resolver_clean_majority_beats_opposed_majority():
+    props = [
+        # g1: 2-1 — majority with active opposition
+        prop("vijai", "g1", "home"), prop("sam", "g1", "home"),
+        prop("alex", "g1", "away"),
+        # g2: 2-0 with a pass — clean
+        prop("vijai", "g2", "home"), prop("sam", "g2", "home"),
+        prop("alex", "g2", "pass"),
+    ]
+    res = resolve(props)
+    assert [p.game_id for p in res.card] == ["g2", "g1"]
+    g1 = res.card[1]
+    assert g1.opposed_by == ("alex",)
+    assert any("opposed by alex" in r for r in g1.reasons)
+    g2 = res.card[0]
+    assert g2.passed_by == ("alex",) and g2.silent == ()
+
+
+def test_resolver_breaks_backing_ties_on_market_edge():
+    props = [
+        prop("vijai", "gA", "home"),  # +2 edge toward home
+        prop("vijai", "gB", "away"),  # board edge +1.5 home => -1.5 for away
+        prop("vijai", "gC", "home"),  # no line yet
+    ]
+    board = [board_game("gA", edge=2.0), board_game("gB", edge=1.5),
+             board_game("gC"), board_game("gX")]
+    res = resolve(props, board)
+    assert [p.game_id for p in res.card] == ["gA", "gC", "gB"]
+    assert res.card[0].edge == 2.0
+    assert res.card[2].edge == -1.5  # oriented toward the picked (away) side
+    assert res.unreviewed == ("gX",)
+    assert any("no stances yet" in n for n in res.needs)
+    assert any("single backer" in n for n in res.needs)
+    assert any("2 more pick" in n for n in res.needs)
+
+
+def test_resolver_vote_flip_creates_conflict_then_resolves():
+    props = [
+        prop("vijai", "g1", "home"), prop("sam", "g1", "home"),
+        prop("alex", "g1", "away"),
+    ]
+    res = resolve(props)
+    assert [p.game_id for p in res.card] == ["g1"]  # 2v1: still eligible
+    # sam flips to away -> 1v2, away now the eligible side
+    res = resolve(props, votes=[vote("sam", "g1", "away")])
+    assert res.card[0].side == "away"
+    assert res.card[0].opposed_by == ("vijai",)
+    # vijai passes -> 0v2 clean
+    res = resolve(props, votes=[vote("sam", "g1", "away"),
+                                vote("vijai", "g1", "pass")])
+    assert res.card[0].opposed_by == ()
+    assert res.card[0].passed_by == ("vijai",)
+
+
+def test_resolver_fills_bubble_beyond_card_size():
+    props = []
+    for i in range(7):
+        props.append(prop("vijai", f"g{i}", "home"))
+        props.append(prop("sam", f"g{i}", "home"))
+    # g0..g6 all 2-0; edges make g6..g2 the card, g1/g0 the bubble
+    board = [board_game(f"g{i}", edge=float(i)) for i in range(7)]
+    res = resolve(props, board)
+    assert len(res.card) == 5 and len(res.bubble) == 2
+    assert [p.game_id for p in res.card] == ["g6", "g5", "g4", "g3", "g2"]
+    assert [p.game_id for p in res.bubble] == ["g1", "g0"]
+    assert res.needs == ()  # full card, nothing thin, nothing unreviewed

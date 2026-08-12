@@ -200,7 +200,9 @@
       <tr><td><b>blind proposals</b></td><td>Everyone submits their picks before seeing anyone else's — one shot, no edits. Stops the first opinion from anchoring the group.</td></tr>
       <tr><td><b>stance</b></td><td>Your current side on a game. Voting on a game you proposed <i>changes</i> your stance — one opinion per member per game.</td></tr>
       <tr><td><b>unanimous / majority / contested</b></td><td>How many members back a candidate: all three / two / fewer. Contested picks fall to the captain.</td></tr>
-      <tr><td><b>working card</b></td><td>The top five candidates by backing — what would lock right now.</td></tr>
+      <tr><td><b>resolver</b></td><td>The recommended card, assembled from stances: net backing first (backers minus active opposers), then raw backing, then market edge toward the pick. One side per game; explainable, never a black box.</td></tr>
+      <tr><td><b>split</b></td><td>A game with equal active backing on both sides (1v1). The resolver seats neither — breaking a human tie is the captain's job.</td></tr>
+      <tr><td><b>bubble</b></td><td>Picks that just missed the five — first in if the group flips or drops something.</td></tr>
       <tr><td><b>captain</b></td><td>The week's tiebreaker and submitter of record, rotating in member order (week 1 → first member, and so on).</td></tr>
       <tr><td><b>DIV</b></td><td>Divisional matchup — same division, twice-a-year familiarity; these historically play closer to the number.</td></tr>
       <tr><td><b>H-short / A-short</b></td><td>Home/away team on a short week (4 days' rest or fewer, usually Thursday after a Sunday game).</td></tr>
@@ -540,12 +542,38 @@ async function loadConsensus() {
       <td><span class="tag ${cand.status}">${cand.status}</span></td>
       <td>${c.card_locked ? "" :
         `<button class="side" data-vote="${cand.game_id}" data-vside="home">home</button>
-         <button class="side" data-vote="${cand.game_id}" data-vside="away">away</button>`}</td>
+         <button class="side" data-vote="${cand.game_id}" data-vside="away">away</button>
+         <button class="side" data-vote="${cand.game_id}" data-vside="pass">pass</button>`}</td>
     </tr>`).join("") + "</tbody></table>" +
-    (c.card_locked ? "" : `<div class="card-box">
-       <b>Working card</b> (top 5 — captain locks):<br>` +
-       c.working_card.map(w => `${w.game_id} <b>${w.side}</b>`).join(" · ") +
-       `<br><br><button class="action" id="lock-card">Lock this card as ${state.me}</button></div>`);
+    (c.card_locked ? "" : renderResolver(c));
+  function renderResolver(c) {
+    const res = c.resolution;
+    if (!res) return "";
+    const backing = p =>
+      `<b>${p.backers.join(", ")}</b>` +
+      (p.opposed_by.length ? ` <span class="bad">− ${p.opposed_by.join(", ")}</span>` : "") +
+      (p.passed_by.length ? ` <span class="dim">pass: ${p.passed_by.join(", ")}</span>` : "");
+    const edgeCell = p => p.edge == null ? '<span class="dim">no line</span>' :
+      `<span class="${p.edge > 0 ? "good" : p.edge < 0 ? "bad" : "dim"}">${p.edge > 0 ? "+" : ""}${p.edge}</span>`;
+    const row = (p, i) => `<tr>
+      <td class="dim">${i + 1}</td><td>${p.game_id}</td><td><b>${p.side}</b></td>
+      <td>${backing(p)}</td><td class="num">${edgeCell(p)}</td>
+      <td><span class="tag ${p.status}">${p.status}</span></td></tr>`;
+    return `<div class="card-box">
+      <b>Resolver</b> — best card current stances support
+      <span class="dim">(net backing → backing → edge; splits go to the captain)</span>
+      ${res.needs.map(n => `<div class="msg"><span class="warn">⚠ ${n}</span></div>`).join("")}
+      <table><thead><tr><th>#</th><th>game</th><th>side</th><th>backing</th>
+      <th>edge</th><th>status</th></tr></thead><tbody>` +
+      res.card.map(row).join("") + `</tbody></table>` +
+      (res.conflicts.length ? `<div class="msg"><b>⚔ splits</b> — captain decides: ` +
+        res.conflicts.map(p => `${p.game_id} <b>${p.side}</b> (${p.backers.join(", ")})`).join(" · ") +
+        `</div>` : "") +
+      (res.bubble.length ? `<div class="msg dim">bubble: ` +
+        res.bubble.map(p => `${p.game_id} <b>${p.side}</b>${p.edge != null ? ` (${p.edge > 0 ? "+" : ""}${p.edge})` : ""}`).join(" · ") +
+        `</div>` : "") +
+      `<br><button class="action" id="lock-card">Lock this card as ${state.me}</button></div>`;
+  }
   box.querySelectorAll("[data-vote]").forEach(btn => btn.onclick = async () => {
     try {
       await api("/api/contest/votes", {method:"POST", body: JSON.stringify(
