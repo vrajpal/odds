@@ -6,6 +6,7 @@ missing-market and unknown-team variants are edits of it.
 
 import copy
 import json
+from datetime import date
 
 import httpx
 import pytest
@@ -153,6 +154,19 @@ def test_plugs_into_client_and_stores(tmp_path):
     assert len(client.current_odds()) == 2
     assert client.last_errors == {}
     client.close()
+
+
+def test_fetch_schedule_nfl_preseason():
+    """Preseason slates (seasontype 1, no odds posted) flow through
+    fetch_schedule like any other day — recorded 2026-08-22 scoreboard."""
+    espn = ESPN(
+        sport="nfl",
+        strict=True,
+        transport=fixture_transport("espn_nfl_scoreboard_preseason_20260822"),
+    )
+    games = espn.fetch_schedule(date(2026, 8, 22))
+    assert len(games) == 10
+    assert len({g.game_id for g in games}) == 10
 
 
 def test_fixture_is_valid_json_with_expected_events():
