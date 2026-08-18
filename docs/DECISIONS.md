@@ -706,3 +706,21 @@ picks up), unreviewed board games, and human-readable `needs` blockers. The
 legacy `working_card` field now mirrors the resolver card so older clients
 degrade gracefully. Voting gained a "pass" button in the consensus tab —
 D-033's third stance was previously only expressible at propose time.
+
+## D-039 — `mlb-odds schedule`: seed a slate without a line poll (2026-08-17)
+Games only entered a database when a line poll saw them, so `results` had
+nothing to grade for a slate with no odds feed. The 2026 NFL preseason is
+exactly that: The Odds API's `americanfootball_nfl_preseason` key is
+inactive this year (the main key starts at the Sep 10 opener), and ESPN
+attaches no odds nodes to preseason events until near kickoff, if at all.
+
+`mlb-odds schedule [--sport nfl] [--date YYYY-MM-DD]` exposes the existing
+D-031 path (`ESPN.fetch_schedule` → `Storage.store_games`) — previously
+reachable only through the MLB-only `statcast`/`projections` commands — as
+a sport-generic command. Schedule-only games reuse the same identity
+reconciliation as odds writes, so a later line poll converges onto the same
+game_id; re-runs upsert. Validated end-to-end on the Aug 13–16 preseason
+slate: 16 games seeded, all 16 finals graded by `results` on the first run,
+including a tie (IND@NE 13–13) and a Sunday-night game landing on the
+correct US/Eastern scoreboard day. Recorded fixture:
+tests/fixtures/espn_nfl_scoreboard_preseason_20260822.json (2026-08-17).

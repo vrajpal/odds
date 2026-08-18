@@ -658,3 +658,28 @@ def test_collect_default_provider_unchanged(tmp_path, monkeypatch):
     result = runner.invoke(app, ["collect", "--once", "--db", str(tmp_path / "x.sqlite")])
     assert result.exit_code == 1
     assert "THE_ODDS_API_KEY" in result.output
+
+
+def test_schedule_command_seeds_never_polled_slate(tmp_path, monkeypatch):
+    """`schedule` persists a slate no line poll ever saw (D-031) so `results`
+    can grade it — the NFL preseason path, where neither odds feed has lines."""
+    db = tmp_path / "nfl.sqlite"
+    monkeypatch.setattr(
+        "mlb_odds.cli.ESPN",
+        lambda sport="mlb": ESPN(
+            sport=sport,
+            transport=fixture_transport("espn_nfl_scoreboard_preseason_20260822"),
+        ),
+    )
+    args = ["schedule", "--sport", "nfl", "--date", "2026-08-22", "--db", str(db)]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0
+    assert "10 game(s) stored for 2026-08-22." in result.output
+
+    # Re-run upserts the same games rather than duplicating them.
+    again = runner.invoke(app, args)
+    assert "10 game(s) stored" in again.output
+    storage = Storage(db)
+    pending = storage.games_missing_results(before=datetime(2027, 1, 1, tzinfo=UTC))
+    assert len(pending) == 10
+    storage.close()

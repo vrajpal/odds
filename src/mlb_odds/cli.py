@@ -276,6 +276,42 @@ def results(
 
 
 @app.command()
+def schedule(
+    on: Annotated[
+        str | None,
+        typer.Option(
+            "--date",
+            help="YYYY-MM-DD scoreboard day (US/Eastern, how ESPN groups days). "
+            "Default: today.",
+        ),
+    ] = None,
+    sport: Annotated[
+        SportChoice,
+        typer.Option("--sport", help="League: mlb (default) or nfl."),
+    ] = SportChoice.mlb,
+    db: DbOption = None,
+) -> None:
+    """Store the day's slate as schedule-only games (ESPN scoreboard — free, D-031).
+
+    Games normally enter the database when a line poll sees them; this seeds a
+    slate that was never polled so `results` can grade it — e.g. NFL preseason,
+    where neither odds feed carries lines. Re-runs upsert.
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    from mlb_odds.storage import Storage
+
+    target = date.fromisoformat(on) if on else datetime.now(_local_tz()).date()
+    storage = Storage(_resolve_db(db, sport))
+    try:
+        stored = storage.store_games(ESPN(sport=sport.value).fetch_schedule(target))
+        typer.echo(f"{stored} game(s) stored for {target}.")
+    finally:
+        storage.close()
+
+
+@app.command()
 def projections(
     csv_file: Annotated[
         Path | None, typer.Argument(help="Exported projections CSV.")
