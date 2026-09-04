@@ -9,6 +9,7 @@ routes for free).
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,7 @@ from pydantic import BaseModel, Field
 from mlb_odds import contest, contest_api, model, survivor, valuation
 from mlb_odds.models import Game
 from mlb_odds.providers.base import ProviderError
+from mlb_odds.storage import Storage
 from mlb_odds.teams import NFL_CODES, NFL_DIVISIONS
 
 logger = logging.getLogger(__name__)
@@ -184,6 +186,83 @@ def _pick_out(pick: survivor.SurvivorPick) -> PickOut:
     )
 
 
+@dataclass(frozen=True)
+class _MarketFit:
+    """The two season-wide fits every survivor probability composes from:
+    spread-implied point ratings (D-025) and moneyline-implied strengths
+    (D-036). Fit once per request, read per game."""
+
+    ratings: dict[str, float]
+    hfa: float
+    ml_strengths: dict[str, float]
+    ml_hfa: float | None
+
+
+def _fit_market(odds: Storage) -> _MarketFit:
+    fitted = contest.power_ratings(odds)
+    fitted_ml = valuation.implied_strengths(odds)
+    ratings, hfa = fitted if fitted else ({}, 0.0)
+    ml_strengths, ml_hfa = fitted_ml if fitted_ml else ({}, None)
+    return _MarketFit(ratings=ratings, hfa=hfa, ml_strengths=ml_strengths, ml_hfa=ml_hfa)
+
+
+@dataclass(frozen=True)
+class _GameRead:
+    """One game's survivor-relevant read, home side throughout."""
+
+    consensus: float | None  # market home spread (median across books)
+    model_line: float | None  # power-rating home spread
+    home_wp: float | None  # market: devigged ML consensus, else spread-implied
+    model_wp: float | None  # D-036 two-lens blend
+    ml_lens: float | None
+    spread_lens: float | None
+
+
+def _read_game(odds: Storage, game: Game, fit: _MarketFit) -> _GameRead:
+    """The board's per-game math, shared with the matrix so both views agree
+    on every number. Must run while `odds` is still open."""
+    market = contest.consensus(
+        contest.book_spreads(contest.spread_history(odds, game.game_id))
+    )
+    model_line = contest.predicted_home_spread(
+        fit.ratings, fit.hfa, game.home_team, game.away_team
+    )
+    # Market straight-up probability: devigged moneyline consensus when
+    # books quote it, else the spread-implied conversion (D-036).
+    ml_consensus = valuation.consensus_prob(
+        valuation.book_probs(valuation.moneyline_history(odds, game.game_id))
+    )
+    reference = market if market is not None else model_line
+    home_wp = (
+        ml_consensus
+        if ml_consensus is not None
+        else survivor.win_probability(reference) if reference is not None else None
+    )
+    ml_lens = (
+        valuation.model_home_prob(
+            fit.ml_strengths, fit.ml_hfa, game.home_team, game.away_team
+        )
+        if fit.ml_hfa is not None
+        else None
+    )
+    model_wp, spread_lens = model.nfl_model_prob(ml_lens, model_line)
+    return _GameRead(
+        consensus=market,
+        model_line=model_line,
+        home_wp=home_wp,
+        model_wp=model_wp,
+        ml_lens=ml_lens,
+        spread_lens=spread_lens,
+    )
+
+
+def _is_divisional(home: str, away: str) -> bool:
+    return (
+        NFL_DIVISIONS.get(home) is not None
+        and NFL_DIVISIONS.get(home) == NFL_DIVISIONS.get(away)
+    )
+
+
 class SurvivorGameOut(BaseModel):
     game_id: str
     away_team: str
@@ -239,40 +318,17 @@ def get_board(leg: str | None = None) -> SurvivorBoardOut:
             odds.games(window=(leg_.start, leg_.end)),
             key=lambda g: (g.start_time, g.game_id),
         )
-        fitted = contest.power_ratings(odds)
-        fitted_ml = valuation.implied_strengths(odds)
-        histories = {g.game_id: contest.spread_history(odds, g.game_id) for g in games}
-        ml_pairs = {
-            g.game_id: valuation.book_probs(valuation.moneyline_history(odds, g.game_id))
-            for g in games
-        }
+        fit = _fit_market(odds)
+        reads = {g.game_id: _read_game(odds, g, fit) for g in games}
         used = store.used_teams()
         pick = store.pick(leg_.leg_id)
     finally:
         store.close()
         odds.close()
-    ratings, hfa = fitted if fitted else ({}, 0.0)
-    ml_strengths, ml_hfa = fitted_ml if fitted_ml else ({}, None)
 
     rows = []
     for g in games:
-        market = contest.consensus(contest.book_spreads(histories[g.game_id]))
-        model_line = contest.predicted_home_spread(ratings, hfa, g.home_team, g.away_team)
-        # Market straight-up probability: devigged moneyline consensus when
-        # books quote it, else the spread-implied conversion (D-036).
-        ml_consensus = valuation.consensus_prob(ml_pairs[g.game_id])
-        reference = market if market is not None else model_line
-        home_wp = (
-            ml_consensus
-            if ml_consensus is not None
-            else survivor.win_probability(reference) if reference is not None else None
-        )
-        ml_lens = (
-            valuation.model_home_prob(ml_strengths, ml_hfa, g.home_team, g.away_team)
-            if ml_hfa is not None
-            else None
-        )
-        model_wp, spread_lens = model.nfl_model_prob(ml_lens, model_line)
+        r = reads[g.game_id]
         rows.append(
             SurvivorGameOut(
                 game_id=g.game_id,
@@ -280,19 +336,16 @@ def get_board(leg: str | None = None) -> SurvivorBoardOut:
                 home_team=g.home_team,
                 start_time=_pt(g.start_time),
                 early_kickoff=g.start_time < leg_.deadline,
-                consensus=market,
-                predicted_line=model_line,
-                home_win_prob=home_wp,
-                away_win_prob=round(1 - home_wp, 3) if home_wp is not None else None,
-                model_win_prob=model_wp,
-                ml_lens_prob=ml_lens,
-                spread_lens_prob=spread_lens,
+                consensus=r.consensus,
+                predicted_line=r.model_line,
+                home_win_prob=r.home_wp,
+                away_win_prob=round(1 - r.home_wp, 3) if r.home_wp is not None else None,
+                model_win_prob=r.model_wp,
+                ml_lens_prob=r.ml_lens,
+                spread_lens_prob=r.spread_lens,
                 home_used=used.get(g.home_team),
                 away_used=used.get(g.away_team),
-                divisional=(
-                    NFL_DIVISIONS.get(g.home_team) is not None
-                    and NFL_DIVISIONS.get(g.home_team) == NFL_DIVISIONS.get(g.away_team)
-                ),
+                divisional=_is_divisional(g.home_team, g.away_team),
             )
         )
     return SurvivorBoardOut(
@@ -308,6 +361,137 @@ def get_board(leg: str | None = None) -> SurvivorBoardOut:
         pick_locked=pick is not None,
         holiday_slate=sorted(survivor.HOLIDAY_SLATES.get(leg_.leg_id, frozenset())),
         games=rows,
+    )
+
+
+class MatrixCellOut(BaseModel):
+    """One team's game in one leg, from that team's perspective."""
+
+    game_id: str
+    opponent: str
+    home: bool
+    start_time: str  # Pacific ISO
+    spread: float | None  # this team's market spread (negative = favored)
+    market_win_prob: float | None
+    model_win_prob: float | None
+    divisional: bool
+
+
+class MatrixLegOut(BaseModel):
+    leg_id: str
+    label: str
+    deadline: str
+    locked: bool  # past the leg deadline
+    holiday_slate: list[str]
+    pick: str | None  # team locked for this leg, if any
+    result: str | None
+
+
+class MatrixTeamOut(BaseModel):
+    team: str
+    division: str | None
+    used: str | None  # leg the team was burned in, if any
+    cells: dict[str, MatrixCellOut]  # leg_id -> game; a missing leg is a bye
+
+
+class SurvivorMatrixOut(BaseModel):
+    current_leg: str | None
+    legs: list[MatrixLegOut]
+    teams: list[MatrixTeamOut]
+
+
+def _leg_containing(at: datetime) -> survivor.Leg | None:
+    for candidate in survivor.LEGS:
+        if candidate.start <= at < candidate.end:
+            return candidate
+    return None
+
+
+@router.get("/matrix", response_model=SurvivorMatrixOut)
+def get_matrix() -> SurvivorMatrixOut:
+    """Every team's stored schedule, leg by leg, with the same market and
+    model win probabilities the board shows — the season-long look-ahead
+    for deciding which teams to save for which legs. Legs come from the
+    survivor calendar; cells come from the stored NFL schedule (a team with
+    no stored game in a leg window is a bye), so an NFL schedule change
+    flows in with the next collect."""
+    now = contest_api._now()
+    odds = contest_api._open_odds()
+    store = _store()
+    try:
+        games = sorted(
+            odds.games(window=(survivor.LEGS[0].start, survivor.LEGS[-1].end)),
+            key=lambda g: (g.start_time, g.game_id),
+        )
+        fit = _fit_market(odds)
+        reads = {g.game_id: _read_game(odds, g, fit) for g in games}
+        used = store.used_teams()
+        picks = store.all_picks()
+    finally:
+        store.close()
+        odds.close()
+
+    cells: dict[str, dict[str, MatrixCellOut]] = {team: {} for team in sorted(NFL_CODES)}
+    for g in games:
+        leg_ = _leg_containing(g.start_time)
+        if leg_ is None:
+            continue
+        r = reads[g.game_id]
+        divisional = _is_divisional(g.home_team, g.away_team)
+        sides = (
+            (g.home_team, g.away_team, True, r.consensus, r.home_wp, r.model_wp),
+            (
+                g.away_team,
+                g.home_team,
+                False,
+                -r.consensus if r.consensus is not None else None,
+                round(1 - r.home_wp, 3) if r.home_wp is not None else None,
+                round(1 - r.model_wp, 4) if r.model_wp is not None else None,
+            ),
+        )
+        for team, opponent, home, spread, market_wp, model_wp in sides:
+            if team not in cells:
+                continue
+            # Games are sorted by kickoff, so the earliest game in a leg wins
+            # (matches _game_for_team's pick validation).
+            cells[team].setdefault(
+                leg_.leg_id,
+                MatrixCellOut(
+                    game_id=g.game_id,
+                    opponent=opponent,
+                    home=home,
+                    start_time=_pt(g.start_time),
+                    spread=spread,
+                    market_win_prob=market_wp,
+                    model_win_prob=model_wp,
+                    divisional=divisional,
+                ),
+            )
+
+    current = survivor.leg_for(now)
+    return SurvivorMatrixOut(
+        current_leg=current.leg_id if current else None,
+        legs=[
+            MatrixLegOut(
+                leg_id=leg_.leg_id,
+                label=leg_.label,
+                deadline=_pt(leg_.deadline),
+                locked=now >= leg_.deadline,
+                holiday_slate=sorted(survivor.HOLIDAY_SLATES.get(leg_.leg_id, frozenset())),
+                pick=picks[leg_.leg_id].team if leg_.leg_id in picks else None,
+                result=picks[leg_.leg_id].result if leg_.leg_id in picks else None,
+            )
+            for leg_ in survivor.LEGS
+        ],
+        teams=[
+            MatrixTeamOut(
+                team=team,
+                division=NFL_DIVISIONS.get(team),
+                used=used.get(team),
+                cells=team_cells,
+            )
+            for team, team_cells in cells.items()
+        ],
     )
 
 

@@ -95,3 +95,6 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] S3 — UI: survivor.html beside the Million page (Board with win
       probabilities and burned-team flags, Propose/Consensus/Pick tabs, Plan
       tab with holiday-slate danger meters and all-20-legs schedule) (D-028)
+- [x] S4 — Matrix tab: every team × every leg with projected win probability
+      from the stored look-ahead lines (`/api/survivor/matrix`), rank-by-leg,
+      safe-leg counts and best-leg per team for saving teams ahead (D-040)
