@@ -319,3 +319,61 @@ def test_auto_grade_skips_in_progress_game(client, env, monkeypatch):
     assert out["result"] is None
     assert out["skipped_reason"] == "game not final"
     assert out["pick"]["result"] is None
+
+
+# --- season matrix -----------------------------------------------------------
+
+
+def test_matrix_covers_every_team_and_leg_with_board_numbers(client, env):
+    body = client.get("/api/survivor/matrix").json()
+    assert body["current_leg"] == "1"
+    assert [lg["leg_id"] for lg in body["legs"]] == [lg.leg_id for lg in survivor.LEGS]
+    teams = {t["team"]: t for t in body["teams"]}
+    assert len(teams) == 32 and teams["KC"]["division"] == "AFC West"
+
+    # KC @ LAC (home -3.5 consensus): the away side is the complement of the
+    # board's home number, spread flipped to KC's perspective.
+    kc = teams["KC"]["cells"]
+    assert set(kc) == {"1"}  # one stored game; everything else is a bye
+    cell = kc["1"]
+    assert cell["game_id"] == env["ids"]["KC@LAC"]
+    assert cell["opponent"] == "LAC" and cell["home"] is False
+    assert cell["spread"] == 3.5
+    assert cell["market_win_prob"] == pytest.approx(1 - survivor.win_probability(-3.5))
+    assert cell["divisional"] is True
+    lac = teams["LAC"]["cells"]
+    assert set(lac) == {"1", "2"}  # plays LV in week 2
+    assert lac["1"]["home"] is True and lac["1"]["spread"] == -3.5
+    assert lac["1"]["market_win_prob"] == survivor.win_probability(-3.5)
+    assert lac["2"]["opponent"] == "LV"
+
+    # The Thanksgiving game lands in the TG leg, not week 12.
+    assert teams["DET"]["cells"]["TG"]["opponent"] == "DAL"
+    assert "12" not in teams["DET"]["cells"]
+    tg = next(lg for lg in body["legs"] if lg["leg_id"] == "TG")
+    assert len(tg["holiday_slate"]) == 10 and tg["pick"] is None
+
+    # Matrix and board agree on the same game.
+    board = client.get("/api/survivor/board").json()
+    board_game = next(g for g in board["games"] if g["game_id"] == cell["game_id"])
+    assert cell["market_win_prob"] == board_game["away_win_prob"]
+    assert lac["1"]["model_win_prob"] == board_game["model_win_prob"]
+
+
+def test_matrix_marks_used_teams_and_locked_picks(client, env):
+    for member in ("vijai", "sam", "alex"):
+        client.post(
+            "/api/survivor/proposal",
+            json={"leg": "1", "member": member, "choices": [{"team": "LAC"}]},
+        )
+    r = client.post("/api/survivor/pick", json={"leg": "1", "member": "vijai", "team": "LAC"})
+    assert r.status_code == 201
+    body = client.get("/api/survivor/matrix").json()
+    leg1 = next(lg for lg in body["legs"] if lg["leg_id"] == "1")
+    assert leg1["pick"] == "LAC" and leg1["result"] is None and leg1["locked"] is False
+    teams = {t["team"]: t for t in body["teams"]}
+    assert teams["LAC"]["used"] == "1"
+    assert teams["KC"]["used"] is None
+    # Week-2 schedule stays visible for the burned team — the UI dims it, the
+    # data doesn't hide it.
+    assert "2" in teams["LAC"]["cells"]

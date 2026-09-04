@@ -724,3 +724,28 @@ slate: 16 games seeded, all 16 finals graded by `results` on the first run,
 including a tie (IND@NE 13–13) and a Sunday-night game landing on the
 correct US/Eastern scoreboard day. Recorded fixture:
 tests/fixtures/espn_nfl_scoreboard_preseason_20260822.json (2026-08-17).
+
+## D-040 — Survivor matrix: the season look-ahead from stored lines (2026-09-04)
+The survivor Board answers "who is safest *this* leg"; the winning question is
+"which team should we *save* for which leg". `GET /api/survivor/matrix` is
+every team × every leg with the same market and model straight-up
+probabilities the Board shows, rendered in survivor.html as a Matrix tab
+(diverging fill around 50%, rank-by-leg on header click, per-team safe-leg
+count and best open leg).
+
+Why it needs no new data: The Odds API publishes look-ahead lines for the
+whole regular season, so the NFL database already holds all 272 games with
+spreads and moneylines from the first collect. The matrix reads those, not a
+schedule provider — a leg cell exists iff a stored game falls in the leg's
+window (the same schedule-of-record rule pick validation uses, D-028), so a
+team with no stored game in a window is a bye and an NFL schedule change flows
+in with the next collect. Look-ahead numbers move a lot before a week's
+market forms; the UI says so and treats them as a map, not a forecast.
+
+The Board's per-game composition (spread consensus, power-rating line,
+devigged moneyline consensus with spread-implied fallback, D-036 two-lens
+model blend) moved into shared helpers (`_fit_market`, `_read_game`) so the
+two views can never disagree on a number. Both fits run once per request;
+the full-season read is ~0.2 s against the real database, so there is no
+cache. Cells are oriented to the team (spread sign flipped for the away
+side, probabilities complemented) because the reader scans rows, not games.

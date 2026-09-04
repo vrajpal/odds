@@ -71,6 +71,44 @@
   .sev-fatal { color:var(--bad); font-weight:700; }
   @media (max-width:720px){ main{padding:10px} th,td{padding:5px 6px} }
 
+  /* matrix: season look-ahead (diverging fill around 50%: green = favored,
+     red = underdog, neutral = surface; the number is always printed) */
+  main:has(#tab-matrix:not([hidden])) { max-width:1440px; }  /* 20 legs + summaries need the room */
+  .mx-controls { display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin:8px 0 12px;
+                 font-size:13px; color:var(--dim); }
+  .mx-controls label { display:inline-flex; gap:5px; align-items:center; }
+  .mx-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:8px; }
+  table.mx { width:auto; font-size:12px; border-collapse:separate; border-spacing:0; }
+  table.mx th, table.mx td { padding:3px 4px; text-align:center; border-bottom:1px solid var(--line);
+                             border-right:1px solid #1b2438; }
+  table.mx th { cursor:pointer; user-select:none; position:sticky; top:0; background:var(--panel);
+                z-index:2; line-height:1.2; }
+  table.mx th.sorted { color:var(--accent); }
+  table.mx th.cur, table.mx td.cur { box-shadow:inset 2px 0 var(--accent), inset -2px 0 var(--accent); }
+  table.mx .team { position:sticky; left:0; background:var(--bg); text-align:left; font-weight:700;
+                   z-index:1; }
+  table.mx th.team { z-index:3; background:var(--panel); }
+  table.mx td.cell { min-width:46px; line-height:1.15; }
+  table.mx td.cell .p { display:block; font-weight:600; font-variant-numeric:tabular-nums; }
+  table.mx td.cell .opp { display:block; font-size:10px; color:var(--dim); }
+  table.mx td.bye { color:#3a4358; }
+  table.mx td.past { opacity:.45; }
+  table.mx tr.used td { opacity:.35; }
+  table.mx tr.used td.team { text-decoration:line-through; }
+  table.mx td.picked { opacity:1; outline:2px solid var(--accent); outline-offset:-2px; }
+  table.mx td.g1, .sw.g1 { background:rgba(63,206,139,.14); }
+  table.mx td.g2, .sw.g2 { background:rgba(63,206,139,.28); }
+  table.mx td.g3, .sw.g3 { background:rgba(63,206,139,.44); }
+  table.mx td.g4, .sw.g4 { background:rgba(63,206,139,.62); }
+  table.mx td.r1, .sw.r1 { background:rgba(255,107,107,.14); }
+  table.mx td.r2, .sw.r2 { background:rgba(255,107,107,.28); }
+  table.mx td.r3, .sw.r3 { background:rgba(255,107,107,.44); }
+  table.mx td.r4, .sw.r4 { background:rgba(255,107,107,.62); }
+  .mx-legend { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; margin-top:10px;
+               font-size:12px; color:var(--dim); }
+  .sw { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px;
+        margin-right:4px; border:1px solid var(--line); }
+
   /* shared team lens (lens.js) */
   .lens-box { background:#131a29; border:1px solid var(--line); border-radius:8px;
               padding:12px 14px; margin:10px 0; }
@@ -104,6 +142,7 @@
   <button data-tab="consensus">Consensus</button>
   <button data-tab="pick">Pick</button>
   <button data-tab="plan">Plan</button>
+  <button data-tab="matrix">Matrix</button>
   <button data-tab="glossary">Glossary</button>
 </nav>
 <main>
@@ -144,6 +183,21 @@
     <div id="plan-body"></div>
   </div>
 
+  <div id="tab-matrix" hidden>
+    <div class="msg dim">Season look-ahead: every team's projected straight-up win probability, leg by
+      leg, from the stored lines (look-ahead numbers for far-off weeks will move — treat them as a map,
+      not a forecast). Click a leg header to rank teams for that leg; click it again for alphabetical.
+      The point is to spot which teams to <i>save</i> for the legs where they're the strongest option.</div>
+    <div class="mx-controls">
+      <label>probability <select id="mx-src"><option value="market">market</option><option value="model">model</option></select></label>
+      <label><input type="checkbox" id="mx-hide-used"> hide used teams</label>
+      <label>safe ≥ <select id="mx-safe"><option>60</option><option selected>65</option><option>70</option><option>75</option></select>%</label>
+      <span id="mx-note"></span>
+    </div>
+    <div class="mx-wrap"><table class="mx" id="mx-table"></table></div>
+    <div class="mx-legend" id="mx-legend"></div>
+  </div>
+
   <div id="tab-glossary" hidden>
     <h2>The contest in one breath</h2>
     <div class="msg">Pick one NFL team to win straight up each leg. Wrong (loss <i>or tie</i>) = the
@@ -158,6 +212,7 @@
       <tr><td><b>tie = loss</b></td><td>Rule 6a. There is no push in survivor. Enter ties as losses when grading.</td></tr>
       <tr><td><b>missed leg = dead</b></td><td>Unlike the Million (score 0, keep playing), a survivor entry that doesn't submit by the deadline is eliminated (Rule 12).</td></tr>
       <tr><td><b>win %</b></td><td>Straight-up win probability implied by the market spread (normal margin model, σ≈13.45). A -7 favorite ≈ 70%. Survivor is about not losing, but the used-team constraint means the "safest" pick each week is rarely optimal for the season.</td></tr>
+      <tr><td><b>matrix</b></td><td>Every team × every leg, colored by projected win probability from the same market/model numbers as the Board. <b>safe</b> counts the still-open legs at or above the chosen threshold (a team with many is flexible; a team with one is a candidate to save for exactly that leg). <b>best</b> is the team's strongest open leg. Byes show as —.</td></tr>
       <tr><td><b>ETSN</b></td><td>Circa's 12-digit ticket serial from the app confirmation — the only proof the pick got in. Record it on the Pick tab.</td></tr>
       <tr><td><b>repeat pick = DQ</b></td><td>Rule 15a: if Circa's software lets a used team through, the entry is disqualified anyway — tracking used teams is on us. This app hard-blocks repeats.</td></tr>
     </tbody></table>
@@ -525,10 +580,112 @@ function loadPlan() {
       count for both holiday slates — they carry double option value.</div>`;
 }
 
+// --- Matrix: season look-ahead ------------------------------------------------
+const mx = { data:null, src:"market", sortLeg:null, hideUsed:false, safe:0.65 };
+const legShort = l => l.leg_id === "TG" ? "TG 🦃" : l.leg_id === "XMAS" ? "XMAS 🎄" : "W" + l.leg_id;
+// Diverging bins around 50%: |p-.5| < .04 toss-up, then .12 / .22 / .30 arm steps.
+const binClass = p => {
+  if (p == null) return "";
+  const d = p - 0.5, a = Math.abs(d);
+  if (a < 0.04) return "";
+  return (d > 0 ? "g" : "r") + (a < 0.12 ? 1 : a < 0.22 ? 2 : a < 0.30 ? 3 : 4);
+};
+
+async function loadMatrix() {
+  if (!mx.data) {
+    $("#mx-table").innerHTML = '<tr><td class="dim" style="padding:12px">loading season matrix…</td></tr>';
+    try { mx.data = await api("/api/survivor/matrix"); }
+    catch (e) { $("#mx-table").innerHTML = `<tr><td class="warn" style="padding:12px">${e.message}</td></tr>`; return; }
+  }
+  renderMatrix();
+}
+
+function renderMatrix() {
+  const d = mx.data;
+  if (!d) return;
+  const prob = c => c ? (mx.src === "model" ? c.model_win_prob : c.market_win_prob) : null;
+  const open = d.legs.filter(l => !l.locked && !l.pick);  // legs still to be decided
+  const summary = t => {
+    if (t.used) return { safe:null, best:null };
+    let safe = 0, best = null;
+    for (const l of open) {
+      const p = prob(t.cells[l.leg_id]);
+      if (p == null) continue;
+      if (p >= mx.safe) safe++;
+      if (!best || p > best.p) best = { p, leg:l };
+    }
+    return { safe, best };
+  };
+  let rows = d.teams.map(t => ({ ...t, s: summary(t) }));
+  if (mx.hideUsed) rows = rows.filter(t => !t.used);
+  if (mx.sortLeg) rows.sort((a, b) =>
+    (a.used ? 1 : 0) - (b.used ? 1 : 0) ||
+    (prob(b.cells[mx.sortLeg]) ?? -1) - (prob(a.cells[mx.sortLeg]) ?? -1) ||
+    a.team.localeCompare(b.team));
+  const deadline = iso => new Date(iso).toLocaleString("en-US",
+    { weekday:"short", month:"numeric", day:"numeric", hour:"numeric" });
+  const head = `<tr><th class="team" data-sort="">team</th>` + d.legs.map(l => {
+    const cls = [l.leg_id === mx.sortLeg ? "sorted" : "", l.leg_id === d.current_leg ? "cur" : "",
+                 l.locked ? "dim" : ""].filter(Boolean).join(" ");
+    const title = `${l.label} · deadline ${deadline(l.deadline)}` +
+      (l.holiday_slate.length ? ` · ${l.holiday_slate.length}-team slate` : "") +
+      (l.pick ? ` · picked ${l.pick}` : "") + " · click to rank";
+    return `<th data-sort="${l.leg_id}" class="${cls}" title="${title}">${legShort(l)}` +
+      (l.pick ? `<br><span class="dim">${l.pick}</span>` : "") + `</th>`;
+  }).join("") +
+    `<th title="open legs at or above the safe threshold">safe</th>` +
+    `<th title="strongest remaining open leg">best</th></tr>`;
+  const body = rows.map(t => {
+    const cells = d.legs.map(l => {
+      const c = t.cells[l.leg_id];
+      const cur = l.leg_id === d.current_leg ? " cur" : "";
+      if (!c) return `<td class="cell bye${cur}">—</td>`;
+      const p = prob(c);
+      const picked = l.pick === t.team;
+      const opp = (c.home ? "v" : "@") + c.opponent;
+      const title = `${t.team} ${opp} · ${kickoff(c.start_time)} · spread ${fmtSpread(c.spread)}` +
+        ` · market ${pct(c.market_win_prob)} · model ${pct(c.model_win_prob)}` +
+        (c.divisional ? " · divisional" : "") +
+        (picked ? ` · PICKED (${l.result ?? "pending"})` : "");
+      const cls = ["cell", binClass(p), cur.trim(), l.locked && !picked ? "past" : "",
+                   picked ? "picked" : ""].filter(Boolean).join(" ");
+      return `<td class="${cls}" title="${title}"><span class="p">${p == null ? "–" : Math.round(p * 100)}${picked ? " ✓" : ""}</span><span class="opp">${opp}</span></td>`;
+    }).join("");
+    const s = t.s;
+    const best = s.best ? `${Math.round(s.best.p * 100)} <span class="dim">${legShort(s.best.leg)}</span>` : "–";
+    return `<tr class="${t.used ? "used" : ""}">
+      <td class="team" title="${t.division ?? ""}${t.used ? ` · used leg ${t.used}` : ""}">${t.team}${badges(t.team)}</td>
+      ${cells}<td class="num">${s.safe ?? "–"}</td><td class="num">${best}</td></tr>`;
+  }).join("");
+  const table = $("#mx-table");
+  table.innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+  table.querySelectorAll("th[data-sort]").forEach(th => th.onclick = () => {
+    const id = th.dataset.sort;
+    mx.sortLeg = id && id !== mx.sortLeg ? id : null;
+    renderMatrix();
+  });
+  const sortedLeg = d.legs.find(l => l.leg_id === mx.sortLeg);
+  $("#mx-note").textContent = sortedLeg
+    ? `ranked by ${sortedLeg.label} ${mx.src} win % (used teams sink to the bottom)`
+    : "alphabetical · click a leg header to rank teams for that leg";
+  $("#mx-legend").innerHTML =
+    `<span>${mx.src === "market" ? "market: devigged moneyline consensus (spread-implied if no moneyline)" : "model: moneyline + spread two-lens blend (D-036)"}</span>` +
+    `<span><span class="sw g4"></span>80+</span><span><span class="sw g3"></span>72–79</span>` +
+    `<span><span class="sw g2"></span>62–71</span><span><span class="sw g1"></span>54–61</span>` +
+    `<span><span class="sw"></span>46–53 toss-up</span>` +
+    `<span><span class="sw r1"></span>39–46</span><span><span class="sw r2"></span>29–38</span>` +
+    `<span><span class="sw r3"></span>21–28</span><span><span class="sw r4"></span>≤20</span>` +
+    `<span>▮ current leg · ✓ locked pick · — bye</span>`;
+}
+
+$("#mx-src").onchange = e => { mx.src = e.target.value; renderMatrix(); };
+$("#mx-hide-used").onchange = e => { mx.hideUsed = e.target.checked; renderMatrix(); };
+$("#mx-safe").onchange = e => { mx.safe = Number(e.target.value) / 100; renderMatrix(); };
+
 function showTab(name) {
   document.querySelectorAll("#tabs button").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === name));
-  ["board","propose","consensus","pick","plan","glossary"].forEach(t =>
+  ["board","propose","consensus","pick","plan","matrix","glossary"].forEach(t =>
     $("#tab-" + t).hidden = t !== name);
 }
 $("#tabs").onclick = e => {
@@ -538,6 +695,7 @@ $("#tabs").onclick = e => {
   if (tab === "consensus") loadConsensus();
   if (tab === "pick") loadPick();
   if (tab === "plan") loadPlan();
+  if (tab === "matrix") loadMatrix();
 };
 
 function setLeg(legId) {
@@ -553,7 +711,10 @@ async function refresh() {
   await loadStatus();
   await loadBoard();
   refreshProposeStatus();
-  if (document.querySelector("#tabs button.active")?.dataset.tab === "plan") loadPlan();
+  mx.data = null;  // picks may have changed; the matrix reloads on next view
+  const active = document.querySelector("#tabs button.active")?.dataset.tab;
+  if (active === "plan") loadPlan();
+  if (active === "matrix") loadMatrix();
 }
 (async () => { await loadMembers(); await refresh(); })();
 </script>
