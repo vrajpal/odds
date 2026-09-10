@@ -15,6 +15,15 @@ dependencies = [
     "numpy>=1.26",  # power-ratings least squares (D-025); already transitive via pandas
 ]
 
+[project.optional-dependencies]
+# Reading Circa's contest-spread PDF (D-042): rasterize + OCR. Optional so
+# the library and APIs stay light; the image installs it for the one-shot.
+sheet = [
+    "pypdfium2>=4.30",
+    "rapidocr-onnxruntime>=1.3",
+    "pillow>=10",
+]
+
 [project.scripts]
 mlb-odds = "mlb_odds.cli:app"
 
@@ -25,6 +34,7 @@ dev = [
     "mypy>=1.13",
     "pyarrow>=17.0",  # test the CLI's parquet export path; not a runtime dep
     "httpx2>=2.9",  # starlette>=1.3 TestClient prefers httpx2 over httpx; not a runtime dep
+    "playwright>=1.62.0",  # browser tests for the survivor UI (D-041); skips without chromium
 ]
 
 [build-system]

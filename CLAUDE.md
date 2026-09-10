@@ -24,7 +24,8 @@ these files are the source of truth, not a snapshot.
 - UTC everywhere internally; local time only at the CLI display layer.
 - American odds (int) canonical; decimal derived.
 - Lint/format `ruff`, types `mypy src/`, tests `pytest`. No live network in tests —
-  providers are tested against fixtures in `tests/fixtures/`.
+  providers are tested against fixtures in `tests/fixtures/`; the browser tests
+  drive a loopback uvicorn in headless Chromium and skip if it isn't installed.
 
 ## Commands
 
@@ -32,7 +33,10 @@ these files are the source of truth, not a snapshot.
 uv sync                          # install deps
 uv run pytest                    # tests (offline)
 uv run ruff check . && uv run mypy src/
+uv run playwright install chromium  # once; enables tests/test_survivor_ui.py (D-041)
 uv run mlb-odds collect --once   # needs THE_ODDS_API_KEY
+uv sync --extra sheet            # OCR extra for `mlb-odds contest-lines` (D-042)
+uv run mlb-odds contest-lines --dry-run   # read Circa's contest sheet; --file for a local PDF/image
 ```
 
 ## Environment
@@ -40,6 +44,8 @@ uv run mlb-odds collect --once   # needs THE_ODDS_API_KEY
 - `THE_ODDS_API_KEY` — The Odds API key (free tier: 500 credits/mo; one game-lines
   poll = 3 credits, so budget ~5 polls/day on free tier)
 - `MLB_ODDS_DB` — SQLite path (default `./odds.sqlite`)
+- `CONTEST_DB` — contest state SQLite (default `./contest.sqlite`); processed
+  contest sheets are archived beside it in `contest-sheets/`
 - `MLB_ODDS_FRONTEND_DIST` — directory the API serves at `/` (default
   `frontend/dist`; if it doesn't exist, `/` returns a JSON pointer to `/docs`)
 - The CLI also loads both from a `.env` in the working directory (real env vars

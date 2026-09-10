@@ -83,6 +83,10 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] C4.4 — Market-implied power ratings (ridge LSQ) + model line on the board (D-025)
 - [x] C4.5 — Situational flags (rest, rest differential, divisional) + member
       proposal/stance/captain records (D-025)
+- [x] C5 — Contest lines from Circa's own sheet: `mlb-odds contest-lines` polls
+      the predictable PDF URL, OCRs it, stores only games whose two sides
+      mirror, keeps the sheet + a hash audit; cron'd through the Wed/Thu
+      posting window (D-042)
 
 ## S — Circa Survivor entry manager (see circa-survivor-2026-rules.md)
 - [x] S1 — Calendar + constraints: 20-leg calendar (Weeks 1-18 + Thanksgiving
@@ -98,3 +102,7 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] S4 — Matrix tab: every team × every leg with projected win probability
       from the stored look-ahead lines (`/api/survivor/matrix`), rank-by-leg,
       safe-leg counts and best-leg per team for saving teams ahead (D-040)
+- [x] S5 — Matrix test suite: composition pinned to the fits (moneyline vs
+      spread path, two-lens blend, Board agreement on every leg), calendar
+      seams, duplicate games, locked/graded legs, degraded inputs; headless
+      Chromium tests of the tab's ranking/summary logic (D-041)

@@ -15,7 +15,7 @@ from typing import Annotated
 import typer
 from dotenv import load_dotenv
 
-from mlb_odds import collector
+from mlb_odds import circa, collector
 from mlb_odds import projections as projections_mod
 from mlb_odds import statcast as statcast_mod
 from mlb_odds.client import OddsClient
@@ -309,6 +309,148 @@ def schedule(
         typer.echo(f"{stored} game(s) stored for {target}.")
     finally:
         storage.close()
+
+
+@app.command(name="contest-lines")
+def contest_lines(
+    week: Annotated[
+        int | None,
+        typer.Option("--week", help="Contest week 1-18 (default: the week containing now)."),
+    ] = None,
+    file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            help="Read this PDF or image instead of polling circasports.com "
+            "(e.g. the sheet image saved from @CircaSports).",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Read and report; store nothing.")
+    ] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Re-read a sheet that was already processed.")
+    ] = False,
+    db: DbOption = None,
+    contest_db: Annotated[
+        Path | None,
+        typer.Option("--contest-db", help="Contest state SQLite (default: $CONTEST_DB)."),
+    ] = None,
+) -> None:
+    """Store the week's Circa Million contest spreads from Circa's sheet (D-042).
+
+    Polls the sheet's predictable URL on circasports.com; exits quietly when
+    it isn't posted yet, so this is safe to cron every few minutes through
+    the posting window. Each game is stored only when both sides read as
+    exact mirrors of each other — anything less is reported for manual entry.
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    from mlb_odds import contest
+    from mlb_odds.storage import Storage
+
+    now = datetime.now(UTC)
+    if week is None:
+        week = contest.week_of(now)
+        if week is None:
+            typer.echo("error: outside the contest season; pass --week", err=True)
+            raise typer.Exit(code=1)
+    contest_path = contest_db or Path(os.environ.get("CONTEST_DB", "./contest.sqlite"))
+
+    found: circa.Sheet | None
+    if file is not None:
+        found = circa.Sheet(source=str(file), data=file.read_bytes())
+    else:
+        source = circa.CircaSheets()
+        try:
+            found = source.fetch(week, contest.lines_post_time(week))
+        except ProviderError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        finally:
+            source.close()
+    if found is None:
+        typer.echo(f"Week {week} contest sheet is not posted yet.")
+        return
+    sheet = found
+
+    store = contest.ContestStore(contest_path)
+    odds = Storage(_resolve_db(db, SportChoice.nfl), read_only=True)
+    try:
+        if not force and any(r.sha256 == sheet.sha256 for r in store.sheets(week)):
+            typer.echo(
+                f"Week {week} sheet already processed ({sheet.sha256[:12]}); --force to redo."
+            )
+            return
+        games = odds.games(window=contest.week_window(week))
+        if not games:
+            typer.echo(
+                f"error: no stored NFL games in contest week {week}; collect first.", err=True
+            )
+            raise typer.Exit(code=1)
+        try:
+            parsed = circa.read_sheet(sheet, games)
+        except circa.SheetToolingError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        existing = store.lines(week)
+        market = {
+            g.game_id: contest.consensus(
+                contest.book_spreads(contest.spread_history(odds, g.game_id))
+            )
+            for g in games
+        }
+        typer.echo(f"Week {week} sheet: {sheet.source}")
+        for line in parsed.lines:
+            was = existing.get(line.game_id)
+            note = ""
+            if was is not None and was.home_spread != line.home_spread:
+                note = f"  (was {was.home_spread:+g})"
+            cons = market.get(line.game_id)
+            mk = f"market {cons:+g}" if cons is not None else "market –"
+            if cons is not None and abs(line.home_spread - cons) > 7:
+                mk += "  ⚠ far from market"
+            typer.echo(
+                f"  {line.away_team:>3} @ {line.home_team:<3} {line.home_spread:+5g}   {mk}{note}"
+            )
+        for problem in parsed.problems:
+            typer.echo(f"  ✗ {problem}")
+        if dry_run:
+            typer.echo(
+                f"dry run: {len(parsed.lines)} line(s) read, {len(parsed.problems)} problem(s)."
+            )
+        else:
+            for line in parsed.lines:
+                store.set_line(week, line.game_id, line.home_spread, entered_at=now)
+            saved = _save_sheet(contest_path, week, sheet)
+            store.record_sheet(
+                week,
+                sha256=sheet.sha256,
+                source=sheet.source,
+                fetched_at=now,
+                lines_stored=len(parsed.lines),
+                problems=parsed.problems,
+            )
+            typer.echo(
+                f"{len(parsed.lines)} contest line(s) stored for week {week}"
+                f" ({len(parsed.problems)} problem(s)); sheet saved to {saved}."
+            )
+        if parsed.problems:
+            raise typer.Exit(code=1)
+    finally:
+        odds.close()
+        store.close()
+
+
+def _save_sheet(contest_path: Path, week: int, sheet: circa.Sheet) -> Path:
+    """Keep the sheet beside the contest database for the audit trail."""
+    folder = contest_path.resolve().parent / "contest-sheets"
+    folder.mkdir(parents=True, exist_ok=True)
+    ext = ".pdf" if sheet.is_pdf else Path(sheet.source).suffix or ".img"
+    target = folder / f"week-{week}{ext}"
+    target.write_bytes(sheet.data)
+    return target
 
 
 @app.command()

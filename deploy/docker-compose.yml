@@ -90,6 +90,16 @@ services:
     volumes:
       - ./data:/data
 
+  contest-lines:
+    build: ..
+    profiles: [collect]
+    # Circa's contest-spread sheet (D-042): polls circasports.com, exits
+    # quietly until the week's PDF is up, then OCRs it into contest lines.
+    # Free, no key. Cron every 10 min through the Wed/Thu posting window.
+    command: mlb-odds contest-lines
+    volumes:
+      - ./data:/data
+
   mlb-collect:
     build: ..
     profiles: [collect]
