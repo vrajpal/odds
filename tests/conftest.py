@@ -76,11 +76,15 @@ def make_nfl_spread_odds(
     home: str = "LAC",
     start_time: datetime | None = None,
     provider: str = "fake",
+    moneylines: dict[str, tuple[int, int]] | None = None,
 ) -> GameOdds:
     """One NFL fetch snapshot: home/away spread quotes per book at `fetched_at`.
 
     `book_lines` maps book -> home spread (negative = home favored), the same
-    convention the contest module computes edges in.
+    convention the contest module computes edges in. `moneylines` optionally
+    adds book -> (away_price, home_price) American moneyline pairs, which is
+    what flips the survivor market probability from spread-implied to the
+    devigged moneyline consensus (D-036).
     """
     start = start_time or NFL_KICKOFF
     game_id = make_game_id(start.date().isoformat(), away, home)
@@ -99,6 +103,9 @@ def make_nfl_spread_odds(
         quotes.append(
             Quote(book=book, market="spread", outcome="away", line=-home_spread, price=-110)
         )
+    for book, (away_price, home_price) in (moneylines or {}).items():
+        quotes.append(Quote(book=book, market="moneyline", outcome="away", price=away_price))
+        quotes.append(Quote(book=book, market="moneyline", outcome="home", price=home_price))
     return GameOdds(game=game, fetched_at=fetched_at, provider=provider, quotes=quotes)
 
 
