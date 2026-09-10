@@ -133,8 +133,9 @@ git pull && docker compose --profile collect --profile public build && docker co
 docker compose run --rm nfl-collect                # manual line poll (3 credits)
 docker compose run --rm nfl-results                # manual finals sweep (free)
 docker compose run --rm contest-lines              # read Circa's contest sheet now (free)
-docker compose run --rm contest-lines --week 3 --dry-run   # preview a week without storing
-docker compose run --rm contest-lines --file /data/sheet.jpg --week 3   # from the tweet image
+# Options need the full command — args after the service name REPLACE it:
+docker compose run --rm contest-lines mlb-odds contest-lines --week 3 --dry-run   # preview, store nothing
+docker compose run --rm contest-lines mlb-odds contest-lines --week 3 --file /data/sheet.jpg   # tweet image
 docker compose run --rm statcast                   # daily MLB scouting pull (free, D-031)
 docker compose logs -f contest-api                 # follow app logs
 tail -f ~/containers/odds/collect.log              # cron output
@@ -220,7 +221,8 @@ side read".** The OCR could not verify both sides of that game, so it was
 not stored — everything else on the sheet was. Enter the flagged game by
 hand at `/docs` (`POST /api/contest/lines`), or save the sheet image from
 the @CircaSports post into `deploy/data/` and re-run with
-`--file /data/<name> --force`. The processed sheet is kept at
+`docker compose run --rm contest-lines mlb-odds contest-lines --week N
+--file /data/<name> --force`. The processed sheet is kept at
 `deploy/data/contest-sheets/week-N.pdf` for checking.
 
 **contest-lines keeps saying "not posted yet" after Circa tweeted.** The
