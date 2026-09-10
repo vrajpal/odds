@@ -12,13 +12,19 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
+# OpenCV (pulled in by the contest-sheet OCR extra, D-042) needs these two
+# shared libraries even in headless use.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dependency layer first so code edits don't re-resolve the environment.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev
+RUN uv sync --frozen --no-install-project --no-dev --extra sheet
 
 COPY README.md ./
 COPY src/ src/
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --extra sheet
 
 COPY --from=frontend /build/dist /app/frontend/dist
 

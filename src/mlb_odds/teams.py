@@ -99,6 +99,13 @@ _NFL_FULL_NAMES = {
     "Washington Commanders": "WAS",
 }
 
+
+def nfl_nicknames() -> dict[str, str]:
+    """NICKNAME -> code ("COMMANDERS" -> "WAS"), the last word of each full
+    name uppercased — how Circa's contest sheets name teams (D-042)."""
+    return {full.split()[-1].upper(): code for full, code in _NFL_FULL_NAMES.items()}
+
+
 _PROVIDER_MAPPINGS: dict[tuple[str, str], dict[str, str]] = {
     ("mlb", "the_odds_api"): _THE_ODDS_API,
     # ESPN's team.displayName uses the same full club names.

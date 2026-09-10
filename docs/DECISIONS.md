@@ -749,3 +749,65 @@ two views can never disagree on a number. Both fits run once per request;
 the full-season read is ~0.2 s against the real database, so there is no
 cache. Cells are oriented to the team (spread sign flipped for the away
 side, probabilities complemented) because the reader scans rows, not games.
+
+## D-041 — Browser-level tests for the survivor UI, Playwright as a dev-only dependency (2026-09-04)
+The survivor pages are single-file static HTML with inline JavaScript — no
+build, no framework, and until now no tests. The Matrix tab moved real
+planning logic into that JavaScript (rank-by-leg with byes and used teams
+sinking, safe-leg counts against a threshold, best open leg, the
+market/model toggle, cache invalidation after a lock), which a Python test
+cannot reach.
+
+`tests/test_survivor_ui.py` drives the real page in headless Chromium
+against a real uvicorn server on a loopback port (a daemon thread, the same
+`contest_api._now` seam and env-var database resolution the API tests use).
+Every expectation is derived from the API payload the page fetched, so the
+tests pin behavior, not numbers. Playwright is a dev dependency only — it
+never ships in the image — and the module skips itself when the browser
+build is absent (`uv run playwright install chromium` enables it), so a
+machine without Chromium still gets a green suite. This stays within the
+no-live-network rule: the only socket is loopback.
+
+`tests/test_survivor_matrix.py` closes the gaps the first matrix tests left:
+the fixture season carries moneylines and enough lined games to clear the
+ridge fits' floor, so the devigged-moneyline path, the two-lens model blend,
+and Board/Matrix agreement on every leg are asserted against the fits
+themselves. Also pinned: half-open leg boundaries and the calendar seams
+(a game there belongs to no leg), earliest-kickoff for a team with two games
+in a leg (matching pick validation), locked/graded legs as the clock moves,
+and degraded inputs (missing database 503, empty schedule, too few lines for
+a model number).
+
+## D-042 — Contest lines from Circa's sheet: poll the PDF, OCR it, trust only mirrored pairs (2026-09-10)
+D-020 made contest lines manual input because they exist on no feed. They do
+exist on Circa's website: each week's spreads are a one-page PDF under the
+WordPress uploads path, announced by @CircaSports. Two facts make it
+automatable without touching X at all: the URL is predictable
+(`/wp-content/uploads/<yyyy>/<mm>/Circa-Sports-Million-<numeral>-Contest-
+Point-Spreads-Week-<n>.pdf`, verified across last season's VII sheets), and
+X's unauthenticated timeline endpoints rate-limit while the PDF host does
+not. `mlb-odds contest-lines` polls that URL (expected month first, then the
+neighbouring folders for month-boundary posts) and exits quietly until it
+appears, so the deploy crons it every ten minutes through the Wed/Thu window.
+
+The PDF has no text layer — every glyph is a vector path (pdfium extracts
+nothing) — so the page is rasterized (pypdfium2) and read with RapidOCR
+(ONNX, models bundled, offline). Rather than trust OCR, the parser turns it
+into a checksum: spreads anchor the layout (each pairs with the text box to
+its left on the same row, so the PDF's two columns and the tweet image's
+three both work), team text resolves by nickname suffix among only the teams
+in that contest week's stored schedule, and a game is stored only when both
+sides were read and are exact negatives. A misread ½ (OCR sees "%") is
+normalized; a misread digit breaks the mirror and the game is reported for
+manual entry instead of stored. On the Week 1 sheet this reads 16/16 games
+with zero problems from the PDF and 15/16 from the lower-quality tweet image,
+with the 16th correctly refused. `--file` accepts either for the manual path.
+
+Rendering and OCR are an optional extra (`sheet`) so the library and APIs
+stay light; the image installs it (plus OpenCV's two shared libraries).
+Every processed sheet is archived beside the contest database and recorded
+by content hash with its outcome, which is what makes the cron re-run a
+no-op and keeps the reader's own problems on record. The market consensus
+is printed next to each stored line as a sanity check, not a gate — Circa's
+numbers legitimately differ from the market, and that difference is the
+whole point of the contest.

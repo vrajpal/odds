@@ -114,6 +114,18 @@ class ContestLine:
     entered_at: datetime  # UTC; anchors "movement since entry"
 
 
+@dataclass(frozen=True)
+class SheetRecord:
+    """A processed contest sheet (D-042)."""
+
+    week: int
+    sha256: str
+    source: str
+    fetched_at: datetime
+    lines_stored: int
+    problems: list[str]
+
+
 CONTEST_MIGRATIONS: list[str] = [
     """
     CREATE TABLE contest_lines (
@@ -198,6 +210,20 @@ CONTEST_MIGRATIONS: list[str] = [
     DROP TABLE votes;
     ALTER TABLE votes_new RENAME TO votes;
     """,
+    # D-042: every contest sheet the reader processed, by content hash, so a
+    # cron re-run is a no-op once a week's sheet has been read and any
+    # problems it reported stay on record next to the lines it did store.
+    """
+    CREATE TABLE contest_sheets (
+        week         INTEGER NOT NULL CHECK (week BETWEEN 1 AND 18),
+        sha256       TEXT NOT NULL,
+        source       TEXT NOT NULL,
+        fetched_at   TEXT NOT NULL,
+        lines_stored INTEGER NOT NULL,
+        problems     TEXT NOT NULL,
+        PRIMARY KEY (week, sha256)
+    );
+    """,
 ]
 
 
@@ -248,6 +274,50 @@ class ContestStore:
                 """,
                 (week, game_id, home_spread, _to_utc_iso(entered_at)),
             )
+
+    def record_sheet(
+        self,
+        week: int,
+        *,
+        sha256: str,
+        source: str,
+        fetched_at: datetime,
+        lines_stored: int,
+        problems: Sequence[str],
+    ) -> None:
+        """Note that a sheet (by content hash) was read for the week (D-042)."""
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO contest_sheets
+                    (week, sha256, source, fetched_at, lines_stored, problems)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (week, sha256) DO UPDATE
+                    SET source = excluded.source,
+                        fetched_at = excluded.fetched_at,
+                        lines_stored = excluded.lines_stored,
+                        problems = excluded.problems
+                """,
+                (week, sha256, source, _to_utc_iso(fetched_at), lines_stored, "\n".join(problems)),
+            )
+
+    def sheets(self, week: int) -> list[SheetRecord]:
+        rows = self._conn.execute(
+            "SELECT sha256, source, fetched_at, lines_stored, problems FROM contest_sheets"
+            " WHERE week = ? ORDER BY fetched_at",
+            (week,),
+        ).fetchall()
+        return [
+            SheetRecord(
+                week=week,
+                sha256=sha,
+                source=source,
+                fetched_at=datetime.fromisoformat(fetched_at),
+                lines_stored=stored,
+                problems=[p for p in problems.split("\n") if p],
+            )
+            for sha, source, fetched_at, stored, problems in rows
+        ]
 
     def lines(self, week: int) -> dict[str, ContestLine]:
         """Contest lines for one week, keyed by game_id."""

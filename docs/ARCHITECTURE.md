@@ -20,6 +20,7 @@ src/mlb_odds/
   contest_api.py       # FastAPI app for the contest board (D-020)
   survivor.py          # Circa Survivor tool: 20-leg calendar, pick store, constraint math
   survivor_api.py      # Survivor routes (/api/survivor), mounted by contest_api (D-028)
+  circa.py             # Circa contest-spread sheet: find, render, OCR, parse vs schedule (D-042)
 tests/
   fixtures/            # recorded provider JSON responses
   conftest.py          # FakeProvider, temp-db fixture

@@ -42,6 +42,11 @@ runs are free:
 0 8,13,18 * * 4-6  cd /opt/odds/deploy && docker compose run --rm nfl-collect
 55 9 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-collect
 0 21 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-results
+# Circa contest spreads (D-042): post ~10 AM PT Thursday, Wednesday on
+# holiday weeks (Week 1 came Wednesday too). Poll every 10 min Wed+Thu,
+# 9 AM-2 PM PT = 12-16 ET; a run is a cheap 404 until the sheet is up and
+# a no-op once it has been read. Free, no credits.
+*/10 12-16 * * 3,4  cd /opt/odds/deploy && docker compose run --rm contest-lines
 # FanDuel projections pull stores the ESPN schedule itself — no odds-poll
 # ordering needed, only before-first-pitch timing.
 0 7 * * *          cd /opt/odds/deploy && docker compose run --rm mlb-projections
@@ -127,6 +132,9 @@ docker compose --profile public up -d              # start/refresh everything
 git pull && docker compose --profile collect --profile public build && docker compose --profile public up -d   # deploy an update
 docker compose run --rm nfl-collect                # manual line poll (3 credits)
 docker compose run --rm nfl-results                # manual finals sweep (free)
+docker compose run --rm contest-lines              # read Circa's contest sheet now (free)
+docker compose run --rm contest-lines --week 3 --dry-run   # preview a week without storing
+docker compose run --rm contest-lines --file /data/sheet.jpg --week 3   # from the tweet image
 docker compose run --rm statcast                   # daily MLB scouting pull (free, D-031)
 docker compose logs -f contest-api                 # follow app logs
 tail -f ~/containers/odds/collect.log              # cron output
@@ -206,6 +214,19 @@ under Access > Settings). WARP is not used here.
 Their email is in the Access policy but not in CONTEST_MEMBER_EMAILS (or
 spelled differently). Matching is case-insensitive; fix the mapping and
 `docker compose --profile public up -d contest-api`.
+
+**contest-lines exits 1 with "✗ ... sides don't mirror" / "only the home
+side read".** The OCR could not verify both sides of that game, so it was
+not stored — everything else on the sheet was. Enter the flagged game by
+hand at `/docs` (`POST /api/contest/lines`), or save the sheet image from
+the @CircaSports post into `deploy/data/` and re-run with
+`--file /data/<name> --force`. The processed sheet is kept at
+`deploy/data/contest-sheets/week-N.pdf` for checking.
+
+**contest-lines keeps saying "not posted yet" after Circa tweeted.** The
+reader polls the predictable PDF URL, not X. If Circa renamed the file, the
+tweet's link is the truth: download it and run with `--file`; then fix
+`sheet_urls` in `circa.py` so the poller finds next week's on its own.
 
 **Contest board 503 "NFL odds database unavailable".** The read-only open
 found no database file — run one collect (`docker compose run --rm
