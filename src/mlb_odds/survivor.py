@@ -251,6 +251,11 @@ SURVIVOR_MIGRATIONS: list[str] = [
     DROP TABLE survivor_proposals;
     ALTER TABLE survivor_proposals_new RENAME TO survivor_proposals;
     """,
+    # D-043: picks go in through a proxy, so a pick can be recorded after its
+    # deadline; submitted_at is when it actually went in (NULL = locked_at).
+    """
+    ALTER TABLE survivor_picks ADD COLUMN submitted_at TEXT;
+    """,
 ]
 
 
@@ -276,9 +281,18 @@ class SurvivorPick:
     team: str
     game_id: str
     locked_by: str
-    locked_at: datetime
-    etsn: str | None
+    locked_at: datetime  # when the app recorded the pick
+    etsn: str | None  # optional confirmation
     result: str | None  # win | loss; a tie is recorded as loss (Rule 6a)
+    submitted_at: datetime | None = None  # when it went in at Circa, if recorded late (D-043)
+
+    @property
+    def submission_time(self) -> datetime:
+        return self.submitted_at or self.locked_at
+
+    @property
+    def recorded_late(self) -> bool:
+        return self.locked_at > self.submission_time
 
 
 class SurvivorStore:
@@ -416,6 +430,7 @@ class SurvivorStore:
         *,
         locked_by: str,
         locked_at: datetime,
+        submitted_at: datetime | None = None,
     ) -> None:
         """The leg's selection of record: one pick per leg, one use per team
         for the whole contest. The UNIQUE(team) constraint is the last line of
@@ -432,14 +447,22 @@ class SurvivorStore:
             )
         with self._conn:
             self._conn.execute(
-                "INSERT INTO survivor_picks (leg, team, game_id, locked_by, locked_at)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (leg_id, team, game_id, locked_by, _to_utc_iso(locked_at)),
+                "INSERT INTO survivor_picks"
+                " (leg, team, game_id, locked_by, locked_at, submitted_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    leg_id,
+                    team,
+                    game_id,
+                    locked_by,
+                    _to_utc_iso(locked_at),
+                    _to_utc_iso(submitted_at) if submitted_at is not None else None,
+                ),
             )
 
     def pick(self, leg_id: str) -> SurvivorPick | None:
         row = self._conn.execute(
-            "SELECT team, game_id, locked_by, locked_at, etsn, result"
+            "SELECT team, game_id, locked_by, locked_at, etsn, result, submitted_at"
             " FROM survivor_picks WHERE leg = ?",
             (leg_id,),
         ).fetchone()
@@ -453,6 +476,7 @@ class SurvivorStore:
             locked_at=datetime.fromisoformat(row[3]),
             etsn=row[4],
             result=row[5],
+            submitted_at=datetime.fromisoformat(row[6]) if row[6] else None,
         )
 
     def all_picks(self) -> dict[str, SurvivorPick]:

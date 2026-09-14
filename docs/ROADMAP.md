@@ -87,6 +87,9 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
       the predictable PDF URL, OCRs it, stores only games whose two sides
       mirror, keeps the sheet + a hash audit; cron'd through the Wed/Thu
       posting window (D-042)
+- [x] C6 — Proxy submission: record a card/pick after the deadline with
+      `late: true` + the proxy's submission time; calibration anchors on the
+      submission; ETSN demoted to an optional confirmation (D-043)
 
 ## S — Circa Survivor entry manager (see circa-survivor-2026-rules.md)
 - [x] S1 — Calendar + constraints: 20-leg calendar (Weeks 1-18 + Thanksgiving

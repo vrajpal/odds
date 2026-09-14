@@ -188,9 +188,11 @@ The app maps one-to-one onto the contest's weekly cycle:
 3. **Friday–Saturday** — reveal: games all three proposed auto-lock. Remaining
    slots go to majority vote. Deadlocks are decided by the week's captain
    (rotation schedule stored in the app).
-4. **Lock** — the app freezes the five-pick card, shows who the captain is,
-   and tracks that the card was actually submitted at Circa (record the
-   12-digit ETSN as confirmation).
+4. **Lock** — the app freezes the five-pick card and shows who the captain
+   is. Picks go in through a proxy, so the card is usually recorded after
+   the deadline (the app asks you to confirm it is the card the proxy
+   submitted, and when); there is no ETSN on our side — the confirmation box
+   is optional (D-043).
 
 ## Edge finder (why the odds DB matters)
 

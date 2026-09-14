@@ -191,7 +191,7 @@
       <tr><td><b>booby prize</b></td><td>Circa pays <b>last place $100k</b> (2nd-last $50k; $25k per quarter) — but only to entries that made 5 picks in <i>every completed week</i>. Miss one week and you're permanently ineligible, which is why…</td></tr>
       <tr><td><b>booby guard</b></td><td>…the red header alert fires if no card is locked by Saturday 10 AM PT. A missed week costs the week's points <i>and</i> booby eligibility forever.</td></tr>
       <tr><td><b>quarters / MVP</b></td><td>The season splits into Q1 (wks 1–4), Q2 (5–9), Q3 (10–13), Q4 (14–18); each quarter pays its own $150k first prize ("Quarter MVP").</td></tr>
-      <tr><td><b>ETSN</b></td><td>Circa's 12-digit electronic ticket serial number — proof the card was physically submitted at the sportsbook. Record it on the Card tab after submitting.</td></tr>
+      <tr><td><b>proxy / late record</b></td><td>Our picks go in through a proxy at Circa, so the app is usually told about a card <i>after</i> the deadline. Locking past the deadline asks you to confirm it is the card the proxy submitted, and when — that time (or the deadline, if unknown) is what the stats use as the submission moment. There is no ETSN to record; the confirmation box on the Card tab is optional, for whatever the proxy sends back.</td></tr>
       <tr><td><b>push</b></td><td>The game lands exactly on the number (home wins by 3 on a -3 line). Worth half a point in the contest.</td></tr>
     </tbody></table>
 
@@ -572,7 +572,8 @@ async function loadConsensus() {
       (res.bubble.length ? `<div class="msg dim">bubble: ` +
         res.bubble.map(p => `${p.game_id} <b>${p.side}</b>${p.edge != null ? ` (${p.edge > 0 ? "+" : ""}${p.edge})` : ""}`).join(" · ") +
         `</div>` : "") +
-      `<br><button class="action" id="lock-card">Lock this card as ${state.me}</button></div>`;
+      `<br><button class="action" id="lock-card">${Date.now() >= new Date(c.effective_deadline)
+        ? `Record the card the proxy submitted (deadline passed)` : `Lock this card as ${state.me}`}</button></div>`;
   }
   box.querySelectorAll("[data-vote]").forEach(btn => btn.onclick = async () => {
     try {
@@ -584,13 +585,36 @@ async function loadConsensus() {
   const lockBtn = $("#lock-card");
   if (lockBtn) lockBtn.onclick = async () => {
     if (c.working_card.length !== 5) return alert("need exactly 5 candidates in the working card");
-    if (!confirm("Lock these five? This mirrors Circa's one-submission rule — no changes after.")) return;
+    const body = {week: state.week, member: state.me,
+                  picks: c.working_card.map(w => ({game_id: w.game_id, side: w.side}))};
+    const late = lateSubmission(c.effective_deadline);
+    if (late === null) return;
+    Object.assign(body, late);
     try {
-      await api("/api/contest/card", {method:"POST", body: JSON.stringify({week: state.week,
-        member: state.me, picks: c.working_card.map(w => ({game_id: w.game_id, side: w.side}))})});
+      await api("/api/contest/card", {method:"POST", body: JSON.stringify(body)});
       showTab("card"); loadCard(); loadBoard();
     } catch (e) { alert(e.message); }
   };
+}
+
+// Picks go in through a proxy, so the app often records a card after its
+// deadline (D-043). Returns {} before the deadline (after the normal confirm),
+// {late, submitted_at?} once past it, or null if the user backed out.
+function lateSubmission(deadlineIso) {
+  const deadline = new Date(deadlineIso);
+  if (Date.now() < deadline) {
+    return confirm("Lock these picks? This mirrors Circa's one-submission rule — no changes after.") ? {} : null;
+  }
+  if (!confirm(`The effective deadline (${deadline.toLocaleString()}) has passed.\n\nRecord these as the picks the proxy submitted at Circa before the deadline? No changes after.`)) return null;
+  const when = prompt("When did the proxy submit? Local time as YYYY-MM-DDTHH:MM (blank = at the deadline)", "");
+  if (when === null) return null;
+  const out = {late: true};
+  if (when.trim()) {
+    const d = new Date(when.trim().replace(" ", "T"));
+    if (isNaN(d)) { alert("couldn't read that time — use YYYY-MM-DDTHH:MM"); return null; }
+    out.submitted_at = d.toISOString();
+  }
+  return out;
 }
 
 async function loadCard() {
@@ -599,7 +623,8 @@ async function loadCard() {
   try { card = await api(`/api/contest/card?week=${state.week}`); }
   catch (e) { box.innerHTML = `<div class="msg dim">No card locked for week ${state.week} yet — build one on the Consensus tab.</div>`; return; }
   box.innerHTML = `<div class="card-box">
-    <b>Week ${card.week} card</b> · locked by ${card.locked_by} at ${new Date(card.locked_at).toLocaleString()}<br>
+    <b>Week ${card.week} card</b> · submitted at Circa ${new Date(card.submitted_at).toLocaleString()}
+    ${card.recorded_late ? `<span class="tag contested" title="recorded after the fact by ${card.locked_by} at ${new Date(card.locked_at).toLocaleString()}">recorded late</span>` : `· locked by ${card.locked_by}`}<br>
     effective deadline: ${new Date(card.effective_deadline).toLocaleString()}<br><br>
     <table><thead><tr><th>game</th><th>side</th><th>result</th><th>grade</th></tr></thead><tbody>` +
     card.picks.map(p => `<tr><td>${p.game_id}</td><td><b>${p.side}</b></td>
@@ -610,9 +635,9 @@ async function loadCard() {
     `</tbody></table><br>
     <button class="action" id="save-grades">Save grades</button>
     <button class="action" id="auto-grade">Auto-grade from finals</button> ·
-    ETSN: <input id="etsn" value="${card.etsn ?? ""}" placeholder="12-digit ticket serial" size="16">
+    confirmation: <input id="etsn" value="${card.etsn ?? ""}" placeholder="proxy's confirmation (optional)" size="22">
     <button class="side" id="save-etsn">save</button>
-    ${card.etsn ? '<span class="tag unanimous">✓ submitted at Circa</span>' : '<span class="tag contested">no ETSN — submit at Circa & record it</span>'}
+    ${card.etsn ? '<span class="tag unanimous">✓ confirmation on file</span>' : ''}
   </div>`;
   $("#save-grades").onclick = async () => {
     const results = {};
