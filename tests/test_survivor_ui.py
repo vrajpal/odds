@@ -31,8 +31,10 @@ LEG_COUNT = 20
 SUMMARY_COLUMNS = 2  # safe, best
 
 
-@pytest.fixture(scope="module")
-def browser():
+def launch_browser():
+    """Headless Chromium for the UI tests; skips when no build is installed.
+    A plain generator so other UI test modules can wrap it as their own
+    fixture (pytest does not register fixtures imported under an alias)."""
     with sync_playwright() as p:
         try:
             b = p.chromium.launch()
@@ -42,9 +44,9 @@ def browser():
         b.close()
 
 
-@pytest.fixture
-def server(tmp_path, monkeypatch):
-    """The contest app on a free loopback port, in a daemon thread."""
+def start_server(tmp_path, monkeypatch):
+    """The contest app on a free loopback port, in a daemon thread, over the
+    matrix fixture season at Thursday noon of week 1."""
     build_season(tmp_path / "nfl-odds.sqlite")
     monkeypatch.setenv("NFL_ODDS_DB", str(tmp_path / "nfl-odds.sqlite"))
     monkeypatch.setenv("CONTEST_DB", str(tmp_path / "contest.sqlite"))
@@ -65,6 +67,16 @@ def server(tmp_path, monkeypatch):
     yield f"http://127.0.0.1:{port}"
     srv.should_exit = True
     thread.join(10)
+
+
+@pytest.fixture(scope="module")
+def browser():
+    yield from launch_browser()
+
+
+@pytest.fixture
+def server(tmp_path, monkeypatch):
+    yield from start_server(tmp_path, monkeypatch)
 
 
 @pytest.fixture
