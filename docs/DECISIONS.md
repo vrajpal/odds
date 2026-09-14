@@ -811,3 +811,35 @@ no-op and keeps the reader's own problems on record. The market consensus
 is printed next to each stored line as a sanity check, not a gate — Circa's
 numbers legitimately differ from the market, and that difference is the
 whole point of the contest.
+
+## D-043 — Proxy submission: record picks after the deadline, anchor stats on the submission (2026-09-14)
+Our picks reach Circa through a proxy. Two consequences the app had wrong:
+there is no ETSN for us to record (the proxy sends back whatever it sends
+back), and the group usually learns the card is in *after* the deadline —
+at which point the lock endpoints refused with a 409 and the week's card
+could never be recorded, so grading, CLV and the season ledger lost it.
+
+Locking now separates two instants. `locked_at` stays the moment the app
+recorded the card or pick. `submitted_at` (new nullable column on `cards`
+and `survivor_picks`; NULL means "same as locked_at", which is every row
+written before this change) is when it went in at Circa. After the
+effective deadline a lock must say `late: true` — the UI asks, in words,
+whether this is the card the proxy submitted in time — and may say when the
+proxy submitted; absent that, the deadline itself is used, the latest
+instant Circa would have accepted it and the most conservative anchor. A
+claimed submission time after the effective deadline is refused (422):
+Circa would not have taken it, so neither do we. Rule 8 keeps its teeth
+through the same bound — a card with a Thursday game can be recorded late,
+but only with a submission time before that kickoff.
+
+Calibration (C4.3) anchors its at-lock market read on `submission_time`,
+not the recording instant — a card recorded Sunday morning must not be
+scored against Sunday's market. CLV was already anchored on closing lines
+and the contest number, so it is untouched. Survivor's elimination
+derivation ("no pick locked by the deadline") is untouched too: a late
+record makes the pick exist, which is the truth.
+
+ETSN stays as a column and PATCH field for compatibility but is relabeled
+in both UIs as an optional confirmation, and the "no ETSN — submit at
+Circa" nag is gone: submission is the proxy's job, not something the app
+can verify.

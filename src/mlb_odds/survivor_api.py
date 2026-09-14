@@ -77,8 +77,10 @@ class PickOut(BaseModel):
     team: str
     game_id: str
     locked_by: str
-    locked_at: str
-    etsn: str | None
+    locked_at: str  # when the app recorded the pick
+    submitted_at: str  # when it went in at Circa (D-043)
+    recorded_late: bool
+    etsn: str | None  # optional confirmation
     result: str | None
     effective_deadline: str | None  # min(leg deadline, kickoff); None if game unknown
 
@@ -180,6 +182,8 @@ def _pick_out(pick: survivor.SurvivorPick) -> PickOut:
         game_id=pick.game_id,
         locked_by=pick.locked_by,
         locked_at=_pt(pick.locked_at),
+        submitted_at=_pt(pick.submission_time),
+        recorded_late=pick.recorded_late,
         etsn=pick.etsn,
         result=pick.result,
         effective_deadline=_pt(deadline) if deadline else None,
@@ -720,6 +724,8 @@ class SurvivorPickIn(BaseModel):
     leg: str
     member: str
     team: str
+    late: bool = False  # D-043: acknowledge recording after the deadline
+    submitted_at: datetime | None = None  # when the proxy submitted, if known
 
 
 class LockedPickOut(BaseModel):
@@ -734,21 +740,33 @@ def lock_pick(body: SurvivorPickIn, request: Request) -> LockedPickOut:
     effective deadline (leg deadline or the team's kickoff, whichever is
     first), one pick per leg with no changes (Rule 18). Future-constraint
     warnings (holiday slates) are returned, not enforced — a bad idea is
-    still a legal pick."""
+    still a legal pick. Picks reach Circa through a proxy (D-043): after the
+    deadline, `late: true` records the pick the proxy submitted, with
+    `submitted_at` if known (never past the effective deadline)."""
     contest_api._require_member(body.member)
     contest_api._enforce_identity(request, body.member)
     leg_ = _leg_or_422(body.leg)
     game = _game_for_team(leg_, _require_team(body.team))
     now = contest_api._now()
     deadline = survivor.pick_deadline_for(leg_, game.start_time)
-    if now >= deadline:
+    if body.submitted_at is not None and body.submitted_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="submitted_at must carry a timezone")
+    if body.submitted_at is not None and body.submitted_at > deadline:
+        raise HTTPException(
+            status_code=422,
+            detail=f"submitted_at is after this pick's effective deadline ({_pt(deadline)});"
+            " Circa would not have accepted it.",
+        )
+    if now >= deadline and not body.late:
         raise HTTPException(
             status_code=409,
             detail=(
                 f"past this pick's effective deadline ({_pt(deadline)}) — the leg"
                 " deadline, or kickoff if the team's game starts earlier."
+                " If the proxy submitted in time, record it with late=true."
             ),
         )
+    submitted_at = body.submitted_at or (deadline if now >= deadline else now)
     store = _store()
     try:
         warnings = survivor.pick_warnings(
@@ -761,6 +779,7 @@ def lock_pick(body: SurvivorPickIn, request: Request) -> LockedPickOut:
                 game.game_id,
                 locked_by=body.member,
                 locked_at=now,
+                submitted_at=submitted_at,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -788,8 +807,8 @@ class SurvivorEtsnIn(BaseModel):
 
 @router.patch("/pick", response_model=PickOut)
 def record_etsn(body: SurvivorEtsnIn) -> PickOut:
-    """Attach Circa's confirmation (the 12-digit ETSN) — proof the pick made
-    it into the contest."""
+    """Attach a submission confirmation — Circa's ETSN when there is one, or
+    whatever the proxy sends back (D-043). Optional, for the record."""
     leg_ = _leg_or_422(body.leg)
     store = _store()
     try:

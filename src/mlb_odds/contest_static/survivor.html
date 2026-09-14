@@ -213,7 +213,7 @@
       <tr><td><b>missed leg = dead</b></td><td>Unlike the Million (score 0, keep playing), a survivor entry that doesn't submit by the deadline is eliminated (Rule 12).</td></tr>
       <tr><td><b>win %</b></td><td>Straight-up win probability implied by the market spread (normal margin model, σ≈13.45). A -7 favorite ≈ 70%. Survivor is about not losing, but the used-team constraint means the "safest" pick each week is rarely optimal for the season.</td></tr>
       <tr><td><b>matrix</b></td><td>Every team × every leg, colored by projected win probability from the same market/model numbers as the Board. <b>safe</b> counts the still-open legs at or above the chosen threshold (a team with many is flexible; a team with one is a candidate to save for exactly that leg). <b>best</b> is the team's strongest open leg. Byes show as —.</td></tr>
-      <tr><td><b>ETSN</b></td><td>Circa's 12-digit ticket serial from the app confirmation — the only proof the pick got in. Record it on the Pick tab.</td></tr>
+      <tr><td><b>proxy / late record</b></td><td>Picks go in through a proxy at Circa, so the app is often told about a pick <i>after</i> the deadline. Locking past the deadline asks you to confirm it is the pick the proxy submitted, and when. No ETSN to record — the confirmation box on the Pick tab is optional.</td></tr>
       <tr><td><b>repeat pick = DQ</b></td><td>Rule 15a: if Circa's software lets a used team through, the entry is disqualified anyway — tracking used teams is on us. This app hard-blocks repeats.</td></tr>
     </tbody></table>
     <h2>Group workflow</h2>
@@ -471,7 +471,8 @@ async function loadConsensus() {
        <span class="tag ${c.working_pick.status}">${c.working_pick.status}</span>
        (${c.working_pick.backers.join(", ")})
        ${warnings ? `<div style="margin-top:8px">${warnings}</div>` : ""}
-       <br><button class="action" id="lock-pick">Lock ${c.working_pick.team} as ${state.me}</button></div>` : "");
+       <br><button class="action" id="lock-pick">${c.effective_deadline && Date.now() >= new Date(c.effective_deadline)
+         ? `Record ${c.working_pick.team} as the proxy's pick (deadline passed)` : `Lock ${c.working_pick.team} as ${state.me}`}</button></div>` : "");
   box.querySelectorAll("[data-vote]").forEach(btn => btn.onclick = async () => {
     try {
       await api("/api/survivor/vote", {method:"POST", body: JSON.stringify(
@@ -486,9 +487,21 @@ async function loadConsensus() {
     if (!confirm(`Lock ${c.working_pick.team} for ${state.board.label}? No changes after (Rule 18).` +
       (warnText ? `\n\n${warnText}` : "") +
       (fatal.length ? "\n\nTHIS LOCK GUARANTEES A FUTURE ELIMINATION. Are you sure?" : ""))) return;
+    const body = {leg: state.leg, member: state.me, team: c.working_pick.team};
+    if (c.effective_deadline && Date.now() >= new Date(c.effective_deadline)) {
+      // Picks go in through a proxy (D-043): record the one already submitted.
+      if (!confirm(`The deadline (${new Date(c.effective_deadline).toLocaleString()}) has passed.\n\nRecord ${c.working_pick.team} as the pick the proxy submitted at Circa in time?`)) return;
+      const when = prompt("When did the proxy submit? Local time as YYYY-MM-DDTHH:MM (blank = at the deadline)", "");
+      if (when === null) return;
+      body.late = true;
+      if (when.trim()) {
+        const d = new Date(when.trim().replace(" ", "T"));
+        if (isNaN(d)) return alert("couldn't read that time — use YYYY-MM-DDTHH:MM");
+        body.submitted_at = d.toISOString();
+      }
+    }
     try {
-      await api("/api/survivor/pick", {method:"POST", body: JSON.stringify(
-        {leg: state.leg, member: state.me, team: c.working_pick.team})});
+      await api("/api/survivor/pick", {method:"POST", body: JSON.stringify(body)});
       showTab("pick"); loadPick(); refresh();
     } catch (e) { alert(e.message); }
   };
@@ -502,16 +515,16 @@ async function loadPick() {
   const resultCls = p.result === "win" ? "good" : p.result === "loss" ? "bad" : "dim";
   box.innerHTML = `<div class="card-box">
     <b>${state.board?.label ?? p.leg_id} pick: ${p.team}</b>${badges(p.team)} · ${p.game_id}<br>
-    locked by ${p.locked_by} at ${new Date(p.locked_at).toLocaleString()}<br>
+    submitted at Circa ${new Date(p.submitted_at).toLocaleString()}
+    ${p.recorded_late ? `<span class="tag contested" title="recorded after the fact by ${p.locked_by} at ${new Date(p.locked_at).toLocaleString()}">recorded late</span>` : `· locked by ${p.locked_by}`}<br>
     ${p.effective_deadline ? `due at Circa by: ${new Date(p.effective_deadline).toLocaleString()}<br>` : ""}
     result: <span class="${resultCls}">${p.result ?? "pending"}</span><br><br>
     <button class="action" id="auto-grade">Auto-grade from final score</button>
     <button class="side" data-result="win">mark win</button>
     <button class="side" data-result="loss">mark loss (or tie)</button><br><br>
-    ETSN: <input id="etsn" value="${p.etsn ?? ""}" placeholder="12-digit ticket serial" size="16">
+    confirmation: <input id="etsn" value="${p.etsn ?? ""}" placeholder="proxy's confirmation (optional)" size="22">
     <button class="side" id="save-etsn">save</button>
-    ${p.etsn ? '<span class="tag unanimous">✓ submitted at Circa</span>'
-             : '<span class="tag contested">no ETSN — submit at Circa & record it</span>'}
+    ${p.etsn ? '<span class="tag unanimous">✓ confirmation on file</span>' : ''}
   </div>`;
   box.querySelectorAll("[data-result]").forEach(btn => btn.onclick = async () => {
     try {
@@ -552,7 +565,7 @@ function loadPlan() {
       <td class="dim">${new Date(l.deadline).toLocaleString("en-US",{weekday:"short",month:"numeric",day:"numeric",hour:"numeric"})}</td>
       <td>${l.holiday_slate.length ? `<span class="tag contested">${l.holiday_slate.length}-team slate</span>` : ""}</td>
       <td>${glyph}</td>
-      <td class="dim">${l.pick?.etsn ? "✓ ETSN" : l.pick ? "no ETSN" : ""}</td>
+      <td class="dim">${l.pick?.etsn ? "✓ confirmed" : l.pick?.recorded_late ? "recorded late" : ""}</td>
     </tr>`;
   };
   const outlookBox = o => `<div class="stat outlook ${o.danger}">

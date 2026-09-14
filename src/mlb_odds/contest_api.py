@@ -622,6 +622,11 @@ class CardIn(BaseModel):
     week: int = Field(ge=1, le=contest.NUM_WEEKS)
     member: str
     picks: list[CardPickIn] = Field(min_length=5, max_length=5)
+    # D-043: picks go in through a proxy, so the card is often recorded here
+    # after the deadline. `late` acknowledges that; `submitted_at` is when the
+    # proxy actually submitted (default: the effective deadline).
+    late: bool = False
+    submitted_at: datetime | None = None
 
 
 class CardPickOut(BaseModel):
@@ -634,15 +639,22 @@ class CardOut(BaseModel):
     week: int
     picks: list[CardPickOut]
     locked_by: str
-    locked_at: str
-    etsn: str | None
+    locked_at: str  # when the app recorded the card
+    submitted_at: str  # when it went in at Circa (D-043)
+    recorded_late: bool  # recorded after submission — the proxy workflow
+    etsn: str | None  # optional confirmation
     effective_deadline: str
 
 
 @app.post("/api/contest/card", response_model=CardOut, status_code=201)
 def lock_card(body: CardIn, request: Request) -> CardOut:
     """Lock the week's official five. Enforces Rule 8: if any pick kicks off
-    before Saturday 4 PM PT, the whole card is due before that kickoff."""
+    before Saturday 4 PM PT, the whole card is due before that kickoff.
+
+    Picks reach Circa through a proxy (D-043), so the card may be recorded
+    here after that deadline: pass `late: true` to acknowledge it, and
+    `submitted_at` (when the proxy submitted) if known — it must not be past
+    the effective deadline, since that is when Circa stopped accepting."""
     _require_member(body.member)
     _enforce_identity(request, body.member)
     picks = [(p.game_id, p.side) for p in body.picks]
@@ -654,16 +666,17 @@ def lock_card(body: CardIn, request: Request) -> CardOut:
         )
     deadline = contest.effective_deadline(body.week, kickoffs.values())
     now = _now()
-    if now >= deadline:
-        raise HTTPException(
-            status_code=409,
-            detail=f"past this card's effective deadline ({_pt(deadline)}) — "
-            "Rule 8 pulls the deadline to the earliest selected kickoff.",
-        )
+    submitted_at = _submission_time(body.submitted_at, body.late, deadline=deadline, now=now)
     store = contest.ContestStore(_resolve_contest_db())
     try:
         try:
-            store.lock_card(body.week, picks, locked_by=body.member, locked_at=now)
+            store.lock_card(
+                body.week,
+                picks,
+                locked_by=body.member,
+                locked_at=now,
+                submitted_at=submitted_at,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         card = store.card(body.week)
@@ -674,6 +687,36 @@ def lock_card(body: CardIn, request: Request) -> CardOut:
     return _card_out(card, deadline)
 
 
+def _submission_time(
+    submitted_at: datetime | None, late: bool, *, deadline: datetime, now: datetime
+) -> datetime:
+    """When the picks went in at Circa (D-043).
+
+    Before the deadline this is simply now. After it, the caller must say
+    `late` (the UI confirms it) and may say when the proxy submitted; absent
+    that, the deadline itself — the latest instant Circa would have taken it,
+    and the most conservative anchor for calibration. A claimed time after
+    the deadline is refused: Circa would not have accepted it."""
+    if submitted_at is not None and submitted_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="submitted_at must carry a timezone")
+    if submitted_at is not None and submitted_at > deadline:
+        raise HTTPException(
+            status_code=422,
+            detail=f"submitted_at is after the effective deadline ({_pt(deadline)}); "
+            "Circa would not have accepted the submission.",
+        )
+    if now < deadline:
+        return submitted_at or now
+    if not late:
+        raise HTTPException(
+            status_code=409,
+            detail=f"past this card's effective deadline ({_pt(deadline)}) — "
+            "Rule 8 pulls the deadline to the earliest selected kickoff. "
+            "If the proxy submitted in time, record it with late=true.",
+        )
+    return submitted_at or deadline
+
+
 class EtsnIn(BaseModel):
     week: int = Field(ge=1, le=contest.NUM_WEEKS)
     etsn: str = Field(min_length=1, max_length=40)
@@ -681,8 +724,9 @@ class EtsnIn(BaseModel):
 
 @app.patch("/api/contest/card", response_model=CardOut)
 def record_etsn(body: EtsnIn) -> CardOut:
-    """Attach Circa's confirmation (the 12-digit ETSN) to the locked card —
-    proof the card actually made it into the contest."""
+    """Attach a submission confirmation to the locked card — Circa's 12-digit
+    ETSN when the card was submitted in person, or whatever the proxy sends
+    back (D-043). Optional: proof for the record, not a gate."""
     store = contest.ContestStore(_resolve_contest_db())
     try:
         try:
@@ -722,6 +766,8 @@ def _card_out(card: contest.Card, deadline: datetime) -> CardOut:
         ],
         locked_by=card.locked_by,
         locked_at=_pt(card.locked_at),
+        submitted_at=_pt(card.submission_time),
+        recorded_late=card.recorded_late,
         etsn=card.etsn,
         effective_deadline=_pt(deadline),
     )

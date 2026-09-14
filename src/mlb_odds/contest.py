@@ -224,6 +224,13 @@ CONTEST_MIGRATIONS: list[str] = [
         PRIMARY KEY (week, sha256)
     );
     """,
+    # D-043: picks go in through a proxy, so a card can be recorded after
+    # its deadline. submitted_at is when the proxy actually submitted at
+    # Circa (the anchor for calibration); locked_at stays the recording
+    # instant. NULL = same as locked_at (every card recorded before D-043).
+    """
+    ALTER TABLE cards ADD COLUMN submitted_at TEXT;
+    """,
 ]
 
 
@@ -437,9 +444,12 @@ class ContestStore:
         *,
         locked_by: str,
         locked_at: datetime,
+        submitted_at: datetime | None = None,
     ) -> None:
         """The week's official five. Exactly 5 distinct games, one card per
-        week — mirroring the contest's one-submission rule."""
+        week — mirroring the contest's one-submission rule. `submitted_at` is
+        when the card went in at Circa (default: now, i.e. locked_at); a card
+        recorded after the fact passes the proxy's submission time (D-043)."""
         if len(picks) != 5:
             raise ValueError(f"a card is exactly 5 picks, got {len(picks)}")
         games = [g for g, _s in picks]
@@ -449,8 +459,14 @@ class ContestStore:
             raise ValueError(f"week {week} card is already locked")
         with self._conn:
             self._conn.execute(
-                "INSERT INTO cards (week, locked_by, locked_at) VALUES (?, ?, ?)",
-                (week, locked_by, _to_utc_iso(locked_at)),
+                "INSERT INTO cards (week, locked_by, locked_at, submitted_at)"
+                " VALUES (?, ?, ?, ?)",
+                (
+                    week,
+                    locked_by,
+                    _to_utc_iso(locked_at),
+                    _to_utc_iso(submitted_at) if submitted_at is not None else None,
+                ),
             )
             self._conn.executemany(
                 "INSERT INTO card_picks (week, game_id, side) VALUES (?, ?, ?)",
@@ -459,7 +475,8 @@ class ContestStore:
 
     def card(self, week: int) -> Card | None:
         row = self._conn.execute(
-            "SELECT locked_by, locked_at, etsn FROM cards WHERE week = ?", (week,)
+            "SELECT locked_by, locked_at, etsn, submitted_at FROM cards WHERE week = ?",
+            (week,),
         ).fetchone()
         if row is None:
             return None
@@ -477,6 +494,7 @@ class ContestStore:
             locked_by=row[0],
             locked_at=datetime.fromisoformat(row[1]),
             etsn=row[2],
+            submitted_at=datetime.fromisoformat(row[3]) if row[3] else None,
         )
 
     def set_etsn(self, week: int, etsn: str) -> None:
@@ -926,8 +944,20 @@ class Card:
     week: int
     picks: tuple[CardPick, ...]
     locked_by: str
-    locked_at: datetime
-    etsn: str | None  # Circa's 12-digit electronic ticket serial number
+    locked_at: datetime  # when the app recorded the card
+    etsn: str | None  # optional confirmation (Circa's ETSN when there is one)
+    submitted_at: datetime | None = None  # when it went in at Circa, if recorded late (D-043)
+
+    @property
+    def submission_time(self) -> datetime:
+        """When the card went in at Circa: the proxy's time when recorded
+        after the fact, else the lock instant. The calibration anchor."""
+        return self.submitted_at or self.locked_at
+
+    @property
+    def recorded_late(self) -> bool:
+        """Recorded after it was submitted — the proxy workflow (D-043)."""
+        return self.locked_at > self.submission_time
 
 
 # --- C3: season scoring -----------------------------------------------------
@@ -1134,7 +1164,7 @@ def calibration_report(odds: Storage, store: ContestStore) -> list[CalibrationBu
             if pick.result is None or line is None:
                 continue
             ticks = spread_history(odds, pick.game_id)
-            at_lock = consensus(book_spreads(ticks, asof=card.locked_at))
+            at_lock = consensus(book_spreads(ticks, asof=card.submission_time))
             if at_lock is None:
                 continue
             edge = pick_side_value(pick.side, line.home_spread, at_lock)
