@@ -23,8 +23,9 @@ package's (D-036), the total sigmas below are the usual empirical ones.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from statistics import NormalDist, median
 
 from mlb_odds import contest, model, valuation
@@ -35,6 +36,10 @@ TOTAL_SIGMA = {"nfl": 13.6, "mlb": 4.2}  # empirical sd of total points / runs
 SPREAD_MARKET = {"nfl": "spread", "mlb": "run_line"}
 _MARKET_ORDER = {"moneyline": 0, "spread": 1, "run_line": 1, "total": 2}
 _NORMAL = NormalDist()
+# A book whose newest quote on a market is this much older than the game's
+# newest snapshot has stopped reporting: its carried-forward number is not
+# an offer anyone can take, so it is shown but never ranked or starred.
+STALE_AFTER = timedelta(hours=24)
 
 
 def cover_prob(expected_home_margin: float, home_line: float, sigma: float) -> float:
@@ -69,7 +74,9 @@ class MarketRow:
     model_ev: float | None = None
     line_edge: float | None = None  # points beyond the consensus line, + = better
     key_numbers: list[float] = field(default_factory=list)
-    best: bool = False  # best EV for this (market, side, player)
+    best: bool = False  # best EV for this (market, side, player), among fresh quotes
+    quoted_at: datetime | None = None  # newest snapshot of this book on this market
+    stale: bool = False  # quoted_at lags the game's newest snapshot by > STALE_AFTER
 
 
 @dataclass(frozen=True)
@@ -101,8 +108,13 @@ def build_rows(
     fair_home: float | None,
     model_home: float | None,
     predicted_margin: float | None,
+    quoted_at: Mapping[tuple[str, str], datetime] | None = None,
 ) -> tuple[list[MarketRow], Consensus]:
-    """Every priced side of the game, ranked by EV against the market fair."""
+    """Every priced side of the game, ranked by EV against the market fair.
+
+    `quoted_at` maps (book, market) to that book's newest snapshot on that
+    market; rows older than the game's newest by STALE_AFTER are flagged
+    stale, sorted after fresh rows, and never marked best."""
     sigma = MARGIN_SIGMA[sport]
     spread_market = SPREAD_MARKET[sport]
     spreads = _pair_by_book(quotes, spread_market)
@@ -243,12 +255,15 @@ def build_rows(
             )
 
     rows.extend(_prop_rows(quotes))
-    rows.sort(key=lambda r: (r.ev is None, -(r.ev or 0), _MARKET_ORDER.get(r.market, 9), r.book))
+    rows = _stamp_freshness(rows, quoted_at or {})
+    rows.sort(
+        key=lambda r: (r.stale, r.ev is None, -(r.ev or 0), _MARKET_ORDER.get(r.market, 9), r.book)
+    )
     best_seen: set[tuple[str, str, str | None, float | None]] = set()
     marked: list[MarketRow] = []
-    for r in rows:  # rows are EV-sorted, so the first of each side is its best
+    for r in rows:  # fresh rows come first, EV-sorted: the first of each side is its best
         key = (r.market, r.side, r.player, r.line if r.player else None)
-        if r.ev is not None and key not in best_seen:
+        if r.ev is not None and not r.stale and key not in best_seen:
             best_seen.add(key)
             r = MarketRow(**{**r.__dict__, "best": True})
         marked.append(r)
@@ -259,6 +274,20 @@ def build_rows(
         expected_margin=_r(expected, 2),
         model_margin=_r(model_margin, 2),
     )
+
+
+def _stamp_freshness(
+    rows: list[MarketRow], quoted_at: Mapping[tuple[str, str], datetime]
+) -> list[MarketRow]:
+    if not quoted_at:
+        return rows
+    newest = max(quoted_at.values())
+    out = []
+    for r in rows:
+        at = quoted_at.get((r.book, r.market))
+        stale = at is not None and newest - at > STALE_AFTER
+        out.append(MarketRow(**{**r.__dict__, "quoted_at": at, "stale": stale}))
+    return out
 
 
 def _prop_rows(quotes: Sequence[Quote]) -> list[MarketRow]:

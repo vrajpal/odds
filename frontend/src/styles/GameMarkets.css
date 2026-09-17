@@ -29,6 +29,9 @@
 .gm-table .mk { font-size: 11px; color: #7f8c8d; text-transform: uppercase; margin-right: 6px; }
 .gm-table .book { color: #7f8c8d; }
 .gm-table .star { color: #f39c12; margin-left: 6px; }
+.gm-table tr.stale td { opacity: 0.55; }
+.gm-table .stale-tag { margin-left: 6px; font-size: 11px; font-weight: 700; color: #7f8c8d; background: #e1e5ea; border-radius: 4px; padding: 0 5px; }
+[data-theme='dark'] .gm-table .stale-tag { background: #374151; color: #9ca3af; }
 .gm-table .keys { margin-left: 6px; font-size: 11px; font-weight: 700; color: #9a5b00; background: #fdebd0; border-radius: 4px; padding: 0 5px; }
 .gm-table .dim, .game-markets .dim { color: #95a5a6; }
 .game-markets .ev-pos { color: #1e8449; font-weight: 700; }
