@@ -166,6 +166,8 @@ class MarketRowOut(BaseModel):
     line_edge: float | None
     key_numbers: list[float]
     best: bool
+    quoted_at: str | None  # this book's newest snapshot on this market (local time)
+    stale: bool  # carried forward from a book that stopped reporting; never ranked
 
 
 class GameContextOut(BaseModel):
@@ -239,9 +241,12 @@ def get_game_markets(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> Game
         context = contest.game_context(storage.games(), game)
     finally:
         storage.close()
+    quoted_at: dict[tuple[str, str], datetime] = {}
+    for fetched_at, _provider, book, market, _outcome, _line, _price, _player in history:
+        quoted_at[(book, market)] = datetime.fromisoformat(fetched_at)  # rows are time-ordered
     rows, consensus = markets.build_rows(
         sport, game, _dedupe(quotes), fair_home=fair, model_home=lenses.model_prob,
-        predicted_margin=lenses.predicted_margin,
+        predicted_margin=lenses.predicted_margin, quoted_at=quoted_at,
     )
     return GameMarketsOut(
         game_id=game_id,
@@ -276,7 +281,15 @@ def get_game_markets(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> Game
             first_seen=_local_iso(history[0][0], tz) if history else None,
             last_seen=_local_iso(history[-1][0], tz) if history else None,
         ),
-        rows=[MarketRowOut(**r.__dict__) for r in rows],
+        rows=[
+            MarketRowOut(
+                **{
+                    **r.__dict__,
+                    "quoted_at": r.quoted_at.astimezone(tz).isoformat() if r.quoted_at else None,
+                }
+            )
+            for r in rows
+        ],
     )
 
 

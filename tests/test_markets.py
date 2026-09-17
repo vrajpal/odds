@@ -292,3 +292,62 @@ def test_markets_endpoint_mlb_with_props_and_404(tmp_path, monkeypatch):
     assert body["context"]["consensus_total"] == 8.5
     assert client.get("/api/games/2026-07-09-XXX-YYY-1/markets").status_code == 404
     assert client.get("/api/games/nonsense/markets").status_code == 404
+
+
+def test_stale_books_are_shown_but_never_ranked_or_starred():
+    """A book that stopped reporting keeps its last quote (carry-forward);
+    six weeks on it looks like value. It must sort last and never be best."""
+    g = game()
+    quotes = ml("betus", 200, -250) + ml("draftkings", -140, 125)  # betus: an ancient +200
+    fresh = KICK - timedelta(days=1)
+    quoted = {
+        ("betus", "moneyline"): fresh - timedelta(days=40),
+        ("draftkings", "moneyline"): fresh,
+    }
+    rows, _ = markets.build_rows(
+        "nfl", g, quotes, fair_home=0.58, model_home=None, predicted_margin=None, quoted_at=quoted
+    )
+    betus_home = next(r for r in rows if r.book == "betus" and r.side == "home")
+    assert betus_home.stale and betus_home.ev > 0.5  # the bait
+    assert not betus_home.best
+    assert rows[-1].book == "betus" and rows[-2].book == "betus"  # stale rows sink
+    dk_home = next(r for r in rows if r.book == "draftkings" and r.side == "home")
+    assert dk_home.best and not dk_home.stale
+    assert dk_home.quoted_at == fresh
+    # Within a day of the newest snapshot is fresh.
+    near = {("betus", "moneyline"): fresh - timedelta(hours=20), ("draftkings", "moneyline"): fresh}
+    rows, _ = markets.build_rows(
+        "nfl", g, quotes, fair_home=0.58, model_home=None, predicted_margin=None, quoted_at=near
+    )
+    assert not any(r.stale for r in rows)
+
+
+def test_endpoint_marks_a_book_that_stopped_reporting(tmp_path, monkeypatch):
+    db = tmp_path / "nfl.sqlite"
+    storage = Storage(db)
+    try:
+        old = make_nfl_spread_odds(
+            {"betus": -1.0},
+            KICK - timedelta(days=40),
+            start_time=KICK,
+            moneylines={"betus": (200, -250)},
+        )
+        storage.store([old])
+        new = make_nfl_spread_odds(
+            {"draftkings": -3.5},
+            KICK - timedelta(days=1),
+            start_time=KICK,
+            moneylines={"draftkings": (125, -140)},
+        )
+        storage.store([new])
+        game_id = new.game.game_id
+    finally:
+        storage.close()
+    monkeypatch.setenv("NFL_ODDS_DB", str(db))
+    client = TestClient(api.app, raise_server_exceptions=False)
+    body = client.get(f"/api/games/{game_id}/markets", params={"sport": "nfl"}).json()
+    stale = {r["book"] for r in body["rows"] if r["stale"]}
+    assert stale == {"betus"}
+    assert all(not r["best"] for r in body["rows"] if r["stale"])
+    assert body["rows"][-1]["book"] == "betus"
+    assert all(r["quoted_at"] for r in body["rows"])

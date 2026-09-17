@@ -8,6 +8,10 @@ const price = (v) => (v > 0 ? `+${v}` : `${v}`)
 const evCls = (v) => (v == null ? 'ev-none' : v > 0.005 ? 'ev-pos' : v < -0.03 ? 'ev-neg' : 'ev-flat')
 
 const GAME_MARKETS = ['moneyline', 'spread', 'run_line', 'total']
+const staleAge = (iso) => {
+  const h = (Date.now() - new Date(iso)) / 36e5
+  return h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`
+}
 const MARKET_LABEL = { moneyline: 'Moneyline', spread: 'Spread', run_line: 'Run line', total: 'Total', props: 'Props' }
 
 // The situational read: what the market and the model think, and why.
@@ -69,6 +73,7 @@ function GameMarkets({ sport, gameId }) {
   const [market, setMarket] = useState('all')
   const [sortKey, setSortKey] = useState('ev')
   const [bestOnly, setBestOnly] = useState(false)
+  const [hideStale, setHideStale] = useState(true)
 
   useEffect(() => {
     if (!gameId) return
@@ -89,6 +94,7 @@ function GameMarkets({ sport, gameId }) {
     if (!data) return []
     let out = data.rows.filter((r) => market === 'all' || (market === 'props' ? !GAME_MARKETS.includes(r.market) : r.market === market))
     if (bestOnly) out = out.filter((r) => r.best)
+    if (hideStale) out = out.filter((r) => !r.stale)
     const key = { ev: (r) => r.ev, model_ev: (r) => r.model_ev, price: (r) => r.price, book: (r) => r.book, line: (r) => r.line_edge }[sortKey]
     const val = (r) => key(r)
     return [...out].sort((a, b) => {
@@ -98,7 +104,8 @@ function GameMarkets({ sport, gameId }) {
       if (bv == null) return -1
       return typeof av === 'string' ? av.localeCompare(bv) : bv - av
     })
-  }, [data, market, sortKey, bestOnly])
+  }, [data, market, sortKey, bestOnly, hideStale])
+  const staleCount = data ? data.rows.filter((r) => r.stale).length : 0
 
   if (!gameId) return null
   if (error) return <div className="gm-error">Markets: {error}</div>
@@ -125,6 +132,11 @@ function GameMarkets({ sport, gameId }) {
           </select>
         </label>
         <label><input type="checkbox" checked={bestOnly} onChange={(e) => setBestOnly(e.target.checked)} /> best price per side only</label>
+        {staleCount > 0 && (
+          <label title="a book whose newest quote on this market is more than a day older than the game's newest snapshot — carried forward, not an offer you can take">
+            <input type="checkbox" checked={hideStale} onChange={(e) => setHideStale(e.target.checked)} /> hide {staleCount} stale
+          </label>
+        )}
       </div>
 
       <div className="gm-scroll">
@@ -137,12 +149,13 @@ function GameMarkets({ sport, gameId }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={`${r.market}-${r.side}-${r.book}-${r.player ?? ''}-${r.line ?? ''}-${i}`} className={r.best ? 'best' : ''}>
+              <tr key={`${r.market}-${r.side}-${r.book}-${r.player ?? ''}-${r.line ?? ''}-${i}`} className={r.best ? 'best' : r.stale ? 'stale' : ''}>
                 <td className="bet">
                   <span className="mk">{MARKET_LABEL[r.market] ?? r.market.replace(/_/g, ' ')}</span> <b>{r.label}</b>
                   {r.best && <span className="star" title="best price for this side">★</span>}
+                  {r.stale && <span className="stale-tag" title={`last quoted ${new Date(r.quoted_at).toLocaleString()}`}>stale {staleAge(r.quoted_at)}</span>}
                 </td>
-                <td className="book">{r.book}</td>
+                <td className="book" title={r.quoted_at ? `quoted ${new Date(r.quoted_at).toLocaleString()}` : undefined}>{r.book}</td>
                 <td className="num"><b>{price(r.price)}</b></td>
                 <td className="num">
                   {r.line_edge == null ? <span className="dim">–</span> : (
@@ -168,6 +181,8 @@ function GameMarkets({ sport, gameId }) {
         book's price. <b>Model</b> repeats the conversion at the model's expected margin; totals have no model view.
         <b> Line vs cons</b> = points this side gets beyond the consensus number; a key-number badge means the book's line and the
         consensus straddle 3 or 7. Props are de-vigged per book and judged against every book quoting the same line.
+        <b> Stale</b> rows are a book's last quote from before it stopped reporting on this market (more than a day behind the
+        game's newest snapshot): shown for the record, never ranked or starred, hidden by default.
       </div>
     </div>
   )
