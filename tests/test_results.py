@@ -87,6 +87,7 @@ def test_migration_adds_results_to_existing_v3_database(tmp_path):
     storage._conn.executescript(
         "DROP TABLE results; DROP TABLE probables; DROP TABLE statcast_team;"
         " DROP TABLE statcast_pitcher; DROP TABLE projections; DROP TABLE model_snapshots;"
+        " DROP TABLE nfl_history; DROP TABLE close_predictions;"
         " DELETE FROM schema_version;"
         " INSERT INTO schema_version (version) VALUES (3);"
     )

@@ -167,16 +167,89 @@ def collect(
 
 
 def _record_model_snapshots(path: Path) -> int:
-    from mlb_odds import ledger
+    """Model snapshots (D-044) and closing-line predictions (D-046), both
+    stamped now so their ledgers grade only pre-kickoff forecasts."""
+    from mlb_odds import closing, ledger
     from mlb_odds.storage import Storage
 
+    now = datetime.now(UTC)
     storage = Storage(path)
     try:
-        written = ledger.record_snapshots(storage, now=datetime.now(UTC))
+        written = ledger.record_snapshots(storage, now=now)
+        closes = closing.record_predictions(storage, now=now)
     finally:
         storage.close()
-    logging.getLogger("mlb_odds.ledger").info("model snapshots recorded: %d", written)
+    logging.getLogger("mlb_odds.ledger").info(
+        "model snapshots recorded: %d; close predictions: %d", written, closes
+    )
     return written
+
+
+@app.command(name="nfl-history")
+def nfl_history(db: DbOption = None) -> None:
+    """Import nflverse's games file (closers, results, context, 1999+) into
+    the NFL database (D-046). Free, no key; re-runs refresh scores and
+    closing lines."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    from mlb_odds.providers.nflverse import NFLverse
+    from mlb_odds.storage import Storage
+
+    source = NFLverse()
+    try:
+        games = source.fetch_games()
+    except ProviderError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        source.close()
+    storage = Storage(_resolve_db(db, SportChoice.nfl))
+    try:
+        stored = storage.store_nfl_history(games)
+    finally:
+        storage.close()
+    seasons = sorted({g.season for g in games})
+    typer.echo(f"{stored} nflverse game(s) stored ({seasons[0]}-{seasons[-1]}).")
+
+
+@app.command(name="close-dataset")
+def close_dataset(
+    out: Annotated[Path, typer.Option("--out", help="CSV to write.")],
+    db: DbOption = None,
+) -> None:
+    """Write the closing-line training set (D-046): one row per stored
+    snapshot of every kicked-off game, both markets, features + target."""
+    import csv
+
+    from mlb_odds import closing
+    from mlb_odds.storage import Storage
+
+    storage = Storage(_resolve_db(db, SportChoice.nfl), read_only=True)
+    try:
+        rows = closing.training_rows(storage, now=datetime.now(UTC))
+    finally:
+        storage.close()
+    fields = [
+        "game_id", "market", "asof", "reference", "current", "consensus", "opener",
+        "move_open_to_now", "hours_to_kick", "sharp_gap", "velocity_24h", "ratings_line",
+        "rest_differential", "divisional", "close", "remaining_move",
+    ]
+    with out.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for r in rows:
+            f = r.features
+            writer.writerow({
+                "game_id": r.game_id, "market": r.market, "asof": r.asof.isoformat(),
+                "reference": f.reference, "current": f.current, "consensus": f.consensus,
+                "opener": f.opener, "move_open_to_now": f.move_open_to_now,
+                "hours_to_kick": f.hours_to_kick, "sharp_gap": f.sharp_gap,
+                "velocity_24h": f.velocity_24h, "ratings_line": f.ratings_line,
+                "rest_differential": f.rest_differential, "divisional": int(f.divisional),
+                "close": r.close, "remaining_move": r.remaining_move,
+            })
+    typer.echo(f"{len(rows)} training row(s) written to {out}.")
 
 
 @app.command(name="model-snapshot")

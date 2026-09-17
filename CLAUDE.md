@@ -38,6 +38,8 @@ uv run mlb-odds collect --once   # needs THE_ODDS_API_KEY
 uv sync --extra sheet            # OCR extra for `mlb-odds contest-lines` (D-042)
 uv run mlb-odds contest-lines --dry-run   # read Circa's contest sheet; --file for a local PDF/image
 uv run mlb-odds model-snapshot   # record the NFL model's pre-kickoff forecasts (D-044; collect does it too)
+uv run mlb-odds nfl-history      # import nflverse closers/results/context, 1999+ (D-046, free)
+uv run mlb-odds close-dataset --out close.csv   # closing-line training set from stored snapshots
 ```
 
 ## Environment

@@ -14,6 +14,14 @@ const staleAge = (iso) => {
 }
 const MARKET_LABEL = { moneyline: 'Moneyline', spread: 'Spread', run_line: 'Run line', total: 'Total', props: 'Props' }
 
+// "-3 → -3.5 ±1.2": current number, predicted close, uncertainty.
+const closeText = (cp, home) => {
+  if (!cp) return '–'
+  const num = (v) => (home ? `${home} ${signed(v)}` : `${v}`)
+  const moves = cp.predicted_close !== cp.current
+  return `${num(cp.current)}${moves ? ` → ${num(cp.predicted_close)}` : ' (no move)'}${cp.sd != null ? ` ±${cp.sd.toFixed(1)}` : ''}`
+}
+
 // The situational read: what the market and the model think, and why.
 function ContextCard({ data }) {
   const c = data.context
@@ -54,6 +62,13 @@ function ContextCard({ data }) {
           <div className="v">{c.consensus_spread == null ? '–' : `${home} ${signed(c.consensus_spread)}`}</div>
           <div className="s">total {c.consensus_total ?? '–'}</div>
         </div>
+        {data.close_pred && (data.close_pred.spread || data.close_pred.total) && (
+          <div className="gm-stat" title={`closing-line model ${(data.close_pred.spread || data.close_pred.total).model_version}: where the number is expected to close (Pinnacle's pre-kickoff number when it quotes)`}>
+            <div className="k">projected close</div>
+            <div className="v">{closeText(data.close_pred.spread, home)}</div>
+            <div className="s">total {closeText(data.close_pred.total, null)} · {Math.round((data.close_pred.spread || data.close_pred.total).hours_to_kick)}h to kick</div>
+          </div>
+        )}
         <div className="gm-stat">
           <div className="k">coverage</div>
           <div className="v">{c.books} books</div>

@@ -1,6 +1,6 @@
 """Domain models. Canonical forms: UTC times, canonical team codes, American prices."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -117,3 +117,50 @@ class ModelSnapshot(BaseModel):
     model_prob: float | None  # the blend
     predicted_margin: float | None  # model home margin, points
     consensus_spread: float | None  # market home spread at the time
+
+
+class NflHistoryGame(BaseModel):
+    """One historical NFL game from nflverse (D-046): the closing spread and
+    total, the result, and the situational context the closing-line model
+    learns from. Lines are in the package convention (home spread, negative
+    = home favored) — nflverse's positive-means-home-favored sign is flipped
+    on import."""
+
+    nflverse_id: str  # e.g. 2025_01_DAL_PHI
+    season: int
+    week: int
+    game_type: str  # REG | POST | ...
+    gameday: date
+    away_team: str
+    home_team: str
+    away_score: int | None
+    home_score: int | None
+    spread_line: float | None  # closing home spread
+    total_line: float | None  # closing total
+    away_moneyline: int | None
+    home_moneyline: int | None
+    away_rest: int | None
+    home_rest: int | None
+    div_game: bool
+    roof: str | None
+    surface: str | None
+    temp: int | None
+    wind: int | None
+    away_qb: str | None
+    home_qb: str | None
+
+
+class ClosePredictionRow(BaseModel):
+    """What the closing-line model said at `computed_at` (D-046)."""
+
+    game_id: str
+    market: str  # spread | total
+    computed_at: datetime
+    hours_to_kick: float
+    reference: str  # pinnacle | consensus — what `current` is
+    current: float
+    predicted_close: float
+    sd: float | None
+    direction: str  # home | away | over | under | flat
+    p_toward: float | None
+    model_version: str

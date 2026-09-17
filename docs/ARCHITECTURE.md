@@ -7,7 +7,7 @@ src/mlb_odds/
   __init__.py          # public surface: OddsClient + models re-exported
   models.py            # pydantic v2 domain models (Game, Quote, GameOdds)
   teams.py             # canonical team codes per sport + per-provider name mappings
-  providers/
+  providers/           # incl. nflverse.py: historical closers/results/context (D-046)
     __init__.py
     base.py            # OddsProvider protocol + ProviderError
     the_odds_api.py    # v1 concrete provider
@@ -23,6 +23,7 @@ src/mlb_odds/
   circa.py             # Circa contest-spread sheet: find, render, OCR, parse vs schedule (D-042)
   ledger.py            # NFL per-game read shared by Board/Matrix + model accuracy snapshots (D-044)
   markets.py           # one game's quotes priced at their own numbers, ranked by EV (D-045)
+  closing.py           # closing-line model: features, training set, predictions, grading (D-046)
 tests/
   fixtures/            # recorded provider JSON responses
   conftest.py          # FakeProvider, temp-db fixture
