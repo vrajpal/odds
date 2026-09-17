@@ -90,6 +90,15 @@ services:
     volumes:
       - ./data:/data
 
+  nfl-history:
+    build: ..
+    profiles: [collect]
+    # nflverse closers/results/context for the closing-line model (D-046);
+    # free. Weekly is plenty — closers settle by Tuesday.
+    command: mlb-odds nfl-history
+    volumes:
+      - ./data:/data
+
   contest-lines:
     build: ..
     profiles: [collect]

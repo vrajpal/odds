@@ -61,6 +61,8 @@ Every `nfl-collect` also records a model snapshot for the accuracy ledger
 # 9 AM-2 PM PT = 12-16 ET; a run is a cheap 404 until the sheet is up and
 # a no-op once it has been read. Free, no credits.
 */10 12-16 * * 3,4  cd /opt/odds/deploy && docker compose run --rm contest-lines
+# nflverse history refresh for the closing-line model (D-046): Tuesday 9 AM PT, free
+0 12 * * 2         cd /opt/odds/deploy && docker compose run --rm nfl-history
 # FanDuel projections pull stores the ESPN schedule itself — no odds-poll
 # ordering needed, only before-first-pitch timing.
 0 7 * * *          cd /opt/odds/deploy && docker compose run --rm mlb-projections

@@ -7,7 +7,7 @@ import logging
 import math
 import os
 import sqlite3
-from datetime import date, datetime, time, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from pathlib import Path
 from time import monotonic
 from typing import Literal
@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mlb_odds import contest, ledger, markets, matchup, model, projections, valuation
+from mlb_odds import closing, contest, ledger, markets, matchup, model, projections, valuation
 from mlb_odds.client import OddsClient
 from mlb_odds.models import Game as GameModel
 from mlb_odds.models import Quote, Sport
@@ -194,6 +194,53 @@ class GameContextOut(BaseModel):
     last_seen: str | None
 
 
+class ContributionOut(BaseModel):
+    label: str
+    points: float
+
+
+class ClosePredOut(BaseModel):
+    """Where the number is expected to close (D-046)."""
+
+    market: str  # spread | total
+    reference: str  # pinnacle | consensus — what `current` is
+    current: float
+    predicted_close: float
+    sd: float | None
+    direction: str  # home | away | over | under | flat
+    p_toward: float | None
+    hours_to_kick: float
+    as_of: str
+    model_version: str
+    contributions: list[ContributionOut]
+
+
+class ClosePredBlockOut(BaseModel):
+    spread: ClosePredOut | None
+    total: ClosePredOut | None
+
+
+def _close_pred_block(
+    predictor: closing.Predictor, storage: Storage, game: GameModel, now: datetime, tz: tzinfo
+) -> ClosePredBlockOut:
+    def one(market: str) -> ClosePredOut | None:
+        ticks = closing.line_history(storage, game.game_id, market)
+        pred = predictor.predict(ticks, game, market, now)
+        if pred is None:
+            return None
+        return ClosePredOut(
+            market=pred.market, reference=pred.reference, current=pred.current,
+            predicted_close=pred.predicted_close, sd=pred.sd, direction=pred.direction,
+            p_toward=pred.p_toward, hours_to_kick=pred.hours_to_kick,
+            as_of=pred.as_of.astimezone(tz).isoformat(), model_version=pred.model_version,
+            contributions=[
+                ContributionOut(label=c.label, points=c.points) for c in pred.contributions
+            ],
+        )
+
+    return ClosePredBlockOut(spread=one("spread"), total=one("total"))
+
+
 class GameMarketsOut(BaseModel):
     game_id: str
     sport: str
@@ -201,6 +248,7 @@ class GameMarketsOut(BaseModel):
     home_team: str
     start_time: str
     context: GameContextOut
+    close_pred: ClosePredBlockOut | None  # NFL only (D-046)
     rows: list[MarketRowOut]  # every priced side, best EV first
 
 
@@ -239,6 +287,11 @@ def get_game_markets(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> Game
         )
         history = storage.history_rows(game_id)
         context = contest.game_context(storage.games(), game)
+        close_pred = None
+        if sport == "nfl":
+            now = datetime.now(UTC)
+            predictor = closing.Predictor(storage, now=now)
+            close_pred = _close_pred_block(predictor, storage, game, now, tz)
     finally:
         storage.close()
     quoted_at: dict[tuple[str, str], datetime] = {}
@@ -254,6 +307,7 @@ def get_game_markets(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> Game
         away_team=game.away_team,
         home_team=game.home_team,
         start_time=game.start_time.astimezone(tz).isoformat(),
+        close_pred=close_pred,
         context=GameContextOut(
             consensus_prob=fair,
             open_prob=open_prob,
@@ -472,6 +526,7 @@ class DashboardGameOut(BaseModel):
     home_team: str
     start_time: str
     predicted_margin: float | None = None  # NFL: model home margin in points (D-036)
+    close_pred: ClosePredBlockOut | None = None  # NFL: where the numbers should close (D-046)
     moneyline: MoneylineOut
     run_line: dict[str, MarketQuoteOut]  # per book
     total: dict[str, MarketQuoteOut]
@@ -573,6 +628,8 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
         fits = _Fits(storage, sport, season)
         strengths = fits.strengths
         hfa: float | None = fits.hfa
+        now_utc = datetime.now(UTC)
+        close_predictor = closing.Predictor(storage, now=now_utc) if sport == "nfl" else None
         # latest_odds returns one GameOdds per (game, provider); merge quotes.
         merged: dict[str, list[Quote]] = {}
         for go in storage.latest_odds(window=window):
@@ -642,6 +699,11 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                     home_team=game.home_team,
                     start_time=game.start_time.astimezone(tz).isoformat(),
                     predicted_margin=predicted_margin,
+                    close_pred=(
+                        _close_pred_block(close_predictor, storage, game, now_utc, tz)
+                        if close_predictor is not None and game.start_time > now_utc
+                        else None
+                    ),
                     moneyline=MoneylineOut(
                         consensus_prob=fair,
                         open_prob=open_prob,
@@ -786,6 +848,28 @@ def model_report(sport: Literal["nfl"] = "nfl") -> dict[str, object]:
         " compare each lens to 'market' before trusting it"
     )
     return report
+
+
+@app.get("/api/model/close/report")
+def close_report(sport: Literal["nfl"] = "nfl") -> dict[str, object]:
+    """The closing-line model's ledger (D-046): MAE of predicted close vs
+    the actual pre-kickoff number, against the no-move baseline, and the
+    direction hit rate where the model called a move — per market, overall
+    and by horizon. Only predictions recorded before kickoff count."""
+    try:
+        storage = Storage(_resolve_db(sport), read_only=True)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(status_code=503, detail="odds database unavailable") from exc
+    try:
+        out = closing.report(storage, now=datetime.now(UTC))
+    finally:
+        storage.close()
+    out["sport"] = sport
+    out["note"] = (
+        "mae vs baseline_mae: the model must beat 'the line stays where it is';"
+        " direction_hit_rate counts only predictions that called a move"
+    )
+    return out
 
 
 @app.get("/api/health")

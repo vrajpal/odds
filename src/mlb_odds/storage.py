@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from mlb_odds.models import Game, GameOdds, ModelSnapshot, Quote
+from mlb_odds.models import ClosePredictionRow, Game, GameOdds, ModelSnapshot, NflHistoryGame, Quote
 
 logger = logging.getLogger("mlb_odds.storage")
 
@@ -164,6 +164,52 @@ MIGRATIONS: list[str] = [
         consensus_spread REAL
     );
     CREATE INDEX idx_model_snapshots_game ON model_snapshots (game_id, computed_at);
+    """,
+    # D-046: the closing-line model. nfl_history is nflverse's closers +
+    # results + context (1999+), the training backbone. close_predictions
+    # is what the model said, per poll, about where a line would close —
+    # graded only from rows recorded before kickoff (the D-044 discipline).
+    """
+    CREATE TABLE nfl_history (
+        nflverse_id    TEXT PRIMARY KEY,
+        season         INTEGER NOT NULL,
+        week           INTEGER NOT NULL,
+        game_type      TEXT NOT NULL,
+        gameday        TEXT NOT NULL,
+        away_team      TEXT NOT NULL,
+        home_team      TEXT NOT NULL,
+        away_score     INTEGER,
+        home_score     INTEGER,
+        spread_line    REAL,
+        total_line     REAL,
+        away_moneyline INTEGER,
+        home_moneyline INTEGER,
+        away_rest      INTEGER,
+        home_rest      INTEGER,
+        div_game       INTEGER NOT NULL,
+        roof           TEXT,
+        surface        TEXT,
+        temp           INTEGER,
+        wind           INTEGER,
+        away_qb        TEXT,
+        home_qb        TEXT
+    );
+    CREATE INDEX idx_nfl_history_season ON nfl_history (season, week);
+    CREATE TABLE close_predictions (
+        id              INTEGER PRIMARY KEY,
+        game_id         TEXT NOT NULL REFERENCES games(game_id),
+        market          TEXT NOT NULL CHECK (market IN ('spread', 'total')),
+        computed_at     TEXT NOT NULL,
+        hours_to_kick   REAL NOT NULL,
+        reference       TEXT NOT NULL,
+        current         REAL NOT NULL,
+        predicted_close REAL NOT NULL,
+        sd              REAL,
+        direction       TEXT NOT NULL,
+        p_toward        REAL,
+        model_version   TEXT NOT NULL
+    );
+    CREATE INDEX idx_close_predictions_game ON close_predictions (game_id, market, computed_at);
     """,
 ]
 
@@ -514,6 +560,108 @@ class Storage:
                 quotes=list(quotes.values()),
             )
             for (game_id, provider), quotes in quotes_by_key.items()
+        ]
+
+    def store_nfl_history(self, games: Sequence[NflHistoryGame]) -> int:
+        """Upsert nflverse rows (re-imports refresh closers and scores)."""
+        with self._conn:
+            self._conn.executemany(
+                """
+                INSERT INTO nfl_history (nflverse_id, season, week, game_type, gameday,
+                    away_team, home_team, away_score, home_score, spread_line, total_line,
+                    away_moneyline, home_moneyline, away_rest, home_rest, div_game, roof,
+                    surface, temp, wind, away_qb, home_qb)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (nflverse_id) DO UPDATE SET
+                    away_score = excluded.away_score, home_score = excluded.home_score,
+                    spread_line = excluded.spread_line, total_line = excluded.total_line,
+                    away_moneyline = excluded.away_moneyline,
+                    home_moneyline = excluded.home_moneyline,
+                    away_rest = excluded.away_rest, home_rest = excluded.home_rest,
+                    div_game = excluded.div_game, roof = excluded.roof,
+                    surface = excluded.surface, temp = excluded.temp, wind = excluded.wind,
+                    away_qb = excluded.away_qb, home_qb = excluded.home_qb
+                """,
+                [
+                    (
+                        g.nflverse_id, g.season, g.week, g.game_type, g.gameday.isoformat(),
+                        g.away_team, g.home_team, g.away_score, g.home_score, g.spread_line,
+                        g.total_line, g.away_moneyline, g.home_moneyline, g.away_rest,
+                        g.home_rest, int(g.div_game), g.roof, g.surface, g.temp, g.wind,
+                        g.away_qb, g.home_qb,
+                    )
+                    for g in games
+                ],
+            )
+        return len(games)
+
+    def nfl_history(
+        self, *, seasons: tuple[int, int] | None = None, game_type: str | None = "REG"
+    ) -> list[NflHistoryGame]:
+        sql = "SELECT * FROM nfl_history WHERE 1=1"
+        params: list[object] = []
+        if seasons is not None:
+            sql += " AND season BETWEEN ? AND ?"
+            params += [seasons[0], seasons[1]]
+        if game_type is not None:
+            sql += " AND game_type = ?"
+            params.append(game_type)
+        sql += " ORDER BY season, week, gameday, nflverse_id"
+        cur = self._conn.execute(sql, params)
+        cols = [d[0] for d in cur.description]
+        out = []
+        for row in cur.fetchall():
+            rec = dict(zip(cols, row, strict=True))
+            rec["gameday"] = date.fromisoformat(rec["gameday"])
+            rec["div_game"] = bool(rec["div_game"])
+            out.append(NflHistoryGame(**rec))
+        return out
+
+    def store_close_predictions(self, rows: Sequence[ClosePredictionRow]) -> int:
+        with self._conn:
+            self._conn.executemany(
+                """
+                INSERT INTO close_predictions (game_id, market, computed_at, hours_to_kick,
+                    reference, current, predicted_close, sd, direction, p_toward, model_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        r.game_id, r.market, _utc_key(r.computed_at), r.hours_to_kick,
+                        r.reference, r.current, r.predicted_close, r.sd, r.direction,
+                        r.p_toward, r.model_version,
+                    )
+                    for r in rows
+                ],
+            )
+        return len(rows)
+
+    def close_predictions(
+        self, *, before_kickoff: bool = True
+    ) -> list[tuple[ClosePredictionRow, datetime]]:
+        """Every stored prediction with its game's kickoff; `before_kickoff`
+        keeps only rows recorded before the game started."""
+        sql = """
+            SELECT p.game_id, p.market, p.computed_at, p.hours_to_kick, p.reference, p.current,
+                   p.predicted_close, p.sd, p.direction, p.p_toward, p.model_version,
+                   g.start_time
+            FROM close_predictions AS p JOIN games AS g ON g.game_id = p.game_id
+        """
+        if before_kickoff:
+            sql += " WHERE p.computed_at <= g.start_time"
+        sql += " ORDER BY g.start_time, p.game_id, p.market, p.computed_at"
+        return [
+            (
+                ClosePredictionRow(
+                    game_id=gid, market=market, computed_at=datetime.fromisoformat(computed),
+                    hours_to_kick=hours, reference=reference, current=current,
+                    predicted_close=predicted, sd=sd, direction=direction, p_toward=p_toward,
+                    model_version=version,
+                ),
+                datetime.fromisoformat(start),
+            )
+            for gid, market, computed, hours, reference, current, predicted, sd, direction,
+            p_toward, version, start in self._conn.execute(sql).fetchall()
         ]
 
     def latest_props(self, game_id: str) -> list[Quote]:

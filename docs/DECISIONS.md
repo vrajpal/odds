@@ -899,3 +899,45 @@ The React "Matchup" tab became the game view: context card, filter/sort
 controls and the ranked table above the existing team lens, Statcast card
 and line-movement chart. Normal approximations are literature anchors
 (margin sigmas from D-036, total sigmas 13.6 / 4.2), not fits.
+
+## D-046 — Closing-line model, phase 1: foundation and a naive baseline (2026-09-17)
+Vijai chose the next model: predict where the NFL number will CLOSE (spread
+and total), not who wins — a bet is judged by the line it beat, and Valtrac
+(the Bet TNT ledger) will price every TNT side against the projected close
+the way it prices against Pinnacle-now. Owner is this repo; Valtrac
+consumes over the API and grades its own CLV against our closing numbers.
+Approved data: historical lines and results, injuries and weather; no paid
+odds history.
+
+Phase 1 ships the foundation and the contract, deliberately with a model
+that predicts nothing:
+- `providers/nflverse.py` + `mlb-odds nfl-history`: nflverse's games.csv
+  (1999+; closing spread/total, scores, rest, divisional, roof/surface/
+  temp/wind, starting QBs) into `nfl_history`. Sign flipped on import:
+  nflverse's spread is positive when the home team is favored, ours is
+  negative. LA/OAK/SD/STL map to the current franchise codes. Free, keyed
+  by nflverse id, re-imports refresh closers and scores.
+- `closing.py`: the per-(game, market, instant) feature read from our own
+  snapshot histories (reference = Pinnacle's number when it quotes, else
+  consensus; opener, open-to-now move, hours to kickoff, sharp-vs-square
+  gap, 24h velocity, ratings line, rest differential, divisional), the
+  training-set builder ("remaining move" = close − now, one row per stored
+  snapshot of every kicked-off game; `mlb-odds close-dataset`), the
+  residual scale of that move by horizon, and `close-v0`: the line closes
+  where it is, sd = that scale. v0 is the baseline every later version
+  must beat, and it lets consumers wire the contract today.
+- The contract: a `close_pred` block per market on `/api/games/{id}/markets`
+  and on each NFL dashboard game (reference, current, predicted_close, sd,
+  direction, p_toward, hours_to_kick, as_of, model_version, contributions),
+  and `GET /api/model/close/report` grading MAE vs the no-move baseline and
+  the direction hit rate, per market and by horizon.
+- Predictions are recorded per NFL poll (with the D-044 snapshots) and
+  graded only from rows made before kickoff; the closing number is
+  Pinnacle's last pre-kickoff quote, else the consensus at kickoff.
+
+Verified, not assumed: nflverse fetches without a key and its 2026 rows
+already carry weeks 1–3 closers. aussportsbetting.com's historical file
+returns 403 to non-browser clients, so it is not fetched programmatically;
+if a hand-downloaded copy appears, an importer for openers is phase 2.
+Modelling stays numpy-only unless ridge proves insufficient; a learning
+library would be a new runtime dependency and its own entry.

@@ -115,3 +115,14 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
       spread path, two-lens blend, Board agreement on every leg), calendar
       seams, duplicate games, locked/graded legs, degraded inputs; headless
       Chromium tests of the tab's ranking/summary logic (D-041)
+
+## L — Closing-line model (D-046)
+- [x] L1 — Foundation: nflverse history importer (`nfl-history`), feature read
+      + training-set builder over snapshot histories (`close-dataset`),
+      residual scale by horizon, `close-v0` baseline, per-poll predictions,
+      `close_pred` contract on markets/dashboard, `/api/model/close/report`
+- [ ] L2 — Model v1: history prior (close vs opener / ratings) + remaining-move
+      ridge on this season's snapshots; contributions surfaced; must beat v0
+- [ ] L3 — Injuries (nflverse, QB status) + weather (Open-Meteo) for totals
+- [ ] L4 — Feedback: Valtrac CLV grading against our closes; blend weight from
+      the report
