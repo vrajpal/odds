@@ -56,7 +56,7 @@ function App() {
             className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`}
             onClick={() => setActiveTab('history')}
           >
-            Matchup
+            Game
           </button>
         </nav>
       </header>

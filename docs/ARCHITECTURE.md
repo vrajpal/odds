@@ -22,6 +22,7 @@ src/mlb_odds/
   survivor_api.py      # Survivor routes (/api/survivor), mounted by contest_api (D-028)
   circa.py             # Circa contest-spread sheet: find, render, OCR, parse vs schedule (D-042)
   ledger.py            # NFL per-game read shared by Board/Matrix + model accuracy snapshots (D-044)
+  markets.py           # one game's quotes priced at their own numbers, ranked by EV (D-045)
 tests/
   fixtures/            # recorded provider JSON responses
   conftest.py          # FakeProvider, temp-db fixture

@@ -516,6 +516,34 @@ class Storage:
             for (game_id, provider), quotes in quotes_by_key.items()
         ]
 
+    def latest_props(self, game_id: str) -> list[Quote]:
+        """Latest quote per (book, market, player, outcome, line) for one
+        game's prop ladders — every rung, newest snapshot of each (D-018)."""
+        rows = self._conn.execute(
+            """
+            SELECT o.book, o.market, o.outcome, o.line, o.price, o.player
+            FROM odds AS o
+            JOIN (
+                SELECT book, market, player, outcome, line, MAX(fetched_at) AS fetched_at
+                FROM odds WHERE game_id = ? AND player IS NOT NULL
+                GROUP BY book, market, player, outcome, line
+            ) AS latest
+              ON  latest.book = o.book AND latest.market = o.market
+              AND latest.player = o.player AND latest.outcome = o.outcome
+              AND latest.fetched_at = o.fetched_at
+              AND (latest.line = o.line OR (latest.line IS NULL AND o.line IS NULL))
+            WHERE o.game_id = ?
+            ORDER BY o.market, o.player, o.line, o.book, o.outcome, o.id
+            """,
+            (game_id, game_id),
+        ).fetchall()
+        seen: dict[tuple[str, str, str, str, float | None], Quote] = {}
+        for book, market, outcome, line, price, player in rows:
+            seen[(book, market, player, outcome, line)] = Quote(
+                book=book, market=market, outcome=outcome, line=line, price=price, player=player
+            )
+        return list(seen.values())
+
     def closing_odds(
         self,
         on_date: date | None = None,

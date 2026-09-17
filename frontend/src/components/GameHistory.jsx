@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import LineMovement from './LineMovement'
+import GameMarkets from './GameMarkets'
 import '../styles/GameHistory.css'
 
 const statFmt = (v, d = 3) => (v == null ? '–' : v.toFixed(d))
@@ -112,19 +113,22 @@ function GameHistory({ sport, gameId }) {
   }, [gameId, sport])
 
   if (!gameId) {
-    return <div className="empty">Select a game to view line movement history</div>
+    return <div className="empty">Select a game on the Dashboard or Today tab to open its game view</div>
   }
 
   if (loading) return <div className="loading">Loading history...</div>
   if (error) return <div className="error">Error: {error}</div>
   if (!history) return <div className="empty">No history found for this game</div>
 
+  const teams = /^\d{4}-\d{2}-\d{2}-([A-Z]+)-([A-Z]+)-\d+$/.exec(gameId)
   return (
     <div className="game-history">
-      <h2>{gameId}</h2>
+      <h2>{teams ? `${teams[1]} @ ${teams[2]}` : gameId}</h2>
       <div className="history-meta">
-        {history.count > 0 ? `${history.count} records` : 'no odds collected for this game'}
+        {gameId} · {history.count > 0 ? `${history.count} odds records` : 'no odds collected for this game'}
       </div>
+
+      <GameMarkets sport={sport} gameId={gameId} />
 
       <TeamLens matchup={matchup} />
 

@@ -870,3 +870,32 @@ survivor_api moved to `ledger.py` (`fit_market`, `read_game`) so the
 snapshots compose numbers the same way as the surfaces they will be judged
 against. The ledger is NFL-only: the MLB blend carries the Statcast lens
 and a different margin model, and nobody is weighting it yet.
+
+## D-045 — Game view: every quote priced at its own number (2026-09-17)
+The dashboard ranks games; nothing ranked the quotes within a game. And
+the cross-book comparisons people do by hand have a failure mode we saw
+in the wild: a book hanging a different number treated as the same bet
+(a run line flipped to the other favourite compared as if it were 3 runs
+of free value — a +53% "edge" that was really -10%).
+
+`GET /api/games/{id}/markets` (markets.py) lists every priced side of one
+game — moneylines, the spread/run line, the total, and any prop-ladder
+rungs — each with a fair probability computed AT THAT BOOK'S LINE and an
+EV against the book's price, ranked best first with the best price per
+side marked. Moneylines use the devigged consensus. Spreads and totals go
+through the normal margin model centred on the market's expected margin:
+for NFL the consensus spread (the sharper market), for MLB the moneyline
+(the run line is a ±1.5 derivative of it). The model column repeats the
+conversion at the model's expected margin; totals have no model view.
+Props are devigged per book and judged against the median of books
+quoting that exact line. Context travels with the rows: both lenses and
+the blend, market vs model expected margin, consensus numbers, drift,
+rest days / divisional flags, and how much data the read rests on.
+
+The dashboard's per-game lens composition moved into shared helpers
+(`_Fits`, `_Lenses`) so the day view and the game view can never disagree.
+Storage gained `latest_props` (every rung's newest quote for one game).
+The React "Matchup" tab became the game view: context card, filter/sort
+controls and the ranked table above the existing team lens, Statcast card
+and line-movement chart. Normal approximations are literature anchors
+(margin sigmas from D-036, total sigmas 13.6 / 4.2), not fits.

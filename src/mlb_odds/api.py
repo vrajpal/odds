@@ -16,8 +16,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mlb_odds import contest, ledger, matchup, model, projections, valuation
+from mlb_odds import contest, ledger, markets, matchup, model, projections, valuation
 from mlb_odds.client import OddsClient
+from mlb_odds.models import Game as GameModel
 from mlb_odds.models import Quote, Sport
 from mlb_odds.providers.base import ProviderError
 from mlb_odds.providers.espn import ESPN
@@ -147,6 +148,149 @@ def get_today(sport: Literal["mlb", "nfl"] = "mlb") -> list[GameBoard]:
         return sorted(result.values(), key=lambda gb: gb.game.start_time)
     finally:
         client.close()
+
+
+class MarketRowOut(BaseModel):
+    market: str
+    side: str
+    label: str
+    book: str
+    price: int
+    line: float | None
+    team: str | None
+    player: str | None
+    fair_prob: float | None
+    ev: float | None
+    model_prob: float | None
+    model_ev: float | None
+    line_edge: float | None
+    key_numbers: list[float]
+    best: bool
+
+
+class GameContextOut(BaseModel):
+    consensus_prob: float | None  # devigged moneyline consensus, home
+    open_prob: float | None
+    drift: float | None
+    model_prob: float | None
+    market_model_prob: float | None
+    spread_model_prob: float | None
+    statcast_prob: float | None
+    projection_prob: float | None
+    projection_source: str | None
+    predicted_margin: float | None  # model's expected home margin
+    expected_margin: float | None  # market's expected home margin
+    consensus_spread: float | None
+    consensus_total: float | None
+    home_rest: int | None
+    away_rest: int | None
+    rest_differential: int | None
+    divisional: bool
+    books: int
+    snapshots: int
+    first_seen: str | None
+    last_seen: str | None
+
+
+class GameMarketsOut(BaseModel):
+    game_id: str
+    sport: str
+    away_team: str
+    home_team: str
+    start_time: str
+    context: GameContextOut
+    rows: list[MarketRowOut]  # every priced side, best EV first
+
+
+@app.get("/api/games/{game_id}/markets", response_model=GameMarketsOut)
+def get_game_markets(game_id: str, sport: Literal["mlb", "nfl"] = "mlb") -> GameMarketsOut:
+    """Every quote on one game, priced at its own line against the market
+    and the model, ranked by EV, with the situational context (D-045)."""
+    try:
+        game_date = date.fromisoformat(game_id[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"malformed game_id {game_id!r}") from exc
+    tz = _local_tz()
+    try:
+        storage = Storage(_resolve_db(sport), read_only=True)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(status_code=503, detail="odds database unavailable") from exc
+    try:
+        game = next((g for g in storage.games(game_date) if g.game_id == game_id), None)
+        if game is None:
+            raise HTTPException(status_code=404, detail=f"unknown game {game_id}")
+        quotes: list[Quote] = []
+        one_second = timedelta(seconds=1)
+        around = (game.start_time - one_second, game.start_time + one_second)
+        for go in storage.latest_odds(window=around):
+            if go.game.game_id == game_id:
+                quotes.extend(go.quotes)
+        quotes.extend(storage.latest_props(game_id))
+        fits = _Fits(storage, sport, game.start_time.astimezone(tz).year)
+        lenses = _Lenses(storage, sport, game, fits)
+        ticks = valuation.moneyline_history(storage, game_id)
+        pairs = valuation.book_probs(ticks)
+        fair = valuation.consensus_prob(pairs)
+        open_prob = (
+            valuation.consensus_prob(valuation.book_probs(ticks, asof=ticks[0].fetched_at))
+            if ticks else None
+        )
+        history = storage.history_rows(game_id)
+        context = contest.game_context(storage.games(), game)
+    finally:
+        storage.close()
+    rows, consensus = markets.build_rows(
+        sport, game, _dedupe(quotes), fair_home=fair, model_home=lenses.model_prob,
+        predicted_margin=lenses.predicted_margin,
+    )
+    return GameMarketsOut(
+        game_id=game_id,
+        sport=sport,
+        away_team=game.away_team,
+        home_team=game.home_team,
+        start_time=game.start_time.astimezone(tz).isoformat(),
+        context=GameContextOut(
+            consensus_prob=fair,
+            open_prob=open_prob,
+            drift=(
+                round(fair - open_prob, 4)
+                if fair is not None and open_prob is not None
+                else None
+            ),
+            model_prob=lenses.model_prob,
+            market_model_prob=lenses.market_model_prob,
+            spread_model_prob=lenses.spread_model_prob,
+            statcast_prob=lenses.statcast_prob,
+            projection_prob=lenses.projection_prob,
+            projection_source=lenses.projection_source,
+            predicted_margin=consensus.model_margin,
+            expected_margin=consensus.expected_margin,
+            consensus_spread=consensus.spread,
+            consensus_total=consensus.total,
+            home_rest=context.home_rest,
+            away_rest=context.away_rest,
+            rest_differential=context.rest_differential,
+            divisional=context.divisional,
+            books=len({q.book for q in quotes}),
+            snapshots=len({row[0] for row in history}),
+            first_seen=_local_iso(history[0][0], tz) if history else None,
+            last_seen=_local_iso(history[-1][0], tz) if history else None,
+        ),
+        rows=[MarketRowOut(**r.__dict__) for r in rows],
+    )
+
+
+def _local_iso(utc_iso: str, tz: tzinfo) -> str:
+    return datetime.fromisoformat(utc_iso).astimezone(tz).isoformat()
+
+
+def _dedupe(quotes: list[Quote]) -> list[Quote]:
+    """latest_odds returns one GameOdds per provider; two providers quoting
+    the same book/market/outcome collapse to the last seen."""
+    seen: dict[tuple[str, str, str, str | None, float | None], Quote] = {}
+    for q in quotes:
+        seen[(q.book, q.market, q.outcome, q.player, q.line if q.player else None)] = q
+    return list(seen.values())
 
 
 @app.get("/api/games/{game_id}/history")
@@ -333,6 +477,68 @@ class DashboardOut(BaseModel):
     games: list[DashboardGameOut]
 
 
+class _Fits:
+    """Season-wide fits a day's (or a game's) lenses compose from."""
+
+    def __init__(self, storage: Storage, sport: str, season: int) -> None:
+        fitted = valuation.implied_strengths(storage)
+        self.strengths: dict[str, float]
+        self.hfa: float | None
+        self.strengths, self.hfa = fitted if fitted else ({}, None)
+        self.statcast_league = (
+            valuation.league_xwoba(storage.statcast_team_rows(season)) if sport == "mlb" else None
+        )
+        self.spread_fit = contest.power_ratings(storage) if sport == "nfl" else None
+
+
+class _Lenses:
+    """One game's model read: every lens plus the blend (D-030/32/36/37)."""
+
+    def __init__(self, storage: Storage, sport: str, game: GameModel, fits: _Fits) -> None:
+        self.market_model_prob = (
+            valuation.model_home_prob(fits.strengths, fits.hfa, game.home_team, game.away_team)
+            if fits.hfa is not None
+            else None
+        )
+        self.statcast_prob: float | None = None
+        sc_logit = None
+        if fits.statcast_league is not None:
+            scout_data = storage.scout(game.game_id) or {}
+            sc_logit = valuation.statcast_home_logit(
+                home_batting=_scout_xwoba(scout_data, "home_batting"),
+                away_batting=_scout_xwoba(scout_data, "away_batting"),
+                home_starter_against=_scout_xwoba(scout_data, "home_pitcher_line"),
+                away_starter_against=_scout_xwoba(scout_data, "away_pitcher_line"),
+                league=fits.statcast_league,
+                hfa_logit=fits.hfa if fits.hfa is not None else 0.07,
+            )
+            if sc_logit is not None:
+                self.statcast_prob = round(1.0 / (1.0 + math.exp(-sc_logit)), 4)
+        proj = storage.latest_projection(game.game_id)
+        self.projection_prob: float | None = None
+        self.projection_source: str | None = None
+        if proj is not None:
+            self.projection_source = proj[0]
+            self.projection_prob = projections.projection_prob(proj[2], proj[3], proj[4], sport)
+        self.spread_model_prob: float | None = None
+        self.predicted_margin: float | None = None
+        if sport == "nfl":
+            predicted = None
+            if fits.spread_fit is not None:
+                predicted = contest.predicted_home_spread(
+                    fits.spread_fit[0], fits.spread_fit[1], game.home_team, game.away_team
+                )
+            if predicted is not None:
+                self.predicted_margin = round(-predicted, 1)
+            self.model_prob, self.spread_model_prob = model.nfl_model_prob(
+                self.market_model_prob, predicted, self.projection_prob
+            )
+        else:
+            self.model_prob = model.mlb_model_prob(
+                self.market_model_prob, sc_logit, self.projection_prob
+            )
+
+
 @app.get("/api/dashboard", response_model=DashboardOut)
 def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> DashboardOut:
     """The betting dashboard (D-030): one local day's games with core
@@ -350,11 +556,10 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
     try:
         window = _local_day_window(tz, target)
         games = storage.games(window=window)
-        fitted = valuation.implied_strengths(storage)
-        strengths, hfa = fitted if fitted else ({}, None)
         season = (target or datetime.now(tz).date()).year
-        statcast_league = valuation.league_xwoba(storage.statcast_team_rows(season))
-        spread_fit = contest.power_ratings(storage) if sport == "nfl" else None
+        fits = _Fits(storage, sport, season)
+        strengths = fits.strengths
+        hfa: float | None = fits.hfa
         # latest_odds returns one GameOdds per (game, provider); merge quotes.
         merged: dict[str, list[Quote]] = {}
         for go in storage.latest_odds(window=window):
@@ -372,50 +577,14 @@ def dashboard(sport: Literal["mlb", "nfl"] = "mlb", on: str | None = None) -> Da
                 if ticks
                 else None
             )
-            market_model_prob = (
-                valuation.model_home_prob(strengths, hfa, game.home_team, game.away_team)
-                if hfa is not None
-                else None
-            )
-            statcast_prob = None
-            sc_logit = None
-            if statcast_league is not None:
-                scout_data = storage.scout(game.game_id) or {}
-                sc_logit = valuation.statcast_home_logit(
-                    home_batting=_scout_xwoba(scout_data, "home_batting"),
-                    away_batting=_scout_xwoba(scout_data, "away_batting"),
-                    home_starter_against=_scout_xwoba(scout_data, "home_pitcher_line"),
-                    away_starter_against=_scout_xwoba(scout_data, "away_pitcher_line"),
-                    league=statcast_league,
-                    hfa_logit=hfa if hfa is not None else 0.07,
-                )
-                if sc_logit is not None:
-                    statcast_prob = round(1.0 / (1.0 + math.exp(-sc_logit)), 4)
-            proj = storage.latest_projection(game.game_id)
-            proj_prob = None
-            proj_source = None
-            if proj is not None:
-                proj_source = proj[0]
-                proj_prob = projections.projection_prob(
-                    proj[2], proj[3], proj[4], sport
-                )
-            spread_model_prob = None
-            predicted_margin = None
-            if sport == "nfl":
-                predicted = None
-                if spread_fit is not None:
-                    predicted = contest.predicted_home_spread(
-                        spread_fit[0], spread_fit[1], game.home_team, game.away_team
-                    )
-                if predicted is not None:
-                    predicted_margin = round(-predicted, 1)
-                model_prob, spread_model_prob = model.nfl_model_prob(
-                    market_model_prob, predicted, proj_prob
-                )
-            else:
-                model_prob = model.mlb_model_prob(
-                    market_model_prob, sc_logit, proj_prob
-                )
+            lenses = _Lenses(storage, sport, game, fits)
+            market_model_prob = lenses.market_model_prob
+            statcast_prob = lenses.statcast_prob
+            proj_prob = lenses.projection_prob
+            proj_source = lenses.projection_source
+            spread_model_prob = lenses.spread_model_prob
+            predicted_margin = lenses.predicted_margin
+            model_prob = lenses.model_prob
             best_home = best_away = None
             if fair is not None:
                 bh, ba = valuation.best_prices(pairs, fair)
