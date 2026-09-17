@@ -47,6 +47,10 @@ lines for the whole season. The Tue/Wed polls exist so Pinnacle's new-week
 numbers (and the early-week openers Valtrac compares against them) land the day
 they post instead of Thursday.
 
+Every `nfl-collect` also records a model snapshot for the accuracy ledger
+(D-044, `/api/model/report` on :8443); after a deploy that changes the model,
+`docker compose run --rm nfl-collect mlb-odds model-snapshot` seeds one for free.
+
 ```cron
 0 8,13,18 * * 4-6  cd /opt/odds/deploy && docker compose run --rm nfl-collect
 55 9 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-collect

@@ -7,10 +7,11 @@ Keep the SQL portable (see docs/DECISIONS.md D-005).
 import logging
 import sqlite3
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from mlb_odds.models import Game, GameOdds, Quote
+from mlb_odds.models import Game, GameOdds, ModelSnapshot, Quote
 
 logger = logging.getLogger("mlb_odds.storage")
 
@@ -146,6 +147,23 @@ MIGRATIONS: list[str] = [
         home_score    REAL
     );
     CREATE INDEX idx_projections_game ON projections (game_id, source, fetched_at);
+    """,
+    # D-044: the model's own pre-kickoff forecasts, one row per game per poll,
+    # so accuracy is measured on what the model said before the game — the
+    # projections ledger's discipline applied to the market lenses.
+    """
+    CREATE TABLE model_snapshots (
+        id               INTEGER PRIMARY KEY,
+        game_id          TEXT NOT NULL REFERENCES games(game_id),
+        computed_at      TEXT NOT NULL,
+        market_prob      REAL,
+        ml_lens_prob     REAL,
+        spread_lens_prob REAL,
+        model_prob       REAL,
+        predicted_margin REAL,
+        consensus_spread REAL
+    );
+    CREATE INDEX idx_model_snapshots_game ON model_snapshots (game_id, computed_at);
     """,
 ]
 
@@ -715,6 +733,87 @@ class Storage:
               )
         """
         return self._conn.execute(sql, (source, source)).fetchall()
+
+    def store_model_snapshots(self, snapshots: Sequence[ModelSnapshot]) -> int:
+        """Append one forecast row per snapshot (D-044); history is the point."""
+        with self._conn:
+            self._conn.executemany(
+                """
+                INSERT INTO model_snapshots
+                    (game_id, computed_at, market_prob, ml_lens_prob, spread_lens_prob,
+                     model_prob, predicted_margin, consensus_spread)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        snap.game_id,
+                        _utc_key(snap.computed_at),
+                        snap.market_prob,
+                        snap.ml_lens_prob,
+                        snap.spread_lens_prob,
+                        snap.model_prob,
+                        snap.predicted_margin,
+                        snap.consensus_spread,
+                    )
+                    for snap in snapshots
+                ],
+            )
+        return len(snapshots)
+
+    def model_outcomes(self) -> list[tuple[str, ModelSnapshot, int, int]]:
+        """Per finished game with a pre-kickoff snapshot: (game_id, the latest
+        such snapshot, actual home score, actual away score)."""
+        rows = self._conn.execute(
+            """
+            SELECT m.game_id, m.computed_at, m.market_prob, m.ml_lens_prob,
+                   m.spread_lens_prob, m.model_prob, m.predicted_margin,
+                   m.consensus_spread, r.home_score, r.away_score
+            FROM model_snapshots AS m
+            JOIN results AS r ON r.game_id = m.game_id
+            JOIN games AS g ON g.game_id = m.game_id
+            WHERE m.computed_at <= g.start_time
+              AND m.id = (
+                  SELECT m2.id FROM model_snapshots AS m2
+                  JOIN games AS g2 ON g2.game_id = m2.game_id
+                  WHERE m2.game_id = m.game_id AND m2.computed_at <= g2.start_time
+                  ORDER BY m2.computed_at DESC, m2.id DESC LIMIT 1
+              )
+            ORDER BY g.start_time, m.game_id
+            """
+        ).fetchall()
+        return [
+            (
+                gid,
+                ModelSnapshot(
+                    game_id=gid,
+                    computed_at=datetime.fromisoformat(computed_at),
+                    market_prob=market,
+                    ml_lens_prob=ml,
+                    spread_lens_prob=spread,
+                    model_prob=blend,
+                    predicted_margin=margin,
+                    consensus_spread=consensus,
+                ),
+                home_score,
+                away_score,
+            )
+            for gid, computed_at, market, ml, spread, blend, margin, consensus,
+                home_score, away_score in rows
+        ]
+
+    def model_snapshot_summary(self) -> tuple[int, int, datetime | None]:
+        """(games with a snapshot, of which still unplayed/ungraded, latest computed_at)."""
+        games, latest = self._conn.execute(
+            "SELECT COUNT(DISTINCT game_id), MAX(computed_at) FROM model_snapshots"
+        ).fetchone()
+        pending = self._conn.execute(
+            """
+            SELECT COUNT(DISTINCT m.game_id) FROM model_snapshots AS m
+            LEFT JOIN results AS r ON r.game_id = m.game_id
+            WHERE r.game_id IS NULL
+            """
+        ).fetchone()[0]
+        return games, pending, datetime.fromisoformat(latest) if latest else None
 
     def statcast_team_rows(self, season: int) -> list[tuple[int, float | None]]:
         """(pa, xwoba) per team — the league-average input (D-032)."""
