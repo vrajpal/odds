@@ -34,13 +34,23 @@ services entirely, so the collect one-shots silently keep an old image —
 this bit twice (D-027 deploy; D-037's migration never applying because
 nfl-results ran pre-migration code).
 
-Season cadence (host crontab). Thu–Sat line polls ≈ 27 credits/week; the
-Sunday 9:55 AM PT poll captures true closing lines for CLV (D-024); results
-runs are free:
+Season cadence (host crontab). Thu–Sat line polls ≈ 27 credits/week plus two
+early-week polls (6 credits); the Sunday 9:55 AM PT poll captures true closing
+lines for CLV (D-024); results runs are free. ~36 credits/week ≈ 155/month of
+the 500 allowance.
+
+Pinnacle quirk: The Odds API's Pinnacle feed quotes only the NFL week currently
+up — Week 1 lines were there a month out, but Week 2 did not appear in any poll
+until Week 1 had finished — so expect Pinnacle to be absent for games more than
+one NFL week ahead regardless of day count. The other books carry look-ahead
+lines for the whole season. The Tue/Wed polls exist so Pinnacle's new-week
+numbers (and the early-week openers Valtrac compares against them) land the day
+they post instead of Thursday.
 
 ```cron
 0 8,13,18 * * 4-6  cd /opt/odds/deploy && docker compose run --rm nfl-collect
 55 9 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-collect
+0 11 * * 2,3       cd /opt/odds/deploy && docker compose run --rm nfl-collect   # new-week openers (Pinnacle)
 0 21 * * 0         cd /opt/odds/deploy && docker compose run --rm nfl-results
 # Circa contest spreads (D-042): post ~10 AM PT Thursday, Wednesday on
 # holiday weeks (Week 1 came Wednesday too). Poll every 10 min Wed+Thu,
