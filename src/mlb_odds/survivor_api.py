@@ -9,17 +9,15 @@ routes for free).
 """
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from mlb_odds import contest, contest_api, model, survivor, valuation
+from mlb_odds import contest, contest_api, ledger, survivor
 from mlb_odds.models import Game
 from mlb_odds.providers.base import ProviderError
-from mlb_odds.storage import Storage
 from mlb_odds.teams import NFL_CODES, NFL_DIVISIONS
 
 logger = logging.getLogger(__name__)
@@ -190,74 +188,10 @@ def _pick_out(pick: survivor.SurvivorPick) -> PickOut:
     )
 
 
-@dataclass(frozen=True)
-class _MarketFit:
-    """The two season-wide fits every survivor probability composes from:
-    spread-implied point ratings (D-025) and moneyline-implied strengths
-    (D-036). Fit once per request, read per game."""
-
-    ratings: dict[str, float]
-    hfa: float
-    ml_strengths: dict[str, float]
-    ml_hfa: float | None
-
-
-def _fit_market(odds: Storage) -> _MarketFit:
-    fitted = contest.power_ratings(odds)
-    fitted_ml = valuation.implied_strengths(odds)
-    ratings, hfa = fitted if fitted else ({}, 0.0)
-    ml_strengths, ml_hfa = fitted_ml if fitted_ml else ({}, None)
-    return _MarketFit(ratings=ratings, hfa=hfa, ml_strengths=ml_strengths, ml_hfa=ml_hfa)
-
-
-@dataclass(frozen=True)
-class _GameRead:
-    """One game's survivor-relevant read, home side throughout."""
-
-    consensus: float | None  # market home spread (median across books)
-    model_line: float | None  # power-rating home spread
-    home_wp: float | None  # market: devigged ML consensus, else spread-implied
-    model_wp: float | None  # D-036 two-lens blend
-    ml_lens: float | None
-    spread_lens: float | None
-
-
-def _read_game(odds: Storage, game: Game, fit: _MarketFit) -> _GameRead:
-    """The board's per-game math, shared with the matrix so both views agree
-    on every number. Must run while `odds` is still open."""
-    market = contest.consensus(
-        contest.book_spreads(contest.spread_history(odds, game.game_id))
-    )
-    model_line = contest.predicted_home_spread(
-        fit.ratings, fit.hfa, game.home_team, game.away_team
-    )
-    # Market straight-up probability: devigged moneyline consensus when
-    # books quote it, else the spread-implied conversion (D-036).
-    ml_consensus = valuation.consensus_prob(
-        valuation.book_probs(valuation.moneyline_history(odds, game.game_id))
-    )
-    reference = market if market is not None else model_line
-    home_wp = (
-        ml_consensus
-        if ml_consensus is not None
-        else survivor.win_probability(reference) if reference is not None else None
-    )
-    ml_lens = (
-        valuation.model_home_prob(
-            fit.ml_strengths, fit.ml_hfa, game.home_team, game.away_team
-        )
-        if fit.ml_hfa is not None
-        else None
-    )
-    model_wp, spread_lens = model.nfl_model_prob(ml_lens, model_line)
-    return _GameRead(
-        consensus=market,
-        model_line=model_line,
-        home_wp=home_wp,
-        model_wp=model_wp,
-        ml_lens=ml_lens,
-        spread_lens=spread_lens,
-    )
+# The per-game read lives in ledger.py (D-044) so the Board, the Matrix and
+# the accuracy snapshots compose every number the same way.
+_fit_market = ledger.fit_market
+_read_game = ledger.read_game
 
 
 def _is_divisional(home: str, away: str) -> bool:

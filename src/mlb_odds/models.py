@@ -102,3 +102,18 @@ class GameOdds(BaseModel):
     quotes: list[Quote]
 
     _normalize_fetched = field_validator("fetched_at")(_require_utc)
+
+
+class ModelSnapshot(BaseModel):
+    """One pre-kickoff read of the model for a game (D-044): what every lens
+    said at `computed_at`, so the accuracy ledger scores forecasts that were
+    actually made, never fits that already knew the closing line."""
+
+    game_id: str
+    computed_at: datetime  # UTC, tz-aware
+    market_prob: float | None  # devigged consensus (or spread-implied), home side
+    ml_lens_prob: float | None
+    spread_lens_prob: float | None
+    model_prob: float | None  # the blend
+    predicted_margin: float | None  # model home margin, points
+    consensus_spread: float | None  # market home spread at the time

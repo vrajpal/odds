@@ -843,3 +843,30 @@ ETSN stays as a column and PATCH field for compatibility but is relabeled
 in both UIs as an optional confirmation, and the "no ETSN — submit at
 Circa" nag is gone: submission is the proxy's job, not something the app
 can verify.
+
+## D-044 — NFL model accuracy ledger: score pre-kickoff snapshots, never fits (2026-09-17)
+D-036/D-037 set the blend weights as priors and named the accuracy ledger
+as the path to fitting them from evidence; the ledger existed only for the
+projection lens. Valtrac (the Bet TNT ledger, a consumer of these APIs) now
+weights model edges against market edges and asked for a number instead of
+a guess. There was none: the NFL blend had no scored history.
+
+The naive ledger — grade today's fit against last week's results — is
+leaky: the lenses are refit on every request over every stored line, and
+this week's lines already embed last week's outcomes. So the ledger scores
+*snapshots*: `mlb-odds collect --sport nfl` records, after each poll, what
+every lens says about each game inside a 14-day horizon (new
+`model_snapshots` table in the odds DB; `mlb-odds model-snapshot` does it
+by hand, free). `GET /api/model/report?sport=nfl` scores the latest
+pre-kickoff snapshot per finished game: Brier + hit rate per lens straight-
+up, with market consensus as the baseline the model has to beat, and the
+side the model favored versus the consensus spread graded ATS — the cover
+rate that should set the model-edge weight. Nothing is backfilled; the
+ledger starts at the first poll after deploy and grows a week at a time,
+and the payload says how many games it has seen.
+
+The per-game read that the contest Board and survivor Matrix shared inside
+survivor_api moved to `ledger.py` (`fit_market`, `read_game`) so the
+snapshots compose numbers the same way as the surfaces they will be judged
+against. The ledger is NFL-only: the MLB blend carries the Statcast lens
+and a different margin model, and nobody is weighting it yet.

@@ -160,6 +160,45 @@ def collect(
         collector.run(client, interval, once=once, live=live)
     finally:
         client.close()
+    if sport == SportChoice.nfl:
+        # D-044: record what the model says now, so the accuracy ledger scores
+        # forecasts made before kickoff (loop mode records once, at exit).
+        _record_model_snapshots(_resolve_db(db, sport))
+
+
+def _record_model_snapshots(path: Path) -> int:
+    from mlb_odds import ledger
+    from mlb_odds.storage import Storage
+
+    storage = Storage(path)
+    try:
+        written = ledger.record_snapshots(storage, now=datetime.now(UTC))
+    finally:
+        storage.close()
+    logging.getLogger("mlb_odds.ledger").info("model snapshots recorded: %d", written)
+    return written
+
+
+@app.command(name="model-snapshot")
+def model_snapshot(
+    sport: Annotated[
+        SportChoice, typer.Option("--sport", help="League: nfl (the only ledgered sport).")
+    ] = SportChoice.nfl,
+    db: DbOption = None,
+) -> None:
+    """Record the model's current read of every upcoming game (D-044).
+
+    `collect --sport nfl` does this after every poll; run it by hand after a
+    deploy or to snapshot without spending a poll. Free — reads stored odds.
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    if sport != SportChoice.nfl:
+        typer.echo("error: the model ledger covers nfl only", err=True)
+        raise typer.Exit(code=2)
+    written = _record_model_snapshots(_resolve_db(db, sport))
+    typer.echo(f"{written} model snapshot(s) recorded.")
 
 
 @app.command()

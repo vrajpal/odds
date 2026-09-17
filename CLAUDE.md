@@ -37,6 +37,7 @@ uv run playwright install chromium  # once; enables tests/test_survivor_ui.py (D
 uv run mlb-odds collect --once   # needs THE_ODDS_API_KEY
 uv sync --extra sheet            # OCR extra for `mlb-odds contest-lines` (D-042)
 uv run mlb-odds contest-lines --dry-run   # read Circa's contest sheet; --file for a local PDF/image
+uv run mlb-odds model-snapshot   # record the NFL model's pre-kickoff forecasts (D-044; collect does it too)
 ```
 
 ## Environment

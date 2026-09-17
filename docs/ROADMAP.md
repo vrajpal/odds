@@ -90,6 +90,9 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] C6 — Proxy submission: record a card/pick after the deadline with
       `late: true` + the proxy's submission time; calibration anchors on the
       submission; ETSN demoted to an optional confirmation (D-043)
+- [x] C7 — NFL model accuracy ledger: per-poll pre-kickoff snapshots,
+      `/api/model/report` with Brier/hit rate per lens + ATS cover rate of the
+      model's side (D-044)
 
 ## S — Circa Survivor entry manager (see circa-survivor-2026-rules.md)
 - [x] S1 — Calendar + constraints: 20-leg calendar (Weeks 1-18 + Thanksgiving

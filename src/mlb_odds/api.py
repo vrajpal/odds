@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mlb_odds import contest, matchup, model, projections, valuation
+from mlb_odds import contest, ledger, matchup, model, projections, valuation
 from mlb_odds.client import OddsClient
 from mlb_odds.models import Quote, Sport
 from mlb_odds.providers.base import ProviderError
@@ -574,6 +574,36 @@ def projections_report(
         "hit_rate": round(hits / len(scored), 3) if scored else None,
         "note": "brier 0.25 = coin flip; lower is better",
     }
+
+
+@app.get("/api/model/report")
+def model_report(sport: Literal["nfl"] = "nfl") -> dict[str, object]:
+    """The model's accuracy ledger (D-044): every finished game's latest
+    pre-kickoff snapshot, scored straight-up per lens (market consensus is
+    the baseline) and against the spread (the side the model favored vs the
+    consensus number). Snapshots are recorded by each NFL poll, so the ledger
+    only knows games polled after it shipped — `snapshots` says how far it
+    has got."""
+    try:
+        storage = Storage(_resolve_db(sport), read_only=True)
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(status_code=503, detail="odds database unavailable") from exc
+    try:
+        report = ledger.accuracy(storage)
+        games, pending, latest = storage.model_snapshot_summary()
+    finally:
+        storage.close()
+    report["sport"] = sport
+    report["snapshots"] = {
+        "games": games,
+        "awaiting_result": pending,
+        "latest": latest.isoformat() if latest else None,
+    }
+    report["note"] = (
+        "brier 0.25 = coin flip, lower is better; only pre-kickoff snapshots count;"
+        " compare each lens to 'market' before trusting it"
+    )
+    return report
 
 
 @app.get("/api/health")
