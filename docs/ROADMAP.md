@@ -93,6 +93,9 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] C7 — NFL model accuracy ledger: per-poll pre-kickoff snapshots,
       `/api/model/report` with Brier/hit rate per lens + ATS cover rate of the
       model's side (D-044)
+- [x] C8 — Game view: `/api/games/{id}/markets` prices every quote at its own
+      number (margin model for spreads/totals, devig for moneylines/props),
+      ranked by EV with context; React Game tab (D-045)
 
 ## S — Circa Survivor entry manager (see circa-survivor-2026-rules.md)
 - [x] S1 — Calendar + constraints: 20-leg calendar (Weeks 1-18 + Thanksgiving
