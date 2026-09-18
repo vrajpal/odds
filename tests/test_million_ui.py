@@ -3,6 +3,8 @@ and its Circa number ("KC -3"), never as a raw game id and "home"/"away" —
 on the Consensus candidates, the resolver, the Card tab, and the vote
 buttons. Same harness as test_survivor_ui.py; skips without Chromium."""
 
+from datetime import timedelta
+
 import httpx
 import pytest
 
@@ -10,7 +12,7 @@ playwright = pytest.importorskip("playwright.sync_api")
 from conftest import make_nfl_spread_odds  # noqa: E402
 from mlb_odds.storage import Storage  # noqa: E402
 from test_survivor_matrix import FETCH_AT, WEEK1  # noqa: E402
-from test_survivor_ui import launch_browser, start_server  # noqa: E402
+from test_survivor_ui import FROZEN_NOW, launch_browser, start_server  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -37,13 +39,22 @@ def page(browser, server):
 
 def test_picks_read_as_team_and_number_everywhere(page, server, tmp_path):
     # The shared season has four week-1 games; a card needs five.
+    # Plus a Wednesday-night game that has already kicked off at the frozen
+    # Thursday-noon clock: it must not be a choice on the Propose tab.
     storage = Storage(tmp_path / "nfl-odds.sqlite")
     try:
         storage.store(
             [
                 make_nfl_spread_odds(
                     {"circa": -1.0}, FETCH_AT, away="DAL", home="NYG", start_time=WEEK1
-                )
+                ),
+                make_nfl_spread_odds(
+                    {"circa": -2.0},
+                    FETCH_AT,
+                    away="NO",
+                    home="TB",
+                    start_time=FROZEN_NOW - timedelta(hours=12),
+                ),
             ]
         )
     finally:
@@ -51,7 +62,9 @@ def test_picks_read_as_team_and_number_everywhere(page, server, tmp_path):
     dialogs: list[str] = []
     page.on("dialog", lambda d: dialogs.append(d.type))
     board = httpx.get(f"{server}/api/contest/board", params={"week": 1}).json()
-    games = board["games"]
+    no_tb = next(g for g in board["games"] if g["home_team"] == "TB")
+    assert no_tb["kicked_off"] is True
+    games = [g for g in board["games"] if not g["kicked_off"]]
     kc_lac = next(g for g in games if g["away_team"] == "KC" and g["home_team"] == "LAC")
     assert (
         httpx.post(
@@ -78,6 +91,13 @@ def test_picks_read_as_team_and_number_everywhere(page, server, tmp_path):
 
     page.goto(f"{server}/")
     page.wait_for_selector("#board-table tbody tr")
+    # Propose tab: the kicked-off game shows a tag where the others show buttons.
+    page.click('#tabs button[data-tab="propose"]')
+    page.wait_for_selector("#propose-table tbody tr")
+    assert page.locator(f'[data-pick="{no_tb["game_id"]}"]').count() == 0
+    assert page.locator(f'[data-pick="{kc_lac["game_id"]}"]').count() == 3
+    tb_row = page.locator("#propose-table tbody tr", has_text="NO @ TB")
+    assert "kicked off" in tb_row.inner_text()
     page.click('#tabs button[data-tab="consensus"]')
     page.wait_for_selector("#consensus-body table")
     body = page.inner_text("#consensus-body")

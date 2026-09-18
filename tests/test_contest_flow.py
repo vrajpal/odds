@@ -3,7 +3,7 @@ lock (Rule 8 enforced) → ETSN → grade → season. Time goes through
 contest_api._now, monkeypatched to a fixed Friday inside week 1 so the suite
 is deterministic forever."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -80,6 +80,25 @@ def test_board_carries_captain_and_early_kickoff_flags(client, env):
     early = {g["game_id"]: g["early_kickoff"] for g in body["games"]}
     assert early[env["DET@PHI"]] is True
     assert early[env["KC@LAC"]] is False
+    # Frozen now is Friday: Thursday's game has kicked off, Sunday's have not.
+    kicked = {g["game_id"]: g["kicked_off"] for g in body["games"]}
+    assert kicked[env["DET@PHI"]] is True
+    assert kicked[env["KC@LAC"]] is False
+
+
+def test_kicked_off_game_cannot_be_proposed(client, env, monkeypatch):
+    thursday_game, sunday_game = env["DET@PHI"], env["KC@LAC"]
+    # Friday: the Thursday game is over; the whole set is refused, nothing recorded.
+    refused = propose(client, "vijai", [(thursday_game, "home"), (sunday_game, "home")])
+    assert refused.status_code == 409
+    assert "kicked off" in refused.json()["detail"]
+    assert thursday_game in refused.json()["detail"]
+    view = client.get("/api/contest/proposals", params={"week": 1, "member": "vijai"}).json()
+    assert view["submitted"] == []
+    # Back on Thursday morning the same set is fine.
+    monkeypatch.setattr(contest_api, "_now", lambda: THURSDAY - timedelta(hours=6))
+    ok = propose(client, "vijai", [(thursday_game, "home"), (sunday_game, "home")])
+    assert ok.status_code == 201
 
 
 def test_blind_phase_hides_others_until_submitted(client, env):
@@ -187,11 +206,14 @@ def test_full_flow_to_locked_graded_card(client, env):
     assert board["card_locked"] is True
 
 
-def test_rule8_early_pick_pulls_deadline_and_blocks_late_lock(client, env):
+def test_rule8_early_pick_pulls_deadline_and_blocks_late_lock(client, env, monkeypatch):
     ids = sunday_ids(env)
     thursday_game = env["DET@PHI"]
+    # Proposals go in Thursday morning, before that game kicks off.
+    monkeypatch.setattr(contest_api, "_now", lambda: THURSDAY - timedelta(hours=6))
     for m in ("vijai", "sam", "alex"):
-        propose(client, m, [(thursday_game, "home")])
+        assert propose(client, m, [(thursday_game, "home")]).status_code == 201
+    monkeypatch.setattr(contest_api, "_now", lambda: FROZEN_NOW)
     consensus = client.get(
         "/api/contest/consensus", params={"week": 1, "member": "vijai"}
     ).json()
@@ -286,14 +308,17 @@ def propose_as(client, member, game_id, headers=None):
     )
 
 
-def test_resolver_in_consensus_response(client, env):
+def test_resolver_in_consensus_response(client, env, monkeypatch):
     """C5: the consensus payload carries the resolver — edges from the board,
     conflicts kept off the card, needs surfaced."""
     kc, buf = env["KC@LAC"], env["BUF@MIA"]
     det = env["DET@PHI"]
-    propose(client, "vijai", [(kc, "home"), (buf, "home"), (det, "home")])
+    # Thursday morning: the DET stance must precede that game's kickoff.
+    monkeypatch.setattr(contest_api, "_now", lambda: THURSDAY - timedelta(hours=6))
+    assert propose(client, "vijai", [(kc, "home"), (buf, "home"), (det, "home")]).status_code == 201
     propose(client, "sam", [(kc, "home"), (buf, "away")])
     propose(client, "alex", [(kc, "pass")])
+    monkeypatch.setattr(contest_api, "_now", lambda: FROZEN_NOW)
     # Contest line 0.75 better than the -2.75 market consensus for home
     # (contest spreads are half-point-quantized, D-021).
     posted = client.post(

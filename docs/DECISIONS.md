@@ -967,3 +967,15 @@ honest observation; the fix belongs where the pre-game line is read. The
 Monday games. The :8443 dashboard and game view read every sport's latest
 quotes regardless of kickoff and are unchanged; in-play prices there are a
 separate question for both sports.
+
+## D-048 — A kicked-off game is no longer a choice (2026-09-18)
+Every pick is due before its own kickoff (Rule 8), so once a game has
+started it cannot reach a card; a stance on it is noise for the resolver
+and a trap on the Propose tab. The board now carries `kicked_off`, judged
+on the server clock so the UI and the API agree and the browser test's
+frozen clock holds. The Propose row for such a game shows a "kicked off"
+tag instead of side buttons, and `POST /api/contest/proposals` refuses a
+set containing one (409, nothing recorded — the set is one-shot, so a
+partial write would burn the member's submission). Votes and the card
+endpoint are unchanged: voting is already walled behind proposals, and
+the card lock already enforces Rule 8 on its own.
