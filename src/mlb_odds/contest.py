@@ -1350,10 +1350,11 @@ def member_stats(store: ContestStore, members: Sequence[str]) -> list[MemberStat
 
     A pick graded on the card's side also grades every member's *stance* on
     that game: same side → same result, opposite side → mirrored (the line is
-    identical, so covering is symmetric). Proposal record counts only games
-    the member originally proposed; stance record uses their final position
-    (vote overriding proposal). Captain record: the week's points under each
-    member's captaincy.
+    identical, so covering is symmetric). A 'pass' is no side at all and
+    grades as nothing — it is not the other team. Proposal record counts
+    only games the member originally proposed; stance record uses their
+    final position (vote overriding proposal). Captain record: the week's
+    points under each member's captaincy.
     """
     counts: dict[str, dict[str, int]] = {
         m: {"pw": 0, "pl": 0, "pp": 0, "sw": 0, "sl": 0, "sp": 0, "cw": 0}
@@ -1374,14 +1375,14 @@ def member_stats(store: ContestStore, members: Sequence[str]) -> list[MemberStat
             stances[(v.member, v.game_id)] = v.side
         for p in proposals:
             pick = graded.get(p.game_id)
-            if pick is None or p.member not in counts:
+            if pick is None or p.member not in counts or p.side == "pass":
                 continue
             outcome = pick.result or "push"
             result = outcome if p.side == pick.side else _mirror(outcome)
             counts[p.member]["p" + result[0]] += 1
         for (member, game_id), side in stances.items():
             pick = graded.get(game_id)
-            if pick is None or member not in counts:
+            if pick is None or member not in counts or side == "pass":
                 continue
             outcome = pick.result or "push"
             result = outcome if side == pick.side else _mirror(outcome)
