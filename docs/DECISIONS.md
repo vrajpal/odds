@@ -1005,3 +1005,17 @@ skipped on both the proposal and the final-stance record. Hand check for
 any member: walk the carded games, take the card's result where their
 stance matches the card, the mirror where it is the other team, nothing
 where they passed or had no stance.
+
+## D-051 — Pick history page: past performance, pick by pick (2026-09-18)
+The Season tab aggregates (record, points, CLV, calibration) but nothing
+showed the picks themselves once a week was over. `/history.html`, a
+separate page linked from the header and the Season tab, lists every
+locked card newest first: each pick as a person reads it ("DAL +3 @ NYG"),
+the market at lock and at kickoff with the side-adjusted edge and CLV,
+the final score, the points the pick covered by, the grade, and each
+member's final stance (backers, opposers, passed). `GET /api/contest/history`
+serves it and grades pending picks from stored finals first (D-049).
+`contest.pick_history` composes it from the same primitives the stats use
+(`pick_side_value`, `book_spreads` as of the submission time and kickoff),
+so the page can never disagree with the Season tab. A separate page rather
+than a seventh tab: the tabs are the weekly workflow; this is review.

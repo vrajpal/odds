@@ -82,6 +82,7 @@ they land; v1 = M1–M3 complete and all SPEC acceptance criteria green.
 - [x] C4.3 — Edge calibration: cover rate by at-lock edge bucket + key numbers (D-025)
 - [x] C4.4 — Market-implied power ratings (ridge LSQ) + model line on the board (D-025)
 - [x] C4.5 — Situational flags (rest, rest differential, divisional) + member
+- [x] C4.6 — Pick history page: every carded pick with line, market, final, grade, stances (D-051)
       proposal/stance/captain records (D-025)
 - [x] C5 — Contest lines from Circa's own sheet: `mlb-odds contest-lines` polls
       the predictable PDF URL, OCRs it, stores only games whose two sides

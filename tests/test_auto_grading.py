@@ -198,6 +198,25 @@ def test_card_and_season_grade_from_stored_finals(client, env, tmp_path):
     assert {p["game_id"]: p["result"] for p in card["picks"]}[env["GB@CHI"]] == "win"
 
 
+def test_history_endpoint_grades_pending_and_lists_picks(client, env, tmp_path):
+    storage = Storage(tmp_path / "nfl-odds.sqlite")
+    storage.record_result(env["KC@LAC"], 27, 20, fetched_at=FROZEN_NOW)  # LAC -2.5 covers
+    storage.close()
+    h = client.get("/api/contest/history").json()
+    (week,) = h["weeks"]
+    assert week["week"] == 1 and week["captain"] == "vijai" and len(week["picks"]) == 5
+    by_game = {p["game_id"]: p for p in week["picks"]}
+    kc = by_game[env["KC@LAC"]]
+    assert kc["result"] == "win"  # graded on this read from the stored final (D-049)
+    assert (kc["team"], kc["home_score"], kc["away_score"]) == ("LAC", 27, 20)
+    assert kc["cover_margin"] == 4.5
+    assert kc["start_time"].startswith("2026-09-13T10:00")  # Pacific
+    assert by_game[env["DAL@NYG"]]["contest_line"] is None
+    assert (h["wins"], h["losses"], h["pushes"]) == (1, 0, 0)
+    assert h["points"] == 1.0
+    assert client.get("/history.html").status_code == 200
+
+
 def test_auto_grade_requires_locked_card(tmp_path, monkeypatch):
     monkeypatch.setenv("NFL_ODDS_DB", str(tmp_path / "nfl.sqlite"))
     monkeypatch.setenv("CONTEST_DB", str(tmp_path / "contest.sqlite"))

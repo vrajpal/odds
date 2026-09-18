@@ -13,6 +13,7 @@ from mlb_odds.contest import (
     clv_report,
     game_context,
     member_stats,
+    pick_history,
     pick_side_value,
     power_ratings,
     predicted_home_spread,
@@ -270,3 +271,64 @@ def test_member_stats_pass_grades_as_nothing(tmp_path):
     s_ = stats["sam"]
     assert (s_.stance_wins, s_.stance_losses, s_.stance_pushes) == (0, 0, 0)
     store.close()
+
+
+# --- pick history (C4.6) ---
+
+
+def test_pick_history_lays_out_each_pick(stores):
+    odds, store = stores
+    # g1: took LAC -2.5 (home); market -3.0 at lock, closed -4.5; LAC won 27-20.
+    # g2: took BUF +3.5 (away, home -3.5); market -3.0 at lock, closed -2.5;
+    #     MIA won 24-20 -> BUF covered by 0.5... no: home margin 4 - 3.5 = +0.5
+    #     for MIA, so BUF +3.5 lost by 0.5.
+    g1 = seed_game(odds, "KC", "LAC", open_spread=-3.0, close_spread=-4.5)
+    g2 = seed_game(odds, "BUF", "MIA", open_spread=-3.0, close_spread=-2.5)
+    entered = FETCH_T0 + timedelta(hours=1)
+    store.set_line(1, g1, -2.5, entered_at=entered)
+    store.set_line(1, g2, -3.5, entered_at=entered)
+    store.submit_proposals(
+        1, "vijai", [(g1, "home", ""), (g2, "pass", "")], submitted_at=entered
+    )
+    store.submit_proposals(1, "sam", [(g1, "away", ""), (g2, "away", "")], submitted_at=entered)
+    store.cast_vote(1, "sam", g1, "home", cast_at=entered)  # sam comes around on g1
+    store.lock_card(
+        1,
+        [(g1, "home"), (g2, "away"), ("2026-09-13-SF-SEA-1", "home"), ("g4", "home"),
+         ("g5", "home")],
+        locked_by="vijai",
+        locked_at=FETCH_T1 + timedelta(hours=1),  # between the two snapshots
+    )
+    odds.record_result(g1, 27, 20, fetched_at=KICKOFF + timedelta(hours=4))
+    odds.record_result(g2, 24, 20, fetched_at=KICKOFF + timedelta(hours=4))
+    store.record_results(1, {g1: "win", g2: "loss"})
+
+    (week,) = pick_history(odds, store, ["vijai", "sam", "alex"])
+    assert week.week == 1 and week.captain == "vijai" and week.recorded_late is False
+    assert (week.score.wins, week.score.losses, week.score.graded) == (1, 1, 2)
+    by_game = {p.game_id: p for p in week.picks}
+    p1 = by_game[g1]
+    assert (p1.team, p1.contest_line) == ("LAC", -2.5)
+    assert (p1.at_lock, p1.edge) == (-4.5, 2.0)  # the Saturday snapshot is the lock-time market
+    assert (p1.closing, p1.clv) == (-4.5, 2.0)
+    assert (p1.home_score, p1.away_score, p1.cover_margin, p1.result) == (27, 20, 4.5, "win")
+    assert (p1.backers, p1.opposers, p1.passers) == (["vijai", "sam"], [], [])
+    p2 = by_game[g2]
+    assert (p2.team, p2.edge, p2.clv) == ("BUF", 1.0, 1.0)
+    assert (p2.cover_margin, p2.result) == (-0.5, "loss")
+    assert (p2.backers, p2.opposers, p2.passers) == (["sam"], [], ["vijai"])
+    # A carded game the odds database never stored still lists, from its id.
+    filler = by_game["2026-09-13-SF-SEA-1"]
+    assert (filler.away_team, filler.home_team, filler.team) == ("SF", "SEA", "SEA")
+    assert filler.at_lock is None and filler.result is None and filler.cover_margin is None
+    assert by_game["g4"].away_team == "?"
+
+
+def test_pick_history_orders_newest_week_first(stores):
+    odds, store = stores
+    for week in (1, 2):
+        store.lock_card(
+            week, [(f"w{week}g{i}", "home") for i in range(5)], locked_by="sam", locked_at=LOCKED_AT
+        )
+    assert [w.week for w in pick_history(odds, store, ["vijai", "sam"])] == [2, 1]
+    assert pick_history(odds, store, ["vijai"])[0].captain == "vijai"

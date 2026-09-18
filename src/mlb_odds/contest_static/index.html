@@ -119,6 +119,7 @@
   <span class="chip">you are
     <select id="member"></select>
   </span>
+  <a class="chip" href="/history.html">📜 History →</a>
   <a class="chip" href="/survivor.html">💀 Survivor →</a>
   <span id="alert">⚠ No card locked — booby-prize eligibility at risk!</span>
 </header>
@@ -732,7 +733,7 @@ async function loadSeason() {
     <h2>Quarters ($150k MVP each)</h2>
     <div class="grid">${Object.entries(s.quarters).map(([q, pts]) =>
       `<div class="stat"><div class="v">${pts}</div><div class="k">Q${q} points</div></div>`).join("")}</div>
-    <h2>Weeks</h2>
+    <h2>Weeks <a class="chip" href="/history.html" style="text-transform:none;letter-spacing:0">pick-by-pick history →</a></h2>
     <table><thead><tr><th>week</th><th>record</th><th class="num">points</th><th>graded</th></tr></thead>
     <tbody>${s.weeks.map(w => `<tr><td>${w.week}</td>
       <td>${w.wins}-${w.losses}${w.pushes ? "-" + w.pushes : ""}</td>

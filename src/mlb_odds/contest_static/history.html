@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circa Million — Pick history</title>
+<style>
+  :root { --bg:#0f1420; --panel:#171e2e; --line:#2a3550; --text:#dde4f0; --dim:#8b96ad;
+          --accent:#5b9dff; --good:#3fce8b; --bad:#ff6b6b; --warn:#ffb454; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+           padding:14px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0 12px 0 0; }
+  .chip { background:var(--panel); border:1px solid var(--line); border-radius:16px;
+          padding:3px 12px; font-size:13px; color:var(--dim); text-decoration:none; }
+  .chip b { color:var(--text); }
+  main { padding:16px 20px 60px; max-width:1240px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line);
+           white-space:nowrap; }
+  th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase; }
+  tr:hover td { background:#1b2438; }
+  .num { font-variant-numeric:tabular-nums; }
+  .good { color:var(--good); font-weight:600; }
+  .bad { color:var(--bad); }
+  .dim { color:var(--dim); }
+  .tag { font-size:11px; border-radius:4px; padding:1px 7px; font-weight:700; }
+  .tag.contested { background:#3d2c14; color:var(--warn); }
+  .msg { margin:10px 0; min-height:22px; font-size:14px; }
+  h2 { font-size:15px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em;
+       margin:26px 0 8px; display:flex; gap:14px; flex-wrap:wrap; align-items:baseline; }
+  h2 .rec { color:var(--text); font-size:17px; }
+  h2 .meta { text-transform:none; letter-spacing:0; font-weight:400; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .stat .v { font-size:22px; font-weight:700; }
+  .stat .k { font-size:12px; color:var(--dim); }
+  .week { overflow-x:auto; }
+  .week td:first-child, .week th:first-child {
+    position:sticky; left:0; background:var(--bg); z-index:2; }
+  .week tr:hover td:first-child { background:#1b2438; }
+  .who span { margin-right:6px; }
+  @media (max-width:720px){
+    main{padding:10px}
+    th,td{padding:6px 6px; font-size:13px}
+    header{padding:10px 12px; gap:8px}
+    .stat .v{font-size:18px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏈 Circa Million — Pick history</h1>
+  <a class="chip" href="/">← Board</a>
+  <a class="chip" href="/survivor.html">💀 Survivor →</a>
+</header>
+<main>
+  <div class="msg dim">Every locked card, newest week first. <b>Edge</b> is the Circa number against the
+    market when the card went in; <b>CLV</b> is the same against the market at kickoff (both from our
+    side's view, + = we had the better number). <b>Cover</b> is the points our side covered by
+    (0 = push). Backers / opposers / passed are each member's final stance on the game.</div>
+  <div id="season"></div>
+  <div id="weeks"><div class="msg dim">Loading…</div></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const api = async path => {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+};
+const fmtSpread = v => v == null ? "–" : (v > 0 ? "+" + v : String(v));
+const signed = v => v == null ? "–" : (v > 0 ? "+" : "") + v;
+const cls = v => v == null ? "dim" : v > 0 ? "good" : v < 0 ? "bad" : "dim";
+const resultCls = r => r === "win" ? "good" : r === "loss" ? "bad" : "dim";
+const when = iso => iso == null ? "" : new Date(iso).toLocaleString("en-US",
+  {weekday:"short", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"});
+const record = w => `${w.wins}-${w.losses}${w.pushes ? "-" + w.pushes : ""}`;
+const pickLabel = p => {
+  const line = p.contest_line == null ? null : (p.side === "home" ? p.contest_line : -p.contest_line);
+  const opp = p.side === "home" ? `vs ${p.away_team}` : `@ ${p.home_team}`;
+  return `<b>${p.team}</b> ${line == null ? '<span class="dim">(no line)</span>' : fmtSpread(line)} <span class="dim">${opp}</span>`;
+};
+const finalScore = p => p.home_score == null ? '<span class="dim">–</span>'
+  : `${p.away_team} ${p.away_score} <span class="dim">@</span> ${p.home_team} ${p.home_score}`;
+const who = p => `<span class="who">
+  ${p.backers.map(m => `<span class="good" title="backed ${p.team}">${m}</span>`).join("")}
+  ${p.opposers.map(m => `<span class="bad" title="took the other side">${m}</span>`).join("")}
+  ${p.passers.map(m => `<span class="dim" title="passed">${m}</span>`).join("")}
+</span>`;
+
+function renderWeek(w) {
+  return `<section class="week" data-week="${w.week}">
+    <h2><span>Week ${w.week}</span><span class="rec">${record(w)}</span>
+      <span class="meta">${w.points} pts · ${w.graded}/${w.picks.length} graded · captain ${w.captain}
+        · in at ${when(w.submission_time)}${w.recorded_late ? ' <span class="tag contested" title="recorded after the fact by ' + w.locked_by + '">recorded late</span>' : ""}</span></h2>
+    <table><thead><tr>
+      <th>pick</th><th>kickoff</th><th class="num">market at lock</th><th class="num">edge</th>
+      <th class="num">close</th><th class="num">CLV</th><th>final</th><th class="num">cover</th>
+      <th>result</th><th>backers · opposers · passed</th>
+    </tr></thead><tbody>${w.picks.map(p => `<tr data-game="${p.game_id}">
+      <td>${pickLabel(p)}</td>
+      <td class="dim">${when(p.start_time)}</td>
+      <td class="num">${fmtSpread(p.at_lock)}</td>
+      <td class="num ${cls(p.edge)}">${signed(p.edge)}</td>
+      <td class="num">${fmtSpread(p.closing)}</td>
+      <td class="num ${cls(p.clv)}">${signed(p.clv)}</td>
+      <td>${finalScore(p)}</td>
+      <td class="num ${cls(p.cover_margin)}">${signed(p.cover_margin)}</td>
+      <td class="${resultCls(p.result)}">${p.result ?? "pending"}</td>
+      <td>${who(p)}</td>
+    </tr>`).join("")}</tbody></table>
+  </section>`;
+}
+
+(async () => {
+  try {
+    const h = await api("/api/contest/history");
+    $("#season").innerHTML = `<div class="grid">
+      <div class="stat"><div class="v">${h.wins}-${h.losses}${h.pushes ? "-" + h.pushes : ""}</div><div class="k">season record</div></div>
+      <div class="stat"><div class="v">${h.points}</div><div class="k">season points</div></div>
+      <div class="stat"><div class="v ${cls(h.total_clv)}">${signed(h.total_clv)}</div><div class="k">total CLV pts (${h.clv_n} picks)</div></div>
+      <div class="stat"><div class="v">${h.weeks.length}</div><div class="k">weeks carded</div></div>
+    </div>`;
+    $("#weeks").innerHTML = h.weeks.length ? h.weeks.map(renderWeek).join("")
+      : '<div class="msg dim">No cards locked yet.</div>';
+  } catch (e) { $("#weeks").innerHTML = `<div class="msg bad">${e.message}</div>`; }
+})();
+</script>
+</body>
+</html>

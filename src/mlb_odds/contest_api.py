@@ -1207,6 +1207,114 @@ class WhoamiOut(BaseModel):
     member: str | None  # mapped contest member; null on the tailnet path
 
 
+class HistoryPickOut(BaseModel):
+    game_id: str
+    away_team: str
+    home_team: str
+    start_time: str | None  # Pacific ISO
+    side: str
+    team: str
+    contest_line: float | None
+    at_lock: float | None
+    edge: float | None
+    closing: float | None
+    clv: float | None
+    home_score: int | None
+    away_score: int | None
+    cover_margin: float | None
+    result: str | None
+    backers: list[str]
+    opposers: list[str]
+    passers: list[str]
+
+
+class HistoryWeekOut(BaseModel):
+    week: int
+    captain: str
+    locked_by: str
+    submission_time: str  # Pacific ISO
+    recorded_late: bool
+    wins: int
+    losses: int
+    pushes: int
+    points: float
+    graded: int
+    picks: list[HistoryPickOut]
+
+
+class HistoryOut(BaseModel):
+    weeks: list[HistoryWeekOut]  # newest first
+    wins: int
+    losses: int
+    pushes: int
+    points: float
+    total_clv: float
+    clv_n: int
+
+
+@app.get("/api/contest/history", response_model=HistoryOut)
+def get_history() -> HistoryOut:
+    """Every locked card pick by pick, newest week first: the line, the
+    market at lock and close, the final, the grade and who stood where
+    (C4.6). Grades pending picks from stored finals first (D-049)."""
+    members = _members()
+    store = contest.ContestStore(_resolve_contest_db())
+    odds = _open_odds()
+    try:
+        _grade_pending(store, [c.week for c in store.all_cards()])
+        weeks = contest.pick_history(odds, store, members)
+    finally:
+        odds.close()
+        store.close()
+    clvs = [p.clv for w in weeks for p in w.picks if p.clv is not None]
+    return HistoryOut(
+        weeks=[
+            HistoryWeekOut(
+                week=w.week,
+                captain=w.captain,
+                locked_by=w.locked_by,
+                submission_time=_pt(w.submission_time),
+                recorded_late=w.recorded_late,
+                wins=w.score.wins,
+                losses=w.score.losses,
+                pushes=w.score.pushes,
+                points=w.score.points,
+                graded=w.score.graded,
+                picks=[
+                    HistoryPickOut(
+                        game_id=p.game_id,
+                        away_team=p.away_team,
+                        home_team=p.home_team,
+                        start_time=_pt(p.start_time) if p.start_time else None,
+                        side=p.side,
+                        team=p.team,
+                        contest_line=p.contest_line,
+                        at_lock=p.at_lock,
+                        edge=p.edge,
+                        closing=p.closing,
+                        clv=p.clv,
+                        home_score=p.home_score,
+                        away_score=p.away_score,
+                        cover_margin=p.cover_margin,
+                        result=p.result,
+                        backers=p.backers,
+                        opposers=p.opposers,
+                        passers=p.passers,
+                    )
+                    for p in w.picks
+                ],
+            )
+            for w in weeks
+        ],
+        wins=sum(w.score.wins for w in weeks),
+        losses=sum(w.score.losses for w in weeks),
+        pushes=sum(w.score.pushes for w in weeks),
+        points=sum(w.score.points for w in weeks),
+        total_clv=round(sum(clvs), 2),
+        clv_n=len(clvs),
+    )
+
+
 @app.get("/api/contest/whoami", response_model=WhoamiOut)
 def whoami(request: Request) -> WhoamiOut:
     """Who Access says you are. Tailnet requests (no header) get nulls and
