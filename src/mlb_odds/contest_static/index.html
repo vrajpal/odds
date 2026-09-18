@@ -39,6 +39,7 @@
   .tag.majority { background:#16304f; color:var(--accent); }
   .tag.contested { background:#3d2c14; color:var(--warn); }
   .tag.early { background:#3a1d1d; color:var(--bad); }
+  .tag.closed { background:#232a3a; color:var(--dim); font-weight:600; }
   input, select, textarea { background:#0d1220; color:var(--text); border:1px solid var(--line);
           border-radius:5px; padding:5px 8px; font:inherit; }
   input.spread { width:70px; }
@@ -172,7 +173,7 @@
     <h2>Lines &amp; numbers</h2>
     <table><tbody>
       <tr><td><b>spread</b></td><td>The home team's line everywhere in this app. Negative = home favored: <b>-3.5</b> means home must win by 4+ to cover; the away side of the same number is +3.5.</td></tr>
-      <tr><td><b>market</b></td><td>Consensus of the live sportsbook spreads we collect (median across books) — what the betting market currently thinks the line should be.</td></tr>
+      <tr><td><b>market</b></td><td>Consensus of the live sportsbook spreads we collect (median across books) — what the betting market currently thinks the line should be. Once a game kicks off this freezes at the closing number (shown as <span class="tag closed">closed</span>); in-play lines never count.</td></tr>
       <tr><td><b>circa line</b></td><td>Circa's <i>static</i> contest spread, posted Thursday ~10 AM PT (Wednesday on Thanksgiving/Christmas weeks) and never updated. Entered here by hand — it exists on no data feed. It's the number all five picks are graded against.</td></tr>
       <tr><td><b>model</b></td><td>Our market-implied power-rating prediction: team ratings + home-field advantage solved from every posted spread at once. A third reference — when it disagrees with a game's own line, one of them is off.</td></tr>
       <tr><td><b>edge</b></td><td>Circa line minus market consensus, from the taken side's view. <span class="good">+2.0</span> = the contest number gives your side 2 points more than the market says is fair. The core value signal.</td></tr>
@@ -246,6 +247,7 @@ function pickLabel(gid, side, {homeSpread, withOpp = false} = {}) {
                            : ` ${fmtSpread(side === "home" ? line : -line)}`;
   return `<b>${team}</b>${num}` + (withOpp ? ` <span class="dim">${side === "home" ? "vs" : "@"} ${opp}</span>` : "");
 }
+const started = g => new Date(g.start_time) <= new Date();
 const kickoff = iso => new Date(iso).toLocaleString("en-US",
   {weekday:"short", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"});
 
@@ -318,7 +320,7 @@ function renderBoard() {
       <td><span class="matchup-link" data-chart="${g.game_id}" title="show line movement">${gameLabel(g)}</span></td>
       <td class="dim">${kickoff(g.start_time)}</td>
       <td>${tags}</td>
-      <td class="num">${fmtSpread(g.consensus)}</td>
+      <td class="num" title="${started(g) ? "closing consensus (kicked off)" : "current consensus"}">${fmtSpread(g.consensus)}${started(g) ? ' <span class="tag closed">closed</span>' : ""}</td>
       <td class="num dim">${fmtSpread(g.predicted_line)}</td>
       <td class="num"><input class="spread" data-game="${g.game_id}"
           value="${g.contest_line ?? ""}" placeholder="—"></td>

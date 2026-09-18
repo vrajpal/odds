@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from conftest import make_game_odds, make_nfl_spread_odds
+from conftest import NFL_KICKOFF, make_game_odds, make_nfl_spread_odds
 from mlb_odds.contest import (
     PACIFIC,
     BoardGame,
@@ -18,6 +18,7 @@ from mlb_odds.contest import (
     key_numbers_crossed,
     lines_post_time,
     pick_deadline,
+    pregame_spreads,
     rest_days,
     spread_history,
     week_of,
@@ -338,6 +339,41 @@ def test_board_line_entered_before_any_snapshot_has_no_movement(odds_db, tmp_pat
     row = board_for(odds_db, lines)[game_id]
     assert row.edge == 1.75  # current edge still computable
     assert row.movement_since_entry is None  # no baseline to move from
+    store.close()
+
+
+def seed_in_play_row(storage: Storage) -> str:
+    """A poll 45 minutes after kickoff: the books are now quoting the third
+    quarter (the real Week 2 TNF: BUF -20.5 against a -5.5 close)."""
+    go = make_nfl_spread_odds(
+        {"circa": -20.5, "draftkings": -21.5}, NFL_KICKOFF + timedelta(minutes=45)
+    )
+    storage.store([go], changed_only=True)
+    return go.game.game_id
+
+
+def test_pregame_spreads_stop_at_kickoff(odds_db):
+    game_id = seed_moving_lines(odds_db)
+    assert seed_in_play_row(odds_db) == game_id
+    (game,) = odds_db.games()
+    ticks = spread_history(odds_db, game_id)
+    assert book_spreads(ticks) == {"circa": -20.5, "draftkings": -21.5}  # raw: in-play
+    assert pregame_spreads(ticks, game) == {"circa": -4.5, "draftkings": -4.0}  # the close
+
+
+def test_board_market_freezes_at_kickoff(odds_db, tmp_path):
+    # D-047: a kicked-off game shows its closing consensus, never the in-play
+    # number a late poll stored; edge, keys and drift all follow the close.
+    game_id = seed_moving_lines(odds_db)
+    seed_in_play_row(odds_db)
+    store = ContestStore(tmp_path / "contest.sqlite")
+    lines = make_lines(store, 1, game_id, -2.5, T0 + timedelta(hours=1))
+    row = board_for(odds_db, lines)[game_id]
+    assert row.books == {"circa": -4.5, "draftkings": -4.0}
+    assert row.consensus == -4.25
+    assert row.edge == 1.75
+    assert row.key_numbers == [-3.0]
+    assert row.movement_since_entry == -1.5  # close vs entry, not in-play vs entry
     store.close()
 
 

@@ -941,3 +941,29 @@ returns 403 to non-browser clients, so it is not fetched programmatically;
 if a hand-downloaded copy appears, an importer for openers is phase 2.
 Modelling stays numpy-only unless ridge proves insufficient; a learning
 library would be a new runtime dependency and its own entry.
+
+## D-047 — Contest surfaces read the market as of kickoff (2026-09-18)
+The Week 2 Thursday board showed BUF -20.5 for DET @ BUF. The cron's 9 PM
+ET poll ran 43 minutes after kickoff and The Odds API, which keeps quoting
+started games, returned third-quarter in-play spreads (-19.5 to -22 across
+six books); the board took each book's newest row with no kickoff cutoff.
+The game had closed -5.5. Everything downstream of that consensus — edge,
+key numbers, drift, the line-movement chart, the Board/Matrix game read
+and the model snapshot it feeds — inherited the in-play number.
+
+In-play is a different market and never stands in for the pre-game line.
+`contest.pregame_spreads(ticks, game)` is `book_spreads` as-of kickoff: the
+live number for a game still to be played (all rows precede a future
+kickoff), the closing number once it has started. The board, the CLI
+sheet comparison, `ledger.read_game` (both markets: spread and moneyline)
+and the chart endpoint (which now ends at kickoff) all go through it. CLV,
+power ratings and the closing-line dataset already froze at kickoff. The
+board tags a kicked-off game's market "closed".
+
+Rejected: dropping post-kickoff rows in the collector. MLB `--live` (D-017)
+deliberately polls through games, and a stored in-play row is still an
+honest observation; the fix belongs where the pre-game line is read. The
+9 PM ET Thursday poll itself still earns its 3 credits for the Sunday and
+Monday games. The :8443 dashboard and game view read every sport's latest
+quotes regardless of kickoff and are unchanged; in-play prices there are a
+separate question for both sports.

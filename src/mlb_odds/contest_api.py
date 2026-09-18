@@ -974,7 +974,7 @@ class SpreadHistoryOut(BaseModel):
     line_entered_at: str | None
     model_line: float | None  # current power-rating prediction (C4.4) — a
     # reference value, not a series: historical rating fits are not stored
-    books: list[SpreadTickOut]  # every stored home-spread observation
+    books: list[SpreadTickOut]  # every stored pre-kickoff home-spread observation
     consensus: list[ConsensusPointOut]  # carry-forward median at each snapshot time
 
 
@@ -1011,6 +1011,8 @@ def get_spread_history(game_id: str) -> SpreadHistoryOut:
         finally:
             store.close()
 
+    # The chart ends at kickoff: post-kickoff rows are in-play quotes (D-047).
+    ticks = [t for t in ticks if t.fetched_at <= game.start_time]
     times = sorted({t.fetched_at for t in ticks})
     consensus_series = []
     for t in times:

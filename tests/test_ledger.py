@@ -27,6 +27,31 @@ def season_db(tmp_path):
     return db
 
 
+def test_read_game_uses_pre_kickoff_quotes_only(tmp_path):
+    # D-047: the per-game read behind Board/Matrix/snapshots is as-of kickoff
+    # on both markets, so a post-kickoff poll's in-play quotes never leak in.
+    from conftest import NFL_KICKOFF
+
+    odds = Storage(tmp_path / "nfl.sqlite")
+    try:
+        pre = make_nfl_spread_odds(
+            {"circa": -3.0}, BEFORE_WEEK1, moneylines={"circa": (130, -150)}
+        )
+        live = make_nfl_spread_odds(
+            {"circa": -20.5},
+            NFL_KICKOFF + timedelta(minutes=45),
+            moneylines={"circa": (2500, -10000)},
+        )
+        odds.store([pre])
+        odds.store([live])
+        (game,) = odds.games()
+        read = ledger.read_game(odds, game, ledger.fit_market(odds))
+    finally:
+        odds.close()
+    assert read.consensus == -3.0
+    assert read.home_wp is not None and 0.55 < read.home_wp < 0.65  # devigged -150, not -10000
+
+
 # --- snapshots ---------------------------------------------------------------------
 
 
