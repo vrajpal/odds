@@ -242,3 +242,31 @@ def test_member_stats_mirrored_grading_and_captaincy(tmp_path):
     assert stats["vijai"].captain_points == 1.5
     assert stats["sam"].captain_weeks == 0
     store.close()
+
+
+def test_member_stats_pass_grades_as_nothing(tmp_path):
+    # Week 1 in production: vijai passed on a carded game the card lost, and
+    # the pass was mirrored into a win (2-2 instead of 1-2). A pass is not
+    # the other side — on either record.
+    store = ContestStore(tmp_path / "contest.sqlite")
+    now = LOCKED_AT
+    store.submit_proposals(
+        1, "vijai", [("g1", "home", ""), ("g2", "pass", ""), ("g3", "pass", "")],
+        submitted_at=now,
+    )
+    store.cast_vote(1, "vijai", "g3", "away", cast_at=now)  # a later lean replaces the pass
+    store.cast_vote(1, "sam", "g1", "pass", cast_at=now)  # a vote can be a pass too
+    store.lock_card(
+        1, [("g1", "home"), ("g2", "away"), ("g3", "home"), ("g4", "home"), ("g5", "home")],
+        locked_by="vijai", locked_at=now,
+    )
+    store.record_results(1, {"g1": "win", "g2": "loss", "g3": "win"})
+    stats = {s.member: s for s in member_stats(store, ["vijai", "sam"])}
+    v = stats["vijai"]
+    # proposals: g1 win; g2/g3 passes count for nothing.
+    assert (v.proposal_wins, v.proposal_losses, v.proposal_pushes) == (1, 0, 0)
+    # stances: g1 win; g2 still a pass; g3 away vs home win -> loss.
+    assert (v.stance_wins, v.stance_losses, v.stance_pushes) == (1, 1, 0)
+    s_ = stats["sam"]
+    assert (s_.stance_wins, s_.stance_losses, s_.stance_pushes) == (0, 0, 0)
+    store.close()

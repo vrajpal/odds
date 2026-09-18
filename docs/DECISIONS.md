@@ -996,3 +996,12 @@ a hand-entered grade — a forfeit, a correction — stands. The button
 remains the way to grade ahead of the cron (ESPN is live; the cron runs
 Sunday 9 PM and Tuesday morning), and its regrade-overwrites semantics
 are unchanged.
+
+## D-050 — A pass grades as nothing in member records (2026-09-18)
+Week 1 showed Vijai 2-2 on a 1-4 card. `member_stats` mirrored any stance
+that was not the card's side, and a 'pass' (D-033) is not the card's side,
+so a pass on a carded loss became a win. A pass is no side at all: it is
+skipped on both the proposal and the final-stance record. Hand check for
+any member: walk the carded games, take the card's result where their
+stance matches the card, the mirror where it is the other team, nothing
+where they passed or had no stance.
