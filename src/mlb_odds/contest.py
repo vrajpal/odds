@@ -1341,6 +1341,142 @@ class MemberStats:
     captain_points: float
 
 
+# --- C4.6: pick history --------------------------------------------------------
+
+
+def _final_stances(store: ContestStore, week: int) -> dict[tuple[str, str], str]:
+    """Each member's final position per game: a vote overrides a proposal."""
+    stances: dict[tuple[str, str], str] = {}
+    for p in store.proposals(week):
+        stances[(p.member, p.game_id)] = p.side
+    for v in store.votes(week):
+        stances[(v.member, v.game_id)] = v.side
+    return stances
+
+
+def _teams_from_game_id(game_id: str) -> tuple[str, str]:
+    """(away, home) from a `YYYY-MM-DD-AWAY-HOME-n` id, for picks whose game
+    the odds database no longer holds."""
+    parts = game_id.split("-")
+    if len(parts) >= 6:
+        return parts[3], parts[4]
+    return "?", "?"
+
+
+@dataclass(frozen=True)
+class HistoryPick:
+    """One carded pick with everything needed to judge it afterwards."""
+
+    game_id: str
+    away_team: str
+    home_team: str
+    start_time: datetime | None
+    side: str
+    team: str  # the team taken
+    contest_line: float | None  # Circa home spread
+    at_lock: float | None  # market consensus (home spread) when the card went in
+    edge: float | None  # side-adjusted contest_line vs at_lock; + = value on our side
+    closing: float | None  # market consensus at kickoff
+    clv: float | None  # side-adjusted contest_line vs closing
+    home_score: int | None
+    away_score: int | None
+    cover_margin: float | None  # side-adjusted points by which the pick covered (0 = push)
+    result: str | None
+    backers: list[str]  # members whose final stance was the taken side
+    opposers: list[str]  # members whose final stance was the other team
+    passers: list[str]  # members who explicitly passed
+
+
+@dataclass(frozen=True)
+class WeekHistory:
+    week: int
+    captain: str
+    locked_by: str
+    submission_time: datetime
+    recorded_late: bool
+    score: WeekScore
+    picks: list[HistoryPick]
+
+
+def pick_history(odds: Storage, store: ContestStore, members: Sequence[str]) -> list[WeekHistory]:
+    """Every locked card, newest week first, each pick with its line, the
+    market at lock and at close, the final, the grade and who stood where.
+    The review surface for past performance (C4.6): the numbers the Season
+    tab aggregates, laid out pick by pick.
+    """
+    weeks: list[WeekHistory] = []
+    for card in sorted(store.all_cards(), key=lambda c: c.week, reverse=True):
+        lines = store.lines(card.week)
+        games = {g.game_id: g for g in odds.games(window=week_window(card.week))}
+        stances = _final_stances(store, card.week)
+        picks: list[HistoryPick] = []
+        for pick in card.picks:
+            game = games.get(pick.game_id)
+            away, home = (
+                (game.away_team, game.home_team) if game else _teams_from_game_id(pick.game_id)
+            )
+            line = lines.get(pick.game_id)
+            home_spread = line.home_spread if line else None
+            at_lock = closing = edge = clv = None
+            if game is not None:
+                ticks = spread_history(odds, pick.game_id)
+                at_lock = consensus(book_spreads(ticks, asof=card.submission_time))
+                closing = consensus(book_spreads(ticks, asof=game.start_time))
+            if home_spread is not None:
+                if at_lock is not None:
+                    edge = pick_side_value(pick.side, home_spread, at_lock)
+                if closing is not None:
+                    clv = pick_side_value(pick.side, home_spread, closing)
+            final = odds.result(pick.game_id)
+            home_score = away_score = None
+            cover = None
+            if final is not None:
+                home_score, away_score = final
+                if home_spread is not None:
+                    home_cover = (home_score - away_score) + home_spread
+                    cover = round(home_cover if pick.side == "home" else -home_cover, 1)
+            backers = [m for m in members if stances.get((m, pick.game_id)) == pick.side]
+            opposers = [
+                m for m in members if stances.get((m, pick.game_id)) in ("home", "away")
+                and stances.get((m, pick.game_id)) != pick.side
+            ]
+            passers = [m for m in members if stances.get((m, pick.game_id)) == "pass"]
+            picks.append(
+                HistoryPick(
+                    game_id=pick.game_id,
+                    away_team=away,
+                    home_team=home,
+                    start_time=game.start_time if game else None,
+                    side=pick.side,
+                    team=home if pick.side == "home" else away,
+                    contest_line=home_spread,
+                    at_lock=at_lock,
+                    edge=edge,
+                    closing=closing,
+                    clv=clv,
+                    home_score=home_score,
+                    away_score=away_score,
+                    cover_margin=cover,
+                    result=pick.result,
+                    backers=backers,
+                    opposers=opposers,
+                    passers=passers,
+                )
+            )
+        weeks.append(
+            WeekHistory(
+                week=card.week,
+                captain=captain_for(card.week, members),
+                locked_by=card.locked_by,
+                submission_time=card.submission_time,
+                recorded_late=card.recorded_late,
+                score=week_score(card),
+                picks=picks,
+            )
+        )
+    return weeks
+
+
 def _mirror(result: str) -> str:
     return {"win": "loss", "loss": "win", "push": "push"}[result]
 
@@ -1368,11 +1504,7 @@ def member_stats(store: ContestStore, members: Sequence[str]) -> list[MemberStat
             counts[captain]["cw"] += 1
             captain_points[captain] += week_score(card).points
         proposals = store.proposals(card.week)
-        stances: dict[tuple[str, str], str] = {}
-        for p in proposals:
-            stances[(p.member, p.game_id)] = p.side
-        for v in store.votes(card.week):
-            stances[(v.member, v.game_id)] = v.side
+        stances = _final_stances(store, card.week)
         for p in proposals:
             pick = graded.get(p.game_id)
             if pick is None or p.member not in counts or p.side == "pass":

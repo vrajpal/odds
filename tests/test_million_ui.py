@@ -119,3 +119,43 @@ def test_picks_read_as_team_and_number_everywhere(page, server, tmp_path):
     api_card = httpx.get(f"{server}/api/contest/card", params={"week": 1}).json()
     assert {p["game_id"] for p in api_card["picks"]} == set(five)
     assert page.errors == []
+
+
+def test_history_page_lists_each_weeks_picks(page, server, tmp_path):
+    from mlb_odds.contest import ContestStore
+
+    storage = Storage(tmp_path / "nfl-odds.sqlite")  # the shared season has four week-1 games
+    try:
+        fifth = make_nfl_spread_odds(
+            {"circa": -1.0}, FETCH_AT, away="DAL", home="NYG", start_time=WEEK1
+        )
+        storage.store([fifth])
+    finally:
+        storage.close()
+    board = httpx.get(f"{server}/api/contest/board", params={"week": 1}).json()
+    games = board["games"][:5]
+    kc_lac = next(g for g in games if g["away_team"] == "KC")
+    httpx.post(
+        f"{server}/api/contest/lines",
+        json={"week": 1, "game_id": kc_lac["game_id"], "home_spread": -3.0},
+    )
+    store = ContestStore(tmp_path / "contest.sqlite")
+    store.lock_card(
+        1,
+        [(g["game_id"], "away" if g is kc_lac else "home") for g in games],
+        locked_by="vijai",
+        locked_at=FROZEN_NOW,
+    )
+    store.record_results(1, {kc_lac["game_id"]: "win"})
+    store.close()
+
+    page.goto(f"{server}/history.html")
+    page.wait_for_selector('section.week[data-week="1"] tbody tr')
+    rows = page.locator('section.week[data-week="1"] tbody tr')
+    assert rows.count() == 5
+    kc_row = page.locator(f'tr[data-game="{kc_lac["game_id"]}"]')
+    text = kc_row.inner_text()
+    assert "KC +3" in text and "win" in text  # the team taken and its number, never a raw id
+    assert kc_lac["game_id"] not in text
+    assert "1-0" in page.inner_text("h2")  # week record in the heading
+    assert page.errors == []
