@@ -509,7 +509,7 @@ def contest_lines(
         existing = store.lines(week)
         market = {
             g.game_id: contest.consensus(
-                contest.book_spreads(contest.spread_history(odds, g.game_id))
+                contest.pregame_spreads(contest.spread_history(odds, g.game_id), g)
             )
             for g in games
         }

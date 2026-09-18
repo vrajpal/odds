@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import make_nfl_spread_odds
+from conftest import NFL_KICKOFF, make_nfl_spread_odds
 from mlb_odds import contest, contest_api
 from mlb_odds.storage import Storage
 
@@ -77,21 +77,20 @@ def test_enter_line_then_board_computes_edge(client, dbs):
     assert game["key_numbers"] == [-3.0]
 
 
-def test_movement_since_entry_tracks_post_entry_snapshots(client, dbs):
-    # Enter the line now (both seeded snapshots are in the past, so the entry
-    # baseline is today's consensus), then append a *later* snapshot. The
-    # board's movement must be exactly the post-entry drift.
+def test_movement_since_entry_tracks_post_entry_snapshots(client, dbs, monkeypatch):
+    # Enter the line after both seeded snapshots (so the entry baseline is
+    # their consensus), then append a *later* pre-kickoff snapshot. The
+    # board's movement must be exactly the post-entry drift. Entry and the
+    # new snapshot are pinned before the fixture kickoff: a snapshot after
+    # kickoff would be in-play and ignored (D-047).
+    monkeypatch.setattr(contest_api, "_now", lambda: T1 + timedelta(hours=1))
     client.post(
         "/api/contest/lines",
         json={"week": 1, "game_id": dbs["game_id"], "home_spread": -2.5},
     )
     storage = Storage(dbs["nfl_db"])
     storage.store(
-        [
-            make_nfl_spread_odds(
-                {"circa": -5.5, "draftkings": -6.0}, datetime.now(UTC) + timedelta(hours=1)
-            )
-        ]
+        [make_nfl_spread_odds({"circa": -5.5, "draftkings": -6.0}, T1 + timedelta(hours=2))]
     )
     storage.close()
 
@@ -181,6 +180,20 @@ class TestSpreadHistory:
         # Consensus at T0: median(-2.5, -3.0); at T1: median(-3.5, -4.0).
         assert [p["spread"] for p in h["consensus"]] == [-2.75, -3.75]
         assert h["deadline"].startswith("2026-09-12T16:00")
+
+    def test_history_ends_at_kickoff(self, client, dbs):
+        # An in-play poll after kickoff must not put a -20.5 cliff on the chart (D-047).
+        storage = Storage(dbs["nfl_db"])
+        storage.store(
+            [make_nfl_spread_odds({"circa": -20.5}, NFL_KICKOFF + timedelta(minutes=45))],
+            changed_only=True,
+        )
+        storage.close()
+        h = client.get(f"/api/contest/games/{dbs['game_id']}/spread-history").json()
+        assert [p["spread"] for p in h["consensus"]] == [-2.75, -3.75]
+        assert all(b["spread"] > -10 for b in h["books"])
+        board = client.get("/api/contest/board", params={"week": 1}).json()
+        assert board["games"][0]["consensus"] == -3.75
 
     def test_history_includes_contest_line_once_entered(self, client, dbs):
         client.post(

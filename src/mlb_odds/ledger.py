@@ -66,10 +66,14 @@ class GameRead:
 def read_game(odds: Storage, game: Game, fit: MarketFit) -> GameRead:
     """The per-game math shared by every NFL surface. Must run while `odds`
     is still open."""
-    market = contest.consensus(contest.book_spreads(contest.spread_history(odds, game.game_id)))
+    # As-of kickoff on both markets: in-play quotes stored by a post-kickoff
+    # poll never leak into a game's read (D-047).
+    market = contest.consensus(
+        contest.pregame_spreads(contest.spread_history(odds, game.game_id), game)
+    )
     model_line = contest.predicted_home_spread(fit.ratings, fit.hfa, game.home_team, game.away_team)
     ml_consensus = valuation.consensus_prob(
-        valuation.book_probs(valuation.moneyline_history(odds, game.game_id))
+        valuation.book_probs(valuation.moneyline_history(odds, game.game_id), asof=game.start_time)
     )
     reference = market if market is not None else model_line
     # Spread-implied fallback: survivor's straight-up conversion (ties fold

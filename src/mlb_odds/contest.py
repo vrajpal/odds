@@ -590,6 +590,18 @@ def book_spreads(ticks: list[SpreadTick], asof: datetime | None = None) -> dict[
     return {book: tick.home_spread for book, tick in newest.items()}
 
 
+def pregame_spreads(ticks: list[SpreadTick], game: Game) -> dict[str, float]:
+    """Newest home spread per book *as of kickoff*: the live number for a game
+    still to be played, the closing number once it has started.
+
+    Polls that land after kickoff store in-play quotes (the Thursday 9 PM ET
+    poll caught BUF -20.5 in the third quarter of a game that closed -5.5).
+    In-play is a different market: it never stands in for the pre-game line
+    on any contest surface (D-047).
+    """
+    return book_spreads(ticks, asof=game.start_time)
+
+
 def consensus(spreads: dict[str, float]) -> float | None:
     """Market consensus home spread: the median across books. Median, not
     mean — one book hanging a stale or off-market number shouldn't drag the
@@ -626,7 +638,8 @@ class BoardGame:
 
 def build_board(odds: Storage, lines: dict[str, ContestLine], week: int) -> list[BoardGame]:
     """The weekly board: every stored game in the contest week's window, with
-    latest market spreads, contest line (when entered), and the derived edge.
+    latest pre-kickoff market spreads (the close for started games), contest
+    line (when entered), and the derived edge.
 
     Games without an entered contest line still appear — the board is also how
     lines get entered, so it must show what's missing.
@@ -634,7 +647,7 @@ def build_board(odds: Storage, lines: dict[str, ContestLine], week: int) -> list
     rows: list[BoardGame] = []
     for game in odds.games(window=week_window(week)):
         ticks = spread_history(odds, game.game_id)
-        latest = book_spreads(ticks)
+        latest = pregame_spreads(ticks, game)
         market = consensus(latest)
         line = lines.get(game.game_id)
 
