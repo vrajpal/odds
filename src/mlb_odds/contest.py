@@ -1084,6 +1084,33 @@ def grade_pick(side: str, home_spread: float, home_score: int, away_score: int) 
     return "win" if (side == "home") == home_covered else "loss"
 
 
+def grade_from_finals(store: ContestStore, odds: Storage, week: int) -> dict[str, str]:
+    """Grade every still-ungraded pick on the week's card whose contest line
+    is entered and whose final score the collector has stored (the
+    `nfl-results` cron). Returns what was written this call.
+
+    Only picks with no result are touched: a hand-entered grade (a forfeit,
+    a correction) stands. Safe to run on every read — no network, and a
+    card with nothing pending is a no-op.
+    """
+    card = store.card(week)
+    if card is None:
+        return {}
+    lines = store.lines(week)
+    graded: dict[str, str] = {}
+    for pick in card.picks:
+        if pick.result is not None:
+            continue
+        line = lines.get(pick.game_id)
+        final = odds.result(pick.game_id)
+        if line is None or final is None:
+            continue
+        graded[pick.game_id] = grade_pick(pick.side, line.home_spread, final[0], final[1])
+    if graded:
+        store.record_results(week, graded)
+    return graded
+
+
 # --- C4.2-C4.5: decision-support stats ---------------------------------------
 
 

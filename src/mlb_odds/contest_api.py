@@ -753,10 +753,24 @@ def record_etsn(body: EtsnIn) -> CardOut:
     return _card_out(card, _card_deadline(card))
 
 
+def _grade_pending(store: contest.ContestStore, weeks: list[int]) -> None:
+    """Fill in grades from finals the collector has already stored, so the
+    card and season views never trail the results cron (D-049)."""
+    odds = _open_odds()
+    try:
+        for week in weeks:
+            graded = contest.grade_from_finals(store, odds, week)
+            if graded:
+                logger.info("week %d graded from stored finals: %s", week, graded)
+    finally:
+        odds.close()
+
+
 @app.get("/api/contest/card", response_model=CardOut)
 def get_card(week: int) -> CardOut:
     store = contest.ContestStore(_resolve_contest_db())
     try:
+        _grade_pending(store, [week])
         card = store.card(week)
     finally:
         store.close()
@@ -839,6 +853,7 @@ def get_season() -> SeasonOut:
     totals, and booby-prize eligibility."""
     store = contest.ContestStore(_resolve_contest_db())
     try:
+        _grade_pending(store, [c.week for c in store.all_cards()])
         cards = store.all_cards()
     finally:
         store.close()
@@ -892,6 +907,8 @@ def auto_grade(week: int) -> AutoGradeOut:
     """Grade the week's card from ESPN final scores against the stored Circa
     contest lines. Free (ESPN is unmetered); safe to re-run — regrading a
     corrected score overwrites, and non-final games are skipped with reasons.
+    The button for grading ahead of the results cron: once the cron has
+    stored a final, the card and season views grade themselves (D-049).
     """
     store = contest.ContestStore(_resolve_contest_db())
     try:

@@ -979,3 +979,20 @@ set containing one (409, nothing recorded — the set is one-shot, so a
 partial write would burn the member's submission). Votes and the card
 endpoint are unchanged: voting is already walled behind proposals, and
 the card lock already enforces Rule 8 on its own.
+
+## D-049 — Cards grade themselves from stored finals (2026-09-18)
+Week 1's season row showed 4 of 5 picks graded. "Auto-grade from finals"
+is a button on the Card tab that asks ESPN for that moment's scores; it
+was pressed Sunday evening before the night game ended and never again,
+while the `nfl-results` cron went on to store that final hours later.
+Grading that depends on someone remembering to press a button trails
+reality.
+
+`contest.grade_from_finals(store, odds, week)` grades every ungraded pick
+whose contest line is entered and whose final the collector has stored,
+and the card and season endpoints run it on every read (no network; a
+no-op once nothing is pending). Only picks with no result are touched, so
+a hand-entered grade — a forfeit, a correction — stands. The button
+remains the way to grade ahead of the cron (ESPN is live; the cron runs
+Sunday 9 PM and Tuesday morning), and its regrade-overwrites semantics
+are unchanged.

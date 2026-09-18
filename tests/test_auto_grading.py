@@ -172,6 +172,32 @@ def test_auto_grade_is_idempotent_and_corrects(client, env):
     assert regraded["graded"][env["KC@LAC"]] == "win"
 
 
+def test_card_and_season_grade_from_stored_finals(client, env, tmp_path):
+    # D-049: the results cron stored GB@CHI's final after the button was last
+    # pressed; the next card/season read grades it without ESPN.
+    out = client.post("/api/contest/results/auto", params={"week": 1}).json()
+    assert env["GB@CHI"] not in out["graded"]
+    storage = Storage(tmp_path / "nfl-odds.sqlite")
+    storage.record_result(env["GB@CHI"], 27, 24, fetched_at=FROZEN_NOW)  # CHI -3 wins by 3: push
+    storage.record_result(env["DAL@NYG"], 30, 10, fetched_at=FROZEN_NOW)  # no line: stays pending
+    storage.close()
+
+    card = client.get("/api/contest/card", params={"week": 1}).json()
+    by_game = {p["game_id"]: p["result"] for p in card["picks"]}
+    assert by_game[env["GB@CHI"]] == "push"
+    assert by_game[env["DAL@NYG"]] is None
+    assert by_game[env["KC@LAC"]] == "win"  # earlier ESPN grades untouched
+
+    season = client.get("/api/contest/season").json()
+    assert season["weeks"][0]["graded"] == 3
+    assert season["weeks"][0]["pushes"] == 2
+
+    # A hand-entered grade is never overwritten by the stored final.
+    client.post("/api/contest/results", json={"week": 1, "results": {env["GB@CHI"]: "win"}})
+    card = client.get("/api/contest/card", params={"week": 1}).json()
+    assert {p["game_id"]: p["result"] for p in card["picks"]}[env["GB@CHI"]] == "win"
+
+
 def test_auto_grade_requires_locked_card(tmp_path, monkeypatch):
     monkeypatch.setenv("NFL_ODDS_DB", str(tmp_path / "nfl.sqlite"))
     monkeypatch.setenv("CONTEST_DB", str(tmp_path / "contest.sqlite"))
