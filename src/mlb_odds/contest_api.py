@@ -155,6 +155,7 @@ class BoardGameOut(BaseModel):
     home_team: str
     start_time: str  # Pacific ISO — the contest's timezone
     early_kickoff: bool  # kicks before Sat 4 PM: picking it pulls the card deadline in (Rule 8)
+    kicked_off: bool  # already started (server clock): no longer a choice anywhere
     books: dict[str, float]
     consensus: float | None
     contest_line: float | None
@@ -263,6 +264,7 @@ def get_board(week: int | None = None) -> BoardOut:
                 home_team=row.home_team,
                 start_time=_pt(row.start_time),
                 early_kickoff=row.start_time < deadline,
+                kicked_off=row.start_time <= now,
                 books=row.books,
                 consensus=row.consensus,
                 contest_line=row.contest_line,
@@ -416,13 +418,24 @@ def submit_proposals(body: ProposalsIn, request: Request) -> ProposalsOut:
     _enforce_identity(request, body.member)
     odds = _open_odds()
     try:
-        known = {g.game_id for g in odds.games(window=contest.week_window(body.week))}
+        starts = {
+            g.game_id: g.start_time for g in odds.games(window=contest.week_window(body.week))
+        }
     finally:
         odds.close()
-    unknown = [p.game_id for p in body.picks if p.game_id not in known]
+    unknown = [p.game_id for p in body.picks if p.game_id not in starts]
     if unknown:
         raise HTTPException(
             status_code=404, detail=f"not stored NFL games in week {body.week}: {unknown}"
+        )
+    # A stance on a game that has kicked off is not a pick: Rule 8 makes every
+    # pick due before its kickoff, so the game can no longer reach a card.
+    now = _now()
+    kicked_off = [p.game_id for p in body.picks if starts[p.game_id] <= now]
+    if kicked_off:
+        raise HTTPException(
+            status_code=409,
+            detail=f"already kicked off, no longer a choice: {kicked_off}",
         )
     store = contest.ContestStore(_resolve_contest_db())
     try:

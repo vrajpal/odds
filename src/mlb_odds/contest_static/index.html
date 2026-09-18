@@ -188,6 +188,7 @@
     <table><tbody>
       <tr><td><b>contest week</b></td><td>Wednesday 2:00 AM PT through the next Wednesday 1:59 AM PT (Rule 19). Weeks 1–18.</td></tr>
       <tr><td><b>deadline</b></td><td>Saturday 4:00 PM PT — when the week's five picks are due at Circa (Rule 7).</td></tr>
+      <tr><td><b>kicked off</b></td><td>The game has started. It can no longer be proposed or carded — every pick is due before its own kickoff (Rule 8) — and its market column shows the closing number.</td></tr>
       <tr><td><b>⏱ early</b></td><td>This game kicks off <i>before</i> the Saturday deadline (Thursday night, December Saturdays). Rule 8: put it on your card and the <b>whole card</b> is due before that kickoff — no partial submissions.</td></tr>
       <tr><td><b>booby prize</b></td><td>Circa pays <b>last place $100k</b> (2nd-last $50k; $25k per quarter) — but only to entries that made 5 picks in <i>every completed week</i>. Miss one week and you're permanently ineligible, which is why…</td></tr>
       <tr><td><b>booby guard</b></td><td>…the red header alert fires if no card is locked by Saturday 10 AM PT. A missed week costs the week's points <i>and</i> booby eligibility forever.</td></tr>
@@ -247,7 +248,6 @@ function pickLabel(gid, side, {homeSpread, withOpp = false} = {}) {
                            : ` ${fmtSpread(side === "home" ? line : -line)}`;
   return `<b>${team}</b>${num}` + (withOpp ? ` <span class="dim">${side === "home" ? "vs" : "@"} ${opp}</span>` : "");
 }
-const started = g => new Date(g.start_time) <= new Date();
 const kickoff = iso => new Date(iso).toLocaleString("en-US",
   {weekday:"short", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit"});
 
@@ -320,7 +320,7 @@ function renderBoard() {
       <td><span class="matchup-link" data-chart="${g.game_id}" title="show line movement">${gameLabel(g)}</span></td>
       <td class="dim">${kickoff(g.start_time)}</td>
       <td>${tags}</td>
-      <td class="num" title="${started(g) ? "closing consensus (kicked off)" : "current consensus"}">${fmtSpread(g.consensus)}${started(g) ? ' <span class="tag closed">closed</span>' : ""}</td>
+      <td class="num" title="${g.kicked_off ? "closing consensus (kicked off)" : "current consensus"}">${fmtSpread(g.consensus)}${g.kicked_off ? ' <span class="tag closed">closed</span>' : ""}</td>
       <td class="num dim">${fmtSpread(g.predicted_line)}</td>
       <td class="num"><input class="spread" data-game="${g.game_id}"
           value="${g.contest_line ?? ""}" placeholder="—"></td>
@@ -494,12 +494,13 @@ function renderPropose() {
     <td class="dim">${kickoff(g.start_time)}</td>
     <td class="num">${fmtSpread(g.contest_line)}</td>
     <td class="num ${g.edge > 0 ? "good" : g.edge < 0 ? "bad" : "dim"}">${g.edge == null ? "–" : fmtSpread(g.edge)}</td>
-    <td>
-      <button class="side" data-pick="${g.game_id}" data-side="away">${g.away_team}</button>
+    <td>${g.kicked_off
+      ? '<span class="tag closed" title="kicked off: a pick must be in before kickoff (Rule 8)">kicked off</span>'
+      : `<button class="side" data-pick="${g.game_id}" data-side="away">${g.away_team}</button>
       <button class="side" data-pick="${g.game_id}" data-side="pass">pass</button>
-      <button class="side" data-pick="${g.game_id}" data-side="home">${g.home_team}</button>
+      <button class="side" data-pick="${g.game_id}" data-side="home">${g.home_team}</button>`}
     </td>
-    <td><input data-note="${g.game_id}" placeholder="why" size="18"></td>
+    <td>${g.kicked_off ? "" : `<input data-note="${g.game_id}" placeholder="why" size="18">`}</td>
   </tr>`).join("");
   tb.querySelectorAll("[data-pick]").forEach(btn => btn.onclick = () => {
     const gid = btn.dataset.pick, side = btn.dataset.side;
