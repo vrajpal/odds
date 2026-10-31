@@ -1019,3 +1019,19 @@ serves it and grades pending picks from stored finals first (D-049).
 (`pick_side_value`, `book_spreads` as of the submission time and kickoff),
 so the page can never disagree with the Season tab. A separate page rather
 than a seventh tab: the tabs are the weekly workflow; this is review.
+
+## D-052 — An unsubmitted proposal survives a reload (2026-10-30)
+The Million Propose tab kept its sides and notes only in page memory, so a
+refresh, or iOS Safari dropping a backgrounded tab, wiped a half-built
+proposal. The draft is now saved to `localStorage` under
+`proposalDraft:<member>:<week>` on every side click and note keystroke, and
+restored when the Propose table renders. Restoring drops games that have
+kicked off or aren't on the board (D-048). The draft is removed on a
+successful submit, and whenever the server says that member has already
+submitted for that week (e.g. from another device); a submitted week's
+table stops saving. The key is fixed when the table renders, so switching
+week or member mid-request never saves or clears another week's draft, and
+an in-memory copy covers a browser that refuses storage. It stays in the browser
+on purpose: the server-side proposal is blind and one-shot, so a draft
+can't be stored there without a second, mutable kind of proposal, and it
+doesn't follow you between devices.

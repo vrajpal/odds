@@ -159,3 +159,143 @@ def test_history_page_lists_each_weeks_picks(page, server, tmp_path):
     assert kc_lac["game_id"] not in text
     assert "1-0" in page.inner_text("h2")  # week record in the heading
     assert page.errors == []
+
+
+def test_unsubmitted_proposal_survives_a_reload(browser, server):
+    # Phone-sized, since that's where a dropped tab or a refresh bit (D-052).
+    context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True)
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("dialog", lambda d: d.accept())
+    board = httpx.get(f"{server}/api/contest/board", params={"week": 1}).json()
+    open_games = [g for g in board["games"] if not g["kicked_off"]]
+    first, second = open_games[0]["game_id"], open_games[1]["game_id"]
+
+    def open_propose():
+        page.goto(f"{server}/")
+        page.click('#tabs button[data-tab="propose"]')
+        page.wait_for_selector("#propose-table tbody tr")
+
+    def selected():
+        return page.eval_on_selector_all(
+            "#propose-table button.side.sel", "bs => bs.map(b => [b.dataset.pick, b.dataset.side])"
+        )
+
+    open_propose()
+    page.click(f'[data-pick="{first}"][data-side="away"]')
+    page.click(f'[data-pick="{second}"][data-side="pass"]')
+    page.fill(f'[data-note="{first}"]', "line moved our way")
+    page.reload()
+    page.click('#tabs button[data-tab="propose"]')
+    page.wait_for_selector("#propose-table button.side.sel")
+    assert sorted(selected()) == sorted([[first, "away"], [second, "pass"]])
+    assert page.input_value(f'[data-note="{first}"]') == "line moved our way"
+    assert page.inner_text("#propose-msg") == "1 lean · 1 pass"
+
+    # Submitting sends the restored draft and clears it.
+    page.click("#propose-submit")
+    page.wait_for_function("() => document.querySelector('#propose-submit').disabled")
+    mine = httpx.get(
+        f"{server}/api/contest/proposals", params={"week": 1, "member": "vijai"}
+    ).json()["proposals"]
+    assert {(p["game_id"], p["side"], p["note"]) for p in mine} == {
+        (first, "away", "line moved our way"),
+        (second, "pass", ""),
+    }
+    assert page.evaluate("() => localStorage.getItem('proposalDraft:vijai:1')") is None
+    open_propose()
+    assert selected() == []
+
+    # A draft left on this device after submitting from another one is
+    # dropped, not shown next to the real picks.
+    page.select_option("#member", "sam")
+    page.wait_for_selector(f'[data-pick="{first}"]')
+    page.click(f'[data-pick="{first}"][data-side="home"]')
+    page.fill(f'[data-note="{first}"]', "from the phone")
+    assert page.evaluate("() => localStorage.getItem('proposalDraft:sam:1')") is not None
+    r = httpx.post(
+        f"{server}/api/contest/proposals",
+        json={"week": 1, "member": "sam", "picks": [{"game_id": second, "side": "away"}]},
+    )
+    assert r.status_code == 201, r.text
+    open_propose()
+    page.wait_for_function("() => document.querySelector('#propose-submit').disabled")
+    assert selected() == []
+    assert page.input_value(f'[data-note="{first}"]') == ""
+    assert page.evaluate("() => localStorage.getItem('proposalDraft:sam:1')") is None
+    page.fill(f'[data-note="{first}"]', "typed after submitting")
+    assert page.evaluate("() => localStorage.getItem('proposalDraft:sam:1')") is None
+    assert errors == []
+    context.close()
+
+
+def test_switching_week_during_submit_keeps_the_next_weeks_draft(browser, server):
+    # Submitting clears the submitted week's draft, not whatever week is on
+    # screen when a slow POST returns (D-052).
+    page = browser.new_page()
+    page.on("dialog", lambda d: d.accept())
+    week2 = httpx.get(f"{server}/api/contest/board", params={"week": 2}).json()
+    g2 = next(g["game_id"] for g in week2["games"] if not g["kicked_off"])
+    page.goto(f"{server}/")
+    page.evaluate(
+        "g => localStorage.setItem('proposalDraft:vijai:2',"
+        " JSON.stringify({picks: {[g]: 'home'}, notes: {}}))",
+        g2,
+    )
+    page.click('#tabs button[data-tab="propose"]')
+    page.wait_for_selector("#propose-table [data-pick]")
+    g1 = page.get_attribute("#propose-table [data-pick]", "data-pick")
+    page.click(f'[data-pick="{g1}"][data-side="away"]')
+
+    # Hold the POST's response in the page (a sync route handler that sleeps
+    # would block this thread, so the week click would land after it).
+    page.evaluate(
+        """() => { const f = window.fetch;
+        window.fetch = (u, o) => o?.method === "POST"
+          ? f(u, o).then(r => new Promise(ok => setTimeout(() => ok(r), 1000))) : f(u, o); }"""
+    )
+    page.click("#propose-submit")
+    page.click("#week-next")
+    page.wait_for_function("() => document.querySelector('#hdr-week').value === '2'")
+    page.wait_for_function("() => localStorage.getItem('proposalDraft:vijai:1') === null")
+    assert page.evaluate("() => localStorage.getItem('proposalDraft:vijai:2')") is not None
+    assert page.eval_on_selector_all(
+        "#propose-table button.side.sel", "bs => bs.map(b => [b.dataset.pick, b.dataset.side])"
+    ) == [[g2, "home"]]
+    page.close()
+
+
+def test_stale_table_saves_and_submits_for_its_own_week_and_member(browser, server):
+    # After a week or member switch whose board never loads (a phone with no
+    # signal), the table still on screen is the old one; edits and a submit
+    # from it belong to its own week and member, not the switched-to ones (D-052).
+    page = browser.new_page()
+    page.on("dialog", lambda d: d.accept())
+    page.goto(f"{server}/")
+    page.click('#tabs button[data-tab="propose"]')
+    page.wait_for_selector("#propose-table [data-pick]")
+    g1 = page.get_attribute("#propose-table [data-pick]", "data-pick")
+    page.click(f'[data-pick="{g1}"][data-side="away"]')
+    page.evaluate(
+        """() => { const f = window.fetch;
+        window.fetch = (u, o) => String(u).includes("/api/contest/board")
+          ? Promise.reject(new Error("offline")) : f(u, o); }"""
+    )
+    page.click("#week-next")
+    page.fill(f'[data-note="{g1}"]', "still week 1")
+    stored = page.evaluate("() => JSON.parse(localStorage.getItem('proposalDraft:vijai:1'))")
+    assert stored == {"picks": {g1: "away"}, "notes": {g1: "still week 1"}}
+    assert page.evaluate("() => localStorage.getItem('proposalDraft:vijai:2')") is None
+
+    page.select_option("#member", "sam")
+    page.click("#propose-submit")
+    page.wait_for_function("() => localStorage.getItem('proposalDraft:vijai:1') === null")
+    status = httpx.get(
+        f"{server}/api/contest/proposals", params={"week": 1, "member": "vijai"}
+    ).json()
+    assert status["submitted"] == ["vijai"]
+    assert [(p["game_id"], p["side"], p["note"]) for p in status["proposals"]] == [
+        (g1, "away", "still week 1")
+    ]
+    page.close()
