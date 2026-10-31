@@ -503,25 +503,83 @@ function renderPropose() {
     </td>
     <td>${g.kicked_off ? "" : `<input data-note="${g.game_id}" placeholder="why" size="18">`}</td>
   </tr>`).join("");
+  restoreDraft();
   tb.querySelectorAll("[data-pick]").forEach(btn => btn.onclick = () => {
     const gid = btn.dataset.pick, side = btn.dataset.side;
     if (state.proposal[gid] === side) delete state.proposal[gid];
     else state.proposal[gid] = side;  // as many stances as you like (D-033)
-    tb.querySelectorAll(`[data-pick="${gid}"]`).forEach(b =>
-      b.classList.toggle("sel", state.proposal[gid] === b.dataset.side));
-    const sides = Object.values(state.proposal);
-    const leans = sides.filter(s => s !== "pass").length;
-    const passes = sides.length - leans;
-    $("#propose-msg").textContent = `${leans} lean${leans === 1 ? "" : "s"} · ${passes} pass${passes === 1 ? "" : "es"}`;
+    showProposal(); saveDraft();
   });
+  tb.querySelectorAll("[data-note]").forEach(inp => inp.oninput = saveDraft);
   refreshProposeStatus();
 }
 
+function showProposal() {
+  document.querySelectorAll("#propose-table [data-pick]").forEach(b =>
+    b.classList.toggle("sel", state.proposal[b.dataset.pick] === b.dataset.side));
+  const sides = Object.values(state.proposal);
+  const leans = sides.filter(s => s !== "pass").length;
+  const passes = sides.length - leans;
+  $("#propose-msg").textContent = sides.length
+    ? `${leans} lean${leans === 1 ? "" : "s"} · ${passes} pass${passes === 1 ? "" : "es"}` : "";
+}
+
+// The unsubmitted proposal (sides + notes) lives in localStorage per member and
+// week, so a refresh or a phone dropping the tab doesn't lose it (D-052).
+// `state.draftFor` is the {key, week, me} of the table on screen, set when it
+// renders; saving, submitting and clearing all go by it, so a week or member
+// switch whose board hasn't loaded yet can't touch the wrong draft.
+// `drafts` holds a draft in memory only when storage refused it.
+const draftKey = () => `proposalDraft:${state.me}:${state.week}`;
+const drafts = {}, submittedKeys = new Set();
+function saveDraft() {
+  if (submittedKeys.has(state.draftFor.key)) return;  // already submitted: nothing to keep
+  const notes = {};
+  document.querySelectorAll("#propose-table [data-note]").forEach(inp => {
+    if (inp.value) notes[inp.dataset.note] = inp.value;
+  });
+  const {key} = state.draftFor, empty = !Object.keys(state.proposal).length && !Object.keys(notes).length;
+  const draft = {picks: {...state.proposal}, notes};
+  try {
+    if (empty) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(draft));
+    delete drafts[key];
+  } catch {  // storage full or blocked: keep it in memory; it won't survive a reload
+    if (empty) delete drafts[key]; else drafts[key] = draft;
+  }
+}
+function draftSubmitted(key) {
+  submittedKeys.add(key);
+  delete drafts[key];
+  try { localStorage.removeItem(key); } catch { /* blocked: nothing stored anyway */ }
+  if (key !== state.draftFor.key) return;
+  state.proposal = {};
+  document.querySelectorAll("#propose-table [data-note]").forEach(inp => { inp.value = ""; });
+  showProposal();
+}
+function restoreDraft() {
+  state.draftFor = {key: draftKey(), week: state.week, me: state.me};
+  let draft = drafts[state.draftFor.key];
+  if (!draft) {
+    try { draft = JSON.parse(localStorage.getItem(state.draftFor.key)) || {}; } catch { draft = {}; }
+  }
+  // Only games still open on this board; a game that has kicked off is no choice (D-048).
+  const open = new Set(state.board.games.filter(g => !g.kicked_off).map(g => g.game_id));
+  state.proposal = Object.fromEntries(
+    Object.entries(draft.picks || {}).filter(([gid]) => open.has(gid)));
+  document.querySelectorAll("#propose-table [data-note]").forEach(inp => {
+    inp.value = draft.notes?.[inp.dataset.note] || "";
+  });
+  showProposal();
+}
+
 async function refreshProposeStatus() {
+  const key = draftKey();  // the week/member this status is for, even if they change mid-fetch
   try {
     const p = await api(`/api/contest/proposals?week=${state.week}&member=${state.me}`);
     const mine = p.proposals.filter(x => x.member === state.me);
     const submitted = p.submitted.includes(state.me);
+    if (submitted) draftSubmitted(key);
     $("#propose-submit").disabled = submitted;
     $("#propose-status").innerHTML =
       `<b>submitted:</b> ${p.submitted.join(", ") || "nobody yet"} ·
@@ -532,14 +590,15 @@ async function refreshProposeStatus() {
 }
 
 $("#propose-submit").onclick = async () => {
+  const {key, week, me} = state.draftFor;  // the table on screen, not a switch still loading
   const picks = Object.entries(state.proposal).map(([game_id, side]) => ({
     game_id, side, note: document.querySelector(`[data-note="${game_id}"]`)?.value || ""}));
   if (!picks.length) return alert("select at least one pick");
-  if (!confirm(`Submit ${picks.length} pick(s) as ${state.me}? This is one-shot and final.`)) return;
+  if (!confirm(`Submit ${picks.length} week-${week} pick(s) as ${me}? This is one-shot and final.`)) return;
   try {
     await api("/api/contest/proposals", {method:"POST",
-      body: JSON.stringify({week: state.week, member: state.me, picks})});
-    state.proposal = {}; refreshProposeStatus(); showTab("consensus"); loadConsensus();
+      body: JSON.stringify({week, member: me, picks})});
+    draftSubmitted(key); refreshProposeStatus(); showTab("consensus"); loadConsensus();
   } catch (e) { alert(e.message); }
 };
 
@@ -790,8 +849,7 @@ $("#tabs").onclick = e => {
 
 function setWeek(week) {
   if (week < 1 || week > 18) return;
-  state.week = week;
-  state.proposal = {};  // proposal draft is per-week
+  state.week = week;  // the proposal draft is per-week: restoreDraft swaps it in on render
   document.querySelectorAll("tr.chart-row").forEach(r => r.remove());
   refresh();
   // re-pull whichever data tab is open for the new week
